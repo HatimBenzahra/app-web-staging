@@ -1,0 +1,1116 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type ActiveRoom {
+  createdAt: DateTime!
+  numParticipants: Int!
+  participantNames: [String!]!
+  roomName: String!
+}
+
+input AssignZoneInput {
+  userId: Int!
+  userType: UserType!
+  zoneId: Int!
+}
+
+type AuthResponse {
+  access_token: String!
+  email: String
+  expires_in: Float!
+  groups: [String!]!
+  refresh_token: String!
+  role: String!
+  scope: String
+  token_type: String
+  userId: Float!
+}
+
+input AwardBadgeInput {
+  badgeDefinitionId: Int!
+  commercialId: Int
+  managerId: Int
+  metadata: String
+  periodKey: String!
+}
+
+type AwardBadgesResult {
+  awarded: Int!
+  message: String!
+  skipped: Int!
+  success: Boolean!
+  total: Int!
+}
+
+"""Catégorie de badge gamification"""
+enum BadgeCategory {
+  PERFORMANCE
+  PRODUIT
+  PROGRESSION
+  TROPHEE
+}
+
+type BadgeDefinitionType {
+  category: BadgeCategory!
+  code: String!
+  condition: String
+  createdAt: DateTime!
+  description: String
+  iconUrl: String
+  id: Int!
+  isActive: Boolean!
+  nom: String!
+  tier: Int!
+  updatedAt: DateTime!
+}
+
+input BatchAwardBadgesInput {
+  awards: [AwardBadgeInput!]!
+}
+
+input BatchUpdateOffreBadgeProductKeyInput {
+  offres: [UpdateOffreBadgeProductKeyInput!]!
+}
+
+input BatchUpdateOffrePointsInput {
+  offres: [UpdateOffrePointsInput!]!
+}
+
+type Commercial {
+  age: Int
+  createdAt: DateTime!
+  directeurId: Int
+  email: String!
+  id: Int!
+  immeubles: [Immeuble!]!
+  managerId: Int
+  nom: String!
+  numTel: String
+  prenom: String!
+  statistics: [Statistic!]!
+  status: UserStatus!
+  updatedAt: DateTime!
+  zones: [Zone!]!
+}
+
+type CommercialBadgeType {
+  awardedAt: DateTime!
+  badgeDefinition: BadgeDefinitionType
+  badgeDefinitionId: Int!
+  commercialId: Int
+  id: Int!
+  managerId: Int
+  metadata: String
+  periodKey: String!
+}
+
+type CommercialInfo {
+  id: Int!
+  nom: String!
+  prenom: String!
+}
+
+input ComputeRankingInput {
+  period: RankPeriod!
+  periodKey: String!
+}
+
+input ConfirmMappingInput {
+  mappings: [MappingEntry!]!
+}
+
+input ConfirmRecordingUploadInput {
+  doorSegments: [DoorSegmentInput!]
+  duration: Float
+  s3Key: String!
+}
+
+type ContratValideType {
+  commercialId: Int
+  commercialWinleadPlusId: String!
+  createdAt: DateTime!
+  dateSignature: DateTime
+  dateValidation: DateTime!
+  externalContratId: Int!
+  externalProspectId: Int!
+  id: Int!
+  managerId: Int
+  metadata: String
+  offreCategorie: String
+  offreExternalId: Int
+  offreFournisseur: String
+  offreId: Int
+  offreLogoUrl: String
+  offreNom: String
+  offrePoints: Int
+  periodDay: String!
+  periodMonth: String!
+  periodQuarter: String!
+  periodWeek: String!
+  periodYear: String!
+  syncedAt: DateTime!
+}
+
+input CreateBadgeDefinitionInput {
+  category: BadgeCategory!
+  code: String!
+  condition: String
+  description: String
+  iconUrl: String
+  nom: String!
+  tier: Int! = 0
+}
+
+input CreateCommercialInput {
+  age: Int!
+  directeurId: Int
+  email: String!
+  managerId: Int
+  nom: String!
+  numTel: String!
+  prenom: String!
+  status: UserStatus
+}
+
+input CreateDirecteurInput {
+  adresse: String!
+  email: String!
+  nom: String!
+  numTelephone: String!
+  prenom: String!
+  status: UserStatus
+}
+
+input CreateImmeubleInput {
+  adresse: String!
+  ascenseurPresent: Boolean!
+  commercialId: Int
+  digitalCode: String
+  latitude: Float
+  longitude: Float
+  managerId: Int
+  nbEtages: Int!
+  nbPortesParEtage: Int!
+  zoneId: Int
+}
+
+input CreateManagerInput {
+  directeurId: Int
+  email: String!
+  nom: String!
+  numTelephone: String
+  prenom: String!
+  status: UserStatus
+}
+
+input CreatePorteInput {
+  commentaire: String
+  derniereVisite: DateTime
+  etage: Int!
+  immeubleId: Int!
+  nbContrats: Int! = 1
+  nbRepassages: Int! = 0
+  nomPersonnalise: String
+  numero: String!
+  rdvDate: DateTime
+  rdvTime: String
+  statut: StatutPorte! = NON_VISITE
+}
+
+input CreateStatisticInput {
+  absents: Int!
+  argumentes: Int!
+  commercialId: Int
+  contratsSignes: Int!
+  directeurId: Int
+  immeubleId: Int
+  immeublesVisites: Int!
+  managerId: Int
+  nbImmeublesProspectes: Int!
+  nbPortesProspectes: Int!
+  refus: Int!
+  rendezVousPris: Int!
+  zoneId: Int
+}
+
+input CreateZoneInput {
+  directeurId: Int
+  managerId: Int
+  nom: String!
+  rayon: Float!
+  xOrigin: Float!
+  yOrigin: Float!
+}
+
+input CreerUtilisateurInput {
+  email: String
+  nom: String!
+  prenom: String!
+  role: RoleUtilisateur!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type DeviceMapping {
+  commercialName: String!
+  createdAt: DateTime!
+  deviceId: String!
+  id: Int!
+  updatedAt: DateTime!
+}
+
+type Directeur {
+  adresse: String
+  createdAt: DateTime!
+  email: String!
+  id: Int!
+  nom: String!
+  numTelephone: String
+  prenom: String!
+  statistics: [Statistic!]
+  status: UserStatus!
+  updatedAt: DateTime!
+}
+
+input DoorSegmentInput {
+  endTime: Float!
+  etage: Int!
+  numero: String!
+  porteId: Int!
+  startTime: Float!
+  statut: String
+}
+
+type EgressState {
+  egressId: String!
+  error: String
+  roomName: String
+  status: String!
+}
+
+type EtageInStatistics {
+  count: Int!
+  etage: Int!
+}
+
+type ExtractionProgressDto {
+  current: Int!
+  step: String!
+  total: Int!
+}
+
+type ExtractionQueueItemDto {
+  current: Int!
+  key: String!
+  step: String!
+  total: Int!
+}
+
+type GlobalSearchResult {
+  groups: [SearchResultGroup!]!
+  totalCount: Int!
+}
+
+type GpsHistoryResponse {
+  positions: [GpsPosition!]!
+  total: Int!
+}
+
+type GpsPosition {
+  accuracy: Float
+  batteryLevel: Int
+  createdAt: DateTime!
+  deviceId: String!
+  deviceName: String
+  id: Int!
+  isOnline: Boolean!
+  latitude: Float!
+  longitude: Float!
+  recordedAt: DateTime!
+}
+
+input GpsPositionInput {
+  accuracy: Float
+  batteryLevel: Int
+  deviceId: String!
+  deviceName: String
+  isOnline: Boolean
+  latitude: Float!
+  longitude: Float!
+}
+
+type HistoriqueZone {
+  assignedAt: DateTime!
+  id: Int!
+  totalContratsSignes: Int!
+  totalImmeublesProspectes: Int!
+  totalImmeublesVisites: Int!
+  totalPortesProspectes: Int!
+  totalRefus: Int!
+  totalRendezVousPris: Int!
+  unassignedAt: DateTime!
+  userId: Int!
+  userType: UserType!
+  zone: Zone
+  zoneId: Int!
+}
+
+type Immeuble {
+  adresse: String!
+  ascenseurPresent: Boolean!
+  commercialId: Int
+  createdAt: DateTime!
+  digitalCode: String
+  id: Int!
+  latitude: Float
+  longitude: Float
+  managerId: Int
+  nbEtages: Int!
+  nbPortesParEtage: Int!
+  portes: [Porte!]
+  updatedAt: DateTime!
+  zoneId: Int
+}
+
+type LiveKitConnectionDetails {
+  participantName: String!
+  participantToken: String!
+  roomName: String!
+  serverUrl: String!
+}
+
+input LoginInput {
+  password: String!
+  username: String!
+}
+
+type Manager {
+  commercials: [Commercial!]
+  createdAt: DateTime!
+  directeur: Directeur
+  directeurId: Int
+  email: String
+  id: Int!
+  immeubles: [Immeuble!]
+  nom: String!
+  numTelephone: String
+  personalStatistics: [Statistic!]
+  prenom: String!
+  statistics: [Statistic!]
+  status: UserStatus!
+  teamStatistics: [Statistic!]
+  updatedAt: DateTime!
+  zones: [Zone!]
+}
+
+type ManagerInfo {
+  id: Int!
+  nom: String!
+  prenom: String!
+}
+
+input MappingEntry {
+  prowinId: Int!
+  type: String!
+  winleadPlusId: String!
+}
+
+type MappingResult {
+  mapped: Int!
+  message: String!
+  skipped: Int!
+  success: Boolean!
+}
+
+type MappingSuggestion {
+  alreadyMapped: Boolean!
+  confidence: Int
+  prowinEmail: String
+  prowinId: Int!
+  prowinNom: String!
+  prowinPrenom: String!
+  prowinType: String!
+  winleadPlusEmail: String
+  winleadPlusId: String
+  winleadPlusNom: String
+  winleadPlusPrenom: String
+}
+
+input ModifierUtilisateurInput {
+  email: String!
+  nouveauMotDePasse: String!
+}
+
+type MonitoringSession {
+  endedAt: DateTime
+  id: ID!
+  participantToken: String
+  roomName: String!
+  startedAt: DateTime!
+  status: MonitoringStatus!
+  supervisorId: Int!
+  userId: Int!
+  userType: String!
+}
+
+enum MonitoringStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+}
+
+type Mutation {
+  addEtageToImmeuble(id: Int!): Immeuble!
+  addPorteToEtage(etage: Int!, immeubleId: Int!): Immeuble!
+  assignZoneToCommercial(commercialId: Int!, zoneId: Int!): Boolean!
+  assignZoneToDirecteur(directeurId: Int!, zoneId: Int!): Boolean!
+  assignZoneToManager(managerId: Int!, zoneId: Int!): Boolean!
+  assignZoneToUser(input: AssignZoneInput!): ZoneEnCours!
+  awardBadge(input: AwardBadgeInput!): AwardBadgesResult!
+  batchAwardBadges(input: BatchAwardBadgesInput!): AwardBadgesResult!
+  batchUpdateOffreBadgeProductKey(input: BatchUpdateOffreBadgeProductKeyInput!): MappingResult!
+  batchUpdateOffrePoints(input: BatchUpdateOffrePointsInput!): MappingResult!
+  computeRanking(input: ComputeRankingInput!): MappingResult!
+  confirmMapping(input: ConfirmMappingInput!): MappingResult!
+  confirmRecordingUpload(input: ConfirmRecordingUploadInput!): RecordingItem!
+  createBadgeDefinition(input: CreateBadgeDefinitionInput!): BadgeDefinitionType!
+  createCommercial(createCommercialInput: CreateCommercialInput!): Commercial!
+  createDirecteur(createDirecteurInput: CreateDirecteurInput!): Directeur!
+  createImmeuble(createImmeubleInput: CreateImmeubleInput!): Immeuble!
+  createManager(createManagerInput: CreateManagerInput!): Manager!
+  createPorte(createPorteInput: CreatePorteInput!): Porte!
+  createPortesForImmeuble(immeubleId: Int!, nbEtages: Int!, nbPortesParEtage: Int!): Boolean!
+  createStatistic(createStatisticInput: CreateStatisticInput!): Statistic!
+  createZone(createZoneInput: CreateZoneInput!): Zone!
+  creerUtilisateurProWin(input: CreerUtilisateurInput!): ReponseCreationUtilisateur!
+  evaluateBadges: AwardBadgesResult!
+  evaluateConversionRanking(weekKey: String!): AwardBadgesResult!
+  evaluatePerformanceRanking(month: String!): AwardBadgesResult!
+  evaluateTransformationRanking(month: String!): AwardBadgesResult!
+  evaluateTrophees(quarter: String!): AwardBadgesResult!
+  generateCommercialToken(commercialId: Int, roomName: String): LiveKitConnectionDetails!
+  generateManagerToken(managerId: Int, roomName: String): LiveKitConnectionDetails!
+  logAudioEvent(details: String, eventType: String!, message: String!): Boolean!
+  login(loginInput: LoginInput!): AuthResponse!
+  modifierUtilisateur(input: ModifierUtilisateurInput!): ReponseModifierUtilisateur!
+  recalculateAllStats: String!
+  refreshToken(refreshToken: String!): AuthResponse!
+  removeCommercial(id: Int!): Commercial!
+  removeDeviceMapping(deviceId: String!): DeviceMapping!
+  removeDirecteur(id: Int!): Directeur!
+  removeEtageFromImmeuble(id: Int!): Immeuble!
+  removeImmeuble(id: Int!): Immeuble!
+  removeManager(id: Int!): Manager!
+  removeMapping(input: RemoveMappingInput!): MappingResult!
+  removePorte(id: Int!): Porte!
+  removePorteFromEtage(etage: Int!, immeubleId: Int!): Immeuble!
+  removeStatistic(id: Int!): Statistic!
+  removeZone(id: Int!): Zone!
+  requestRecordingUpload(input: RequestRecordingUploadInput!): RecordingUploadDetails!
+  revokeBadge(id: Int!): MappingResult!
+  saveGpsPositions(input: SaveGpsPositionsInput!): SaveGpsPositionsResponse!
+  seedBadges: SeedBadgesResult!
+  setDeviceCommercial(input: SetDeviceCommercialInput!): DeviceMapping!
+  startMonitoring(input: StartMonitoringInput!): LiveKitConnectionDetails!
+  startRecording(input: StartRecordingInput!): RecordingResult!
+  stopMonitoring(input: StopMonitoringInput!): Boolean!
+  stopRecording(input: StopRecordingInput!): Boolean!
+  supprimerUtilisateur(input: SupprimerUtilisateurInput!): ReponseSupprimerUtilisateur!
+  syncCommercialStats(immeubleId: Int!): String!
+  syncContrats: SyncContratsResult!
+  syncManagerStats(managerId: Int!): String!
+  syncOffres: SyncOffresResult!
+  triggerBatchExtraction(keys: [String!]!): Int!
+  triggerConversationExtraction(key: String!): Boolean!
+  unassignUser(userId: Int!, userType: UserType!): Boolean!
+  unassignZoneFromCommercial(commercialId: Int!, zoneId: Int!): Boolean!
+  updateBadgeDefinition(id: Int!, input: UpdateBadgeDefinitionInput!): BadgeDefinitionType!
+  updateCommercial(updateCommercialInput: UpdateCommercialInput!): Commercial!
+  updateDirecteur(updateDirecteurInput: UpdateDirecteurInput!): Directeur!
+  updateImmeuble(updateImmeubleInput: UpdateImmeubleInput!): Immeuble!
+  updateManager(updateManagerInput: UpdateManagerInput!): Manager!
+  updateOffreBadgeProductKey(badgeProductKey: String, offreId: Int!): Offre!
+  updateOffrePoints(offreId: Int!, points: Int!): Offre!
+  updatePorte(updatePorteInput: UpdatePorteInput!): Porte!
+  updateStatistic(updateStatisticInput: UpdateStatisticInput!): Statistic!
+  updateZone(updateZoneInput: UpdateZoneInput!): Zone!
+}
+
+type Offre {
+  badgeProductKey: String
+  categorie: String!
+  createdAt: DateTime!
+  description: String
+  externalId: Int!
+  features: String
+  fournisseur: String!
+  id: Int!
+  isActive: Boolean!
+  logoUrl: String
+  nom: String!
+  points: Int!
+  popular: Boolean!
+  prixBase: Float
+  rating: Float
+  syncedAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type OffreDistributionEntry {
+  categorie: String!
+  count: Int!
+  fournisseur: String!
+  logoUrl: String
+  nom: String!
+  offreId: Int!
+}
+
+type PaginatedRecordingsResult {
+  items: [RecordingItem!]!
+  totalCount: Int!
+}
+
+type Porte {
+  commentaire: String
+  createdAt: DateTime!
+  derniereVisite: DateTime
+  etage: Int!
+  id: Int!
+  immeubleId: Int!
+  nbContrats: Int!
+  nbRepassages: Int!
+  nomPersonnalise: String
+  numero: String!
+  rdvDate: DateTime
+  rdvTime: String
+  statut: StatutPorte!
+  updatedAt: DateTime!
+}
+
+type PorteInfo {
+  etage: Int!
+  id: Int!
+  numero: String!
+}
+
+type PorteStatistics {
+  absent: Int!
+  argumente: Int!
+  contratsSigne: Int!
+  necessiteRepassage: Int!
+  nonVisitees: Int!
+  portesParEtage: [EtageInStatistics!]!
+  portesVisitees: Int!
+  rdvPris: Int!
+  refus: Int!
+  tauxConversion: String!
+  totalPortes: Int!
+}
+
+type Query {
+  allCurrentAssignments: [ZoneEnCours!]!
+  allZoneHistory: [HistoriqueZone!]!
+  badgeDefinition(id: Int!): BadgeDefinitionType
+  badgeDefinitions(activeOnly: Boolean! = true, category: BadgeCategory): [BadgeDefinitionType!]!
+  commercial(id: Int!): Commercial!
+  commercialBadges(commercialId: Int!): [CommercialBadgeType!]!
+  commercialRankings(commercialId: Int!): [RankSnapshotType!]!
+  commercialTeamRanking(commercialId: Int!): TeamRanking!
+  commercials: [Commercial!]!
+  contratsByCommercial(commercialId: Int!): [ContratValideType!]!
+  contratsByManager(managerId: Int!): [ContratValideType!]!
+  currentUserAssignment(userId: Int!, userType: UserType!): ZoneEnCours
+  deviceMappings: [DeviceMapping!]!
+  directeur(id: Int!): Directeur!
+  directeurs: [Directeur!]!
+  egressState(egressId: String!): EgressState!
+  getActiveRooms: [ActiveRoom!]!
+  getActiveSessions: [MonitoringSession!]!
+  getConversationStreamingUrl(key: String!): String
+  getExtractionProgress(key: String!): ExtractionProgressDto
+  getExtractionQueue: [ExtractionQueueItemDto!]!
+  getProcessedKeys(keys: [String!]!): [String!]!
+  getRecordingSpeechScores(keys: [String!]!): [SpeechScoreDto!]!
+  getStreamingUrl(key: String!): String!
+  globalSearch(limit: Int! = 5, query: String!): GlobalSearchResult!
+  gpsAllPositions(deviceId: String, from: String!, limit: Int, to: String!): GpsHistoryResponse!
+  gpsDailyRoute(date: String!, deviceId: String!): GpsHistoryResponse!
+  gpsDevices: [GpsPosition!]!
+  gpsHistory(deviceId: String!, from: String, limit: Int, to: String): GpsHistoryResponse!
+  gpsLatestPositions: [GpsPosition!]!
+  immeuble(id: Int!): Immeuble!
+  immeubles: [Immeuble!]!
+  listAllRecordings(roomNames: [String!]!): PaginatedRecordingsResult!
+  listRecordings(roomName: String!): [RecordingItem!]!
+  manager(id: Int!): Manager!
+  managerBadges(managerId: Int!): [CommercialBadgeType!]!
+  managerFull(id: Int!): Manager
+  managerPersonal(id: Int!): Manager
+  managers: [Manager!]!
+  mappingSuggestions: [MappingSuggestion!]!
+  me: UserInfo!
+  offreDistribution(periodMonth: String!): [OffreDistributionEntry!]!
+  offres(activeOnly: Boolean! = true): [Offre!]!
+  porte(id: Int!): Porte!
+  porteStatistics(immeubleId: Int!): PorteStatistics!
+  portes: [Porte!]!
+  portesByImmeuble(etage: Int, immeubleId: Int!, skip: Int, take: Int): [Porte!]!
+  portesModifiedToday(immeubleId: Int): [Porte!]!
+  portesRdvToday: [Porte!]!
+  ranking(includeContratFinie: Boolean! = false, period: RankPeriod!, periodKey: String!): [RankSnapshotType!]!
+  recordingSegmentsByImmeuble(immeubleId: Int!): [RecordingSegmentDto!]!
+  recordingSegmentsByKey(s3Key: String!): [RecordingSegmentDto!]!
+  recordingSegmentsByPorte(porteId: Int!): [RecordingSegmentDto!]!
+  recordingSegmentsToday(limit: Int! = 20, statut: String): [RecordingSegmentDto!]!
+  statistic(id: Int!): Statistic!
+  statistics(commercialId: Int): [Statistic!]!
+  statsTimelineByCommercial(commercialId: Int!, endDate: DateTime, startDate: DateTime): [TimelinePoint!]!
+  statusHistoriqueByImmeuble(immeubleId: Int!): [StatusHistorique!]!
+  statusHistoriqueByPorte(porteId: Int!): [StatusHistorique!]!
+  userZoneHistory(userId: Int!, userType: UserType!): [HistoriqueZone!]!
+  validateStatsCoherence: String!
+  winleadPlusUsers: [WinleadPlusUser!]!
+  zone(id: Int!): Zone!
+  zoneCurrentAssignments(zoneId: Int!): [ZoneEnCours!]!
+  zoneHistory(zoneId: Int!): [HistoriqueZone!]!
+  zoneStatistics: [ZoneStatistic!]!
+  zones: [Zone!]!
+}
+
+"""Période de classement (jour, semaine, mois, trimestre, année)"""
+enum RankPeriod {
+  DAILY
+  MONTHLY
+  QUARTERLY
+  WEEKLY
+  YEARLY
+}
+
+type RankSnapshotType {
+  commercialId: Int
+  commercialNom: String
+  commercialPrenom: String
+  computedAt: DateTime!
+  contratsSignes: Int!
+  id: Int!
+  managerId: Int
+  managerNom: String
+  managerPrenom: String
+  metadata: String
+  period: RankPeriod!
+  periodKey: String!
+  points: Int!
+  rank: Int!
+  rankTierKey: String!
+  rankTierLabel: String!
+}
+
+type RecordingItem {
+  key: String!
+  lastModified: DateTime
+  size: Float
+  url: String
+}
+
+type RecordingResult {
+  egressId: String!
+  roomName: String!
+  s3Key: String!
+  status: String!
+  url: String
+}
+
+type RecordingSegmentDto {
+  commercialNom: String
+  createdAt: DateTime!
+  durationSec: Float!
+  endTime: Float!
+  id: Int!
+  immeubleAdresse: String
+  immeubleId: Int
+  porteEtage: Int
+  porteId: Int!
+  porteNumero: String
+  s3KeySegment: String
+  speechScore: Int
+  startTime: Float!
+  status: String!
+  statut: String
+  streamingUrl: String
+  transcription: String
+}
+
+type RecordingUploadDetails {
+  expiresIn: Float!
+  s3Key: String!
+  uploadUrl: String!
+}
+
+input RemoveMappingInput {
+  prowinId: Int!
+  type: String!
+}
+
+type ReponseCreationUtilisateur {
+  email: String
+  message: String
+  password: String
+  success: Boolean!
+  userId: String
+}
+
+type ReponseModifierUtilisateur {
+  message: String
+  success: Boolean!
+}
+
+type ReponseSupprimerUtilisateur {
+  message: String
+  success: Boolean!
+}
+
+input RequestRecordingUploadInput {
+  duration: Float
+  fileSize: Float
+  immeubleId: Float
+  mimeType: String = "audio/mp4"
+  participantIdentity: String
+  roomName: String!
+}
+
+"""Rôle de l'utilisateur dans Pro Win"""
+enum RoleUtilisateur {
+  COMMERCIAL
+  DIRECTEUR
+  MANAGER
+}
+
+input SaveGpsPositionsInput {
+  positions: [GpsPositionInput!]!
+}
+
+type SaveGpsPositionsResponse {
+  saved: Int!
+  success: Boolean!
+}
+
+type SearchResultGroup {
+  category: String!
+  items: [SearchResultItem!]!
+}
+
+type SearchResultItem {
+  id: Int!
+  label: String!
+  sublabel: String
+  type: String!
+  url: String!
+}
+
+type SeedBadgesResult {
+  created: Int!
+  message: String!
+  skipped: Int!
+  success: Boolean!
+  total: Int!
+}
+
+input SetDeviceCommercialInput {
+  commercialName: String!
+  deviceId: String!
+}
+
+type SpeechScoreDto {
+  key: String!
+  score: Int
+  speechDurationSec: Float
+  status: String!
+  totalDurationSec: Float
+}
+
+input StartMonitoringInput {
+  roomName: String
+  userId: Int!
+  userType: String!
+}
+
+input StartRecordingInput {
+  audioOnly: Boolean = true
+  immeubleId: Float
+  participantIdentity: String
+  roomName: String!
+}
+
+type Statistic {
+  absents: Int!
+  argumentes: Int!
+  commercialId: Int
+  contratsSignes: Int!
+  createdAt: DateTime!
+  directeurId: Int
+  id: Int!
+  immeubleId: Int
+  immeublesVisites: Int!
+  managerId: Int
+  nbImmeublesProspectes: Int!
+  nbPortesProspectes: Int!
+  refus: Int!
+  rendezVousPris: Int!
+  updatedAt: DateTime!
+  zoneId: Int
+}
+
+type StatusHistorique {
+  commentaire: String
+  commercial: CommercialInfo
+  commercialId: Int
+  createdAt: DateTime!
+  id: Int!
+  manager: ManagerInfo
+  managerId: Int
+  porte: PorteInfo
+  porteId: Int!
+  rdvDate: DateTime
+  rdvTime: String
+  statut: StatutPorte!
+}
+
+"""Statut possible pour une porte"""
+enum StatutPorte {
+  ABSENT
+  ARGUMENTE
+  CONTRAT_SIGNE
+  NECESSITE_REPASSAGE
+  NON_VISITE
+  REFUS
+  RENDEZ_VOUS_PRIS
+}
+
+input StopMonitoringInput {
+  sessionId: ID!
+}
+
+input StopRecordingInput {
+  egressId: String!
+}
+
+input SupprimerUtilisateurInput {
+  email: String!
+}
+
+type SyncContratsResult {
+  created: Int!
+  message: String!
+  skipped: Int!
+  success: Boolean!
+  total: Int!
+  updated: Int!
+}
+
+type SyncOffresResult {
+  created: Int!
+  message: String!
+  success: Boolean!
+  total: Int!
+  updated: Int!
+}
+
+type TeamRanking {
+  managerEmail: String
+  managerNom: String
+  managerNumTel: String
+  managerPrenom: String
+  points: Int!
+  position: Int!
+  total: Int!
+  trend: String
+}
+
+type TimelinePoint {
+  absents: Int!
+  argumentes: Int!
+  contratsSignes: Int!
+  date: DateTime!
+  portesProspectees: Int!
+  rdvPris: Int!
+  refus: Int!
+}
+
+input UpdateBadgeDefinitionInput {
+  category: BadgeCategory
+  condition: String
+  description: String
+  iconUrl: String
+  isActive: Boolean
+  nom: String
+  tier: Int
+}
+
+input UpdateCommercialInput {
+  age: Int
+  directeurId: Int
+  email: String
+  id: Int!
+  managerId: Int
+  nom: String
+  numTel: String
+  prenom: String
+  status: UserStatus
+}
+
+input UpdateDirecteurInput {
+  adresse: String
+  email: String
+  id: Int!
+  nom: String
+  numTelephone: String
+  prenom: String
+  status: UserStatus
+}
+
+input UpdateImmeubleInput {
+  adresse: String
+  ascenseurPresent: Boolean
+  commercialId: Int
+  digitalCode: String
+  id: Int!
+  latitude: Float
+  longitude: Float
+  managerId: Int
+  nbEtages: Int
+  nbPortesParEtage: Int
+  zoneId: Int
+}
+
+input UpdateManagerInput {
+  directeurId: Int
+  email: String
+  id: Int!
+  nom: String
+  numTelephone: String
+  prenom: String
+  status: UserStatus
+}
+
+input UpdateOffreBadgeProductKeyInput {
+  badgeProductKey: String
+  offreId: Int!
+}
+
+input UpdateOffrePointsInput {
+  offreId: Int!
+  points: Int!
+}
+
+input UpdatePorteInput {
+  commentaire: String
+  derniereVisite: DateTime
+  etage: Int
+  id: Int!
+  nbContrats: Int
+  nbRepassages: Int
+  nomPersonnalise: String
+  numero: String
+  rdvDate: DateTime
+  rdvTime: String
+  statut: StatutPorte
+}
+
+input UpdateStatisticInput {
+  absents: Int
+  argumentes: Int
+  commercialId: Int
+  contratsSignes: Int
+  directeurId: Int
+  id: Int!
+  immeubleId: Int
+  immeublesVisites: Int
+  managerId: Int
+  nbImmeublesProspectes: Int
+  nbPortesProspectes: Int
+  refus: Int
+  rendezVousPris: Int
+  zoneId: Int
+}
+
+input UpdateZoneInput {
+  directeurId: Int
+  id: Int!
+  managerId: Int
+  nom: String
+  rayon: Float
+  xOrigin: Float
+  yOrigin: Float
+}
+
+type UserInfo {
+  email: String!
+  id: Int!
+  role: String!
+}
+
+"""Statut d’un utilisateur (commercial, manager ou directeur)"""
+enum UserStatus {
+  ACTIF
+  CONTRAT_FINIE
+  UTILISATEUR_TEST
+}
+
+"""Type d'utilisateur pouvant être assigné à une zone"""
+enum UserType {
+  COMMERCIAL
+  DIRECTEUR
+  MANAGER
+}
+
+type WinleadPlusUser {
+  email: String
+  id: String!
+  isActive: Boolean!
+  managerId: String
+  nom: String!
+  prenom: String!
+  role: String!
+  username: String
+}
+
+type Zone {
+  createdAt: DateTime!
+  directeurId: Int
+  id: Int!
+  immeubles: [Immeuble!]
+  managerId: Int
+  nom: String!
+  rayon: Float!
+  updatedAt: DateTime!
+  xOrigin: Float!
+  yOrigin: Float!
+}
+
+type ZoneEnCours {
+  assignedAt: DateTime!
+  id: Int!
+  userId: Int!
+  userType: UserType!
+  zone: Zone
+  zoneId: Int!
+}
+
+type ZoneStatistic {
+  nombreCommerciaux: Int!
+  performanceGlobale: Float!
+  tauxConversion: Float!
+  tauxSuccesRdv: Float!
+  totalContratsSignes: Int!
+  totalImmeublesProspectes: Int!
+  totalImmeublesVisites: Int!
+  totalPortesProspectes: Int!
+  totalRefus: Int!
+  totalRendezVousPris: Int!
+  zoneId: Int!
+  zoneName: String!
+}

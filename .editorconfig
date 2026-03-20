@@ -1,0 +1,34 @@
+# EditorConfig est pris en charge par la plupart des éditeurs de code
+# Documentation: https://editorconfig.org
+
+root = true
+
+# Valeurs par défaut pour tous les fichiers
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# JavaScript, JSX, JSON
+[*.{js,jsx,json}]
+indent_size = 2
+
+# CSS, SCSS
+[*.{css,scss}]
+indent_size = 2
+
+# Markdown
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML
+[*.{yml,yaml}]
+indent_size = 2
+
+# Package files
+[package.json]
+indent_size = 2
+

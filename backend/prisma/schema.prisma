@@ -1,0 +1,473 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Directeur {
+  id          Int         @id @default(autoincrement())
+  nom         String
+  prenom      String
+  adresse     String?
+  email       String?     @unique
+  numTelephone String?
+  status      UserStatus   @default(ACTIF)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  managers        Manager[]
+  commercials     Commercial[]
+  zones           Zone[]
+  statistics      Statistic[]
+}
+
+model Manager {
+  id            Int        @id @default(autoincrement())
+  nom           String
+  prenom        String
+  email         String?    @unique
+  numTelephone  String?
+  status        UserStatus @default(ACTIF)
+  winleadPlusId String?    @unique // UUID du manager côté WinLead+
+  directeurId   Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  directeur        Directeur?         @relation(fields: [directeurId], references: [id])
+  commercials      Commercial[]
+  zones            Zone[]
+  immeubles        Immeuble[]
+  statistics       Statistic[]
+  statusHistorique StatusHistorique[]
+  rankSnapshots    RankSnapshot[]
+  contratsValides  ContratValide[]
+  commercialBadges CommercialBadge[]
+}
+
+model Commercial {
+  id            Int        @id @default(autoincrement())
+  nom           String
+  prenom        String
+  email         String?    @unique
+  numTel        String?
+  age           Int?
+  status        UserStatus @default(ACTIF)
+  winleadPlusId String?    @unique // UUID du commercial côté WinLead+
+  managerId     Int?
+  directeurId   Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  manager          Manager?           @relation(fields: [managerId], references: [id])
+  directeur        Directeur?         @relation(fields: [directeurId], references: [id])
+  immeubles        Immeuble[]
+  statistics       Statistic[]
+  statusHistorique StatusHistorique[]
+  badges           CommercialBadge[]
+  rankSnapshots    RankSnapshot[]
+  contratsValides  ContratValide[]
+  }
+
+model Zone {
+  id          Int      @id @default(autoincrement())
+  nom         String
+  xOrigin     Float
+  yOrigin     Float
+  rayon       Float
+  directeurId Int?
+  managerId   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  directeur       Directeur? @relation(fields: [directeurId], references: [id])
+  manager         Manager?   @relation(fields: [managerId], references: [id])
+  immeubles       Immeuble[]
+  statistics      Statistic[]
+  zoneEnCours     ZoneEnCours[]
+  historiqueZones HistoriqueZone[]
+}
+
+model Immeuble {
+  id                Int      @id @default(autoincrement())
+  adresse           String
+  latitude          Float?   // Coordonnée latitude pour la carte
+  longitude         Float?   // Coordonnée longitude pour la carte
+  nbEtages          Int
+  nbPortesParEtage  Int
+  ascenseurPresent  Boolean  @default(false)
+  digitalCode       String?
+  commercialId      Int?
+  managerId         Int?
+  zoneId            Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  commercial        Commercial? @relation(fields: [commercialId], references: [id])
+  manager           Manager?    @relation(fields: [managerId], references: [id])
+  zone              Zone?       @relation(fields: [zoneId], references: [id])
+  statistics        Statistic[]
+  portes            Porte[]
+}
+
+model Statistic {
+  id                    Int      @id @default(autoincrement())
+  commercialId          Int?
+  managerId             Int?
+  directeurId           Int?
+  immeubleId            Int?
+  zoneId                Int?
+  contratsSignes        Int      // Nombre de contrats signés
+  immeublesVisites      Int      // Nombre d'immeubles visités
+  rendezVousPris        Int      // Nombre de rendez-vous pris
+  refus                 Int      // Nombre de refus
+  absents               Int      @default(0) // Nombre de portes où personne n'était présent
+  argumentes            Int      @default(0) // Nombre de refus après argumentation
+  nbImmeublesProspectes Int      // Nombre d'immeubles prospectés
+  nbPortesProspectes    Int      // Nombre de portes prospectées
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  commercial            Commercial? @relation(fields: [commercialId], references: [id])
+  manager               Manager?    @relation(fields: [managerId], references: [id])
+  directeur             Directeur?  @relation(fields: [directeurId], references: [id])
+  immeuble              Immeuble?   @relation(fields: [immeubleId], references: [id])
+  zone                  Zone?       @relation(fields: [zoneId], references: [id])
+}
+
+model Porte {
+  id                Int       @id @default(autoincrement())
+  numero            String    // Ex: "101", "201A"
+  nomPersonnalise   String?   // Ex: "Porte à droite", "Appartement A"
+  etage             Int
+  immeubleId        Int
+  statut            StatutPorte @default(NON_VISITE)
+  nbRepassages      Int       @default(0)
+  nbContrats        Int       @default(1) // Nombre de contrats signés pour cette porte
+  rdvDate           DateTime?
+  rdvTime           String?   // Ex: "14:30"
+  commentaire       String?
+  derniereVisite    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  immeuble          Immeuble  @relation(fields: [immeubleId], references: [id])
+  statusHistorique  StatusHistorique[]
+  recordingSegments RecordingSegment[]
+
+  @@unique([immeubleId, numero])
+}
+
+enum StatutPorte {
+  NON_VISITE
+  CONTRAT_SIGNE
+  REFUS
+  RENDEZ_VOUS_PRIS
+  ABSENT
+  ARGUMENTE
+  NECESSITE_REPASSAGE
+}
+
+enum UserType {
+  COMMERCIAL
+  MANAGER
+  DIRECTEUR
+}
+
+enum UserStatus {
+  ACTIF
+  CONTRAT_FINIE
+  UTILISATEUR_TEST
+}
+
+model ZoneEnCours {
+  id         Int      @id @default(autoincrement())
+  zoneId     Int
+  zone       Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  userId     Int
+  userType   UserType
+
+  assignedAt DateTime @default(now())
+
+  @@unique([userId, userType])
+  @@index([zoneId])
+  @@index([userId, userType])
+}
+
+model HistoriqueZone {
+  id     Int  @id @default(autoincrement())
+  zoneId Int
+  zone   Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  userId   Int
+  userType UserType
+
+  assignedAt   DateTime
+  unassignedAt DateTime
+
+  // Snapshot des statistiques pour cette période
+  totalContratsSignes      Int @default(0)
+  totalImmeublesVisites    Int @default(0)
+  totalRendezVousPris      Int @default(0)
+  totalRefus               Int @default(0)
+  totalImmeublesProspectes Int @default(0)
+  totalPortesProspectes    Int @default(0)
+
+  @@index([zoneId])
+  @@index([userId, userType])
+  @@index([assignedAt, unassignedAt])
+}
+
+model StatusHistorique {
+  id           Int         @id @default(autoincrement())
+  porteId      Int
+  commercialId Int?
+  managerId    Int?
+  statut       StatutPorte
+  commentaire  String?
+  rdvDate      DateTime?
+  rdvTime      String?
+  createdAt    DateTime    @default(now())
+
+  porte      Porte       @relation(fields: [porteId], references: [id], onDelete: Cascade)
+  commercial Commercial? @relation(fields: [commercialId], references: [id])
+  manager    Manager?    @relation(fields: [managerId], references: [id])
+
+  @@index([porteId])
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// GAMIFICATION — Offres (cache local des offres WinLead+)
+// ============================================================================
+
+model Offre {
+  id          Int      @id @default(autoincrement())
+  externalId  Int      @unique // ID retourné par l'API WinLead+
+  nom         String
+  description String?
+  categorie   String // "Téléphonie", "Assurance Santé"...
+  fournisseur String // "BLEUTEL", "Neoliane"...
+  logoUrl     String?
+  prixBase    Float?
+  features    Json? // Array de strings depuis l'API
+  popular     Boolean  @default(false)
+  rating      Float?
+  isActive    Boolean  @default(true)
+  points         Int      @default(0) // Points attribués au commercial pour ce contrat (configuré par l'admin)
+  badgeProductKey String?  // Clé produit pour le moteur de badges: MOBILE, FIBRE, DEPANSSUR, ELEC_GAZ, CONCIERGERIE, MONDIAL_TV, ASSURANCE
+  syncedAt    DateTime @default(now()) // Dernière synchro avec l'API WinLead+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contratsValides ContratValide[]
+
+  @@index([categorie])
+  @@index([fournisseur])
+  @@index([isActive])
+  @@index([badgeProductKey])
+}
+
+// ============================================================================
+// GAMIFICATION — Badge Catalogue
+// ============================================================================
+
+enum BadgeCategory {
+  PROGRESSION   // Paliers tous produits confondus (1, 2, 3, 5, 10, 20, 50, 100 contrats)
+  PRODUIT       // Paliers spécifiques par produit (Mobile, Fibre, Dépanssur, Élec/Gaz, Conciergerie, MTV, Assurance)
+  PERFORMANCE   // Achievements individuels (timing, streaks, conversion, formation...)
+  TROPHEE       // Trophées numériques trimestriels
+}
+
+model BadgeDefinition {
+  id          Int           @id @default(autoincrement())
+  code        String        @unique    // "PROGRESSION_10_CONTRATS", "PRODUIT_TELEPHONIE"...
+  nom         String                   // "Débutant", "Expert Téléphonie"...
+  description String?                  // Description longue pour l'UI
+  category    BadgeCategory            // Catégorie du badge
+  iconUrl     String?                  // URL icône/image du badge
+  condition   Json?                    // Critères d'attribution {"metric":"contratsSignes","threshold":10}
+  tier        Int           @default(0) // Niveau: 0=unique, 1=bronze, 2=argent, 3=or, 4=diamant
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  commercialBadges CommercialBadge[]
+
+  @@index([category])
+  @@index([isActive])
+}
+
+// ============================================================================
+// GAMIFICATION — Attribution de badges aux commerciaux
+// ============================================================================
+
+enum RankPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model CommercialBadge {
+  id                Int             @id @default(autoincrement())
+  commercialId      Int?
+  managerId         Int?
+  badgeDefinitionId Int
+  periodKey         String          // "2026-02-25", "2026-W09", "2026-02", "2026-Q1"
+  awardedAt         DateTime        @default(now())
+  metadata          Json?           // Données contextuelles: {"score": 42, "rank": 1}
+
+  commercial      Commercial?     @relation(fields: [commercialId], references: [id], onDelete: Cascade)
+  manager         Manager?        @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  badgeDefinition BadgeDefinition @relation(fields: [badgeDefinitionId], references: [id], onDelete: Cascade)
+
+  // Un commercial/manager ne peut recevoir le même badge qu'une fois par période
+  @@unique([commercialId, badgeDefinitionId, periodKey])
+  @@unique([managerId, badgeDefinitionId, periodKey])
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([badgeDefinitionId])
+  @@index([awardedAt])
+  @@index([periodKey])
+}
+
+// ============================================================================
+// GAMIFICATION — Classement / Ranking
+// ============================================================================
+
+model RankSnapshot {
+  id            Int        @id @default(autoincrement())
+  commercialId  Int?
+  managerId     Int?
+  period        RankPeriod // DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY
+  periodKey     String     // "2026-02-25", "2026-W09", "2026-02", "2026-Q1", "2026"
+  rank          Int        // Position dans le classement (1 = premier)
+  points        Int        @default(0) // Points cumulés sur la période
+  contratsSignes Int       @default(0) // Nombre de contrats signés sur la période
+  metadata      Json?      // Données supplémentaires: {"previousRank": 3, "delta": +2}
+  computedAt    DateTime   @default(now())
+
+  commercial Commercial? @relation(fields: [commercialId], references: [id], onDelete: Cascade)
+  manager    Manager?    @relation(fields: [managerId], references: [id], onDelete: Cascade)
+
+  // Un seul snapshot par commercial par type de période par clé de période
+  @@unique([commercialId, period, periodKey])
+  @@unique([managerId, period, periodKey])
+  @@index([period, periodKey])
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([rank])
+}
+
+// ============================================================================
+// GAMIFICATION — Contrats validés (cache WinLead+ /api/prospects)
+// ============================================================================
+
+model ContratValide {
+  id                      Int      @id @default(autoincrement())
+  externalContratId       Int      @unique // ID du contrat côté WinLead+
+  externalProspectId      Int      // ID du prospect côté WinLead+
+  commercialWinleadPlusId String   // UUID du commercial côté WinLead+ (prospect.commercialId)
+  commercialId            Int?     // FK vers Commercial Pro-Win (résolu via mapping)
+  managerId              Int?     // FK vers Manager Pro-Win (résolu via mapping)
+  offreExternalId         Int?     // ID offre côté WinLead+ (souscription.offreId)
+  offreId                 Int?     // FK vers Offre locale (résolu via externalId)
+  dateValidation          DateTime // Date de validation du contrat
+  dateSignature           DateTime? // Date de signature (peut être null)
+  // Clés de période pré-calculées pour requêtes rapides
+  periodDay               String   // "2026-02-25"
+  periodWeek              String   // "2026-W09"
+  periodMonth             String   // "2026-02"
+  periodQuarter           String   // "2026-Q1"
+  periodYear              String   // "2026"
+  metadata                Json?    // Données supplémentaires (nom prospect, statut prospect...)
+  syncedAt                DateTime @default(now())
+  createdAt               DateTime @default(now())
+
+  commercial Commercial? @relation(fields: [commercialId], references: [id], onDelete: SetNull)
+  manager    Manager?    @relation(fields: [managerId], references: [id], onDelete: SetNull)
+  offre      Offre?      @relation(fields: [offreId], references: [id], onDelete: SetNull)
+
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([commercialWinleadPlusId])
+  @@index([offreId])
+  @@index([dateValidation])
+  @@index([periodDay])
+  @@index([periodWeek])
+  @@index([periodMonth])
+  @@index([periodQuarter])
+  @@index([periodYear])
+}
+
+model RecordingSegment {
+  id            Int           @id @default(autoincrement())
+  porteId       Int
+  commercialId  Int?
+  managerId     Int?
+  immeubleId    Int?
+  statut        StatutPorte?
+  s3KeyOriginal String
+  s3KeySegment  String?
+  startTime     Float
+  endTime       Float
+  durationSec   Float
+  transcription String?
+  speechScore   Int?
+  status        SegmentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  porte         Porte         @relation(fields: [porteId], references: [id], onDelete: Cascade)
+
+  @@index([porteId])
+  @@index([commercialId])
+  @@index([immeubleId])
+  @@index([s3KeyOriginal])
+  @@index([status])
+}
+
+model GpsPosition {
+  id           Int      @id @default(autoincrement())
+  deviceId     String
+  deviceName   String?
+  latitude     Float
+  longitude    Float
+  accuracy     Float?
+  batteryLevel Int?
+  isOnline     Boolean  @default(true)
+  recordedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([recordedAt])
+  @@index([deviceId, recordedAt])
+}
+
+model DeviceMapping {
+  id             Int      @id @default(autoincrement())
+  deviceId       String   @unique
+  commercialName String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+enum SegmentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

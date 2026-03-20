@@ -1,0 +1,372 @@
+/* stylelint-disable at-rule-no-unknown */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* @custom-variant est une directive Tailwind valide */
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * Configuration Tailwind pour le mapping des variables CSS
+ * Les valeurs sont définies dynamiquement dans src/config/theme.js
+ * @theme est une directive Tailwind CSS v4
+ */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/**
+ * Styles de base
+ * Les couleurs sont injectées dynamiquement par theme.js au chargement
+ */
+@layer base {
+  html {
+    @apply overflow-x-hidden;
+    font-size: 16px; /* Taille de base fixe pour éviter les problèmes de zoom */
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    min-width: 320px;
+    max-width: 100vw;
+    overflow-x: hidden;
+    overflow-y: scroll !important;
+    scrollbar-gutter: stable;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    position: relative;
+  }
+
+  body[style*="overflow: hidden"] {
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  #root {
+    @apply min-h-screen overflow-x-hidden;
+    max-width: 100vw; /* Contrainte stricte */
+    position: relative;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box; /* Inclure padding et border dans la largeur */
+    user-select: none; /* Désactiver la sélection de texte par défaut */
+    -webkit-user-select: none; /* Pour Safari */
+    -moz-user-select: none; /* Pour Firefox */
+    -ms-user-select: none; /* Pour IE/Edge */
+  }
+
+  /* Réactiver la sélection pour les champs de saisie */
+  input,
+  textarea {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  /* Empêcher les débordements de texte */
+  input,
+  textarea,
+  select,
+  button {
+    max-width: 100%;
+  }
+
+  /* Contraintes pour les images et media */
+  img,
+  video,
+  iframe {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Styles pour désactiver les couleurs d'autocomplétion du navigateur */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--background) inset !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--foreground);
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Pour le mode sombre */
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--background) inset !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--foreground);
+  }
+}
+/*--------------------------------*/
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.25);
+  border-radius: 999px;
+}
+
+html,
+body {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(15, 23, 42, 0.35) transparent;
+  -ms-overflow-style: auto; /* IE 10+ */
+}
+
+/* LiveKit BarVisualizer overrides */
+.lk-bar-visualizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.lk-bar-visualizer .lk-audio-bar {
+  border-radius: 9999px;
+  min-width: 3px;
+  flex-shrink: 0;
+  transition: height 80ms ease-out;
+}
+
+/* Utility to hide scrollbar when explicitly needed */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+/*--------------------------------*/
+/* Animations personnalisées pour le LoadingScreen */
+@layer utilities {
+  /* Animation de gradient qui se déplace sur le texte */
+  @keyframes gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Animation d'écriture du texte (comme une machine à écrire) */
+  @keyframes write-text {
+    0% {
+      max-width: 0;
+      opacity: 0;
+    }
+    1% {
+      opacity: 1;
+    }
+    100% {
+      max-width: 100%;
+      opacity: 1;
+    }
+  }
+
+  /* Animation de clignotement du curseur */
+  @keyframes blink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Animation fade-in-up pour le sous-titre */
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Animation fade-in simple */
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  /* Classes d'animation */
+  .animate-gradient {
+    animation: gradient 2s ease-in-out infinite;
+  }
+
+  .animate-write-text {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 0;
+    animation: write-text 1s ease-out forwards;
+  }
+
+  .animate-blink {
+    animation: blink 1s step-end infinite;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.8s ease-out forwards;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.8s ease-out forwards;
+  }
+
+  /* Délais d'animation */
+  .animation-delay-200 {
+    animation-delay: 0.2s;
+  }
+
+  .animation-delay-400 {
+    animation-delay: 0.4s;
+  }
+
+  .animation-delay-500 {
+    animation-delay: 0.5s;
+  }
+
+  .animation-delay-1000 {
+    animation-delay: 1s;
+  }
+
+  .animation-delay-1500 {
+    animation-delay: 1.5s;
+  }
+
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .animation-delay-2500 {
+    animation-delay: 2.5s;
+  }
+
+  /* Shimmer sweep animation for skeleton loading states */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.12) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  /* Dark mode: slightly more visible shimmer highlight */
+  .dark .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 100%
+    );
+  }
+
+  /* Content fade-in transition — use when data finishes loading (8px lift, 300ms) */
+  @keyframes fade-in-content {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-content {
+    animation: fade-in-content 0.3s ease-out forwards;
+  }
+
+/* Scrollbar personnalisée concerant le mode visualtion des portes dans l'espace commercial/manager */
+  .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #888;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+
+
+}
