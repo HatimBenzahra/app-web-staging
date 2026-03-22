@@ -26,6 +26,9 @@ import {
   Star,
   FileText,
   Mic,
+  UserX,
+  MessageSquare,
+  RotateCcw,
 } from 'lucide-react'
 import { formatDuration } from '../ecoutes/EnregistrementComponents'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -821,6 +824,55 @@ export default function Dashboard() {
           icon={TrendingUp}
           color="violet"
         />
+      </div>
+
+      {/* ── Stats détaillées par statut ── */}
+      <div className="dash-stagger" style={{ animationDelay: '120ms' }}>
+        <Card className="border-border/50">
+          <CardContent className="py-3 px-4">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-emerald-500/10">
+                  <Building2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <span className="text-sm font-bold tabular-nums">{totals.immeubles}</span>
+                <span className="text-xs text-muted-foreground">immeubles</span>
+              </div>
+              <div className="h-4 w-px bg-border/60 shrink-0" />
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-red-500/10">
+                  <UserX className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                </div>
+                <span className="text-sm font-bold tabular-nums">{totals.refus}</span>
+                <span className="text-xs text-muted-foreground">refus</span>
+              </div>
+              <div className="h-4 w-px bg-border/60 shrink-0" />
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-slate-500/10">
+                  <DoorOpen className="h-3.5 w-3.5 text-slate-500" />
+                </div>
+                <span className="text-sm font-bold tabular-nums">{totals.absents}</span>
+                <span className="text-xs text-muted-foreground">absents</span>
+              </div>
+              <div className="h-4 w-px bg-border/60 shrink-0" />
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-indigo-500/10">
+                  <MessageSquare className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <span className="text-sm font-bold tabular-nums">{totals.argumentes}</span>
+                <span className="text-xs text-muted-foreground">argument{'é'}s</span>
+              </div>
+              <div className="h-4 w-px bg-border/60 shrink-0" />
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-orange-500/10">
+                  <RotateCcw className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <span className="text-sm font-bold tabular-nums">{totals.repassages}</span>
+                <span className="text-xs text-muted-foreground">repassages</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Map : pleine largeur ── */}

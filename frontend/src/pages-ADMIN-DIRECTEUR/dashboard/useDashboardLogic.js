@@ -98,24 +98,29 @@ export function useDashboardLogic() {
 
   // Calcul des stats à partir des portes modifiées aujourd'hui
   const totals = useMemo(() => {
-    if (!portesModifiedToday) return { contrats: 0, rdv: 0, refus: 0, portes: 0, immeubles: 0 }
+    if (!portesModifiedToday)
+      return { contrats: 0, rdv: 0, refus: 0, absents: 0, argumentes: 0, repassages: 0, portes: 0, immeubles: 0 }
 
     const stats = {
       contrats: 0,
       rdv: 0,
       refus: 0,
+      absents: 0,
+      argumentes: 0,
+      repassages: 0,
       portes: portesModifiedToday.length,
       immeubles: 0,
     }
 
-    // Compter par statut (avec somme des nbContrats pour CONTRAT_SIGNE)
     portesModifiedToday.forEach(porte => {
       if (porte.statut === 'CONTRAT_SIGNE') stats.contrats += porte.nbContrats || 1
       else if (porte.statut === 'RENDEZ_VOUS_PRIS') stats.rdv++
       else if (porte.statut === 'REFUS') stats.refus++
+      else if (porte.statut === 'ABSENT') stats.absents++
+      else if (porte.statut === 'ARGUMENTE') stats.argumentes++
+      else if (porte.statut === 'NECESSITE_REPASSAGE') stats.repassages++
     })
 
-    // Compter le nombre d'immeubles uniques
     const immeubleIds = new Set(portesModifiedToday.map(p => p.immeubleId))
     stats.immeubles = immeubleIds.size
 
