@@ -61,28 +61,9 @@ const ROUTE_COLORS = [
   '#14b8a6',
 ]
 
-const TRAJET_PERIOD_GROUPS = [
-  {
-    id: 'jour',
-    label: 'Jour',
-    options: [
-      { key: 'today', label: "Aujourd'hui" },
-      { key: 'yesterday', label: 'Hier' },
-      { key: 'morning', label: 'Matin 8h-12h' },
-      { key: 'afternoon', label: 'Après-midi 12h-18h' },
-    ],
-  },
-  {
-    id: 'glissant',
-    label: 'Glissant',
-    options: [
-      { key: 'last30m', label: '30 min' },
-      { key: 'last1h', label: '1 h' },
-      { key: 'last3h', label: '3 h' },
-      { key: 'last6h', label: '6 h' },
-      { key: 'custom', label: 'Personnalisé' },
-    ],
-  },
+const TRAJET_QUICK_FILTERS = [
+  { key: 'today', label: "Aujourd'hui" },
+  { key: 'yesterday', label: 'Hier' },
 ]
 
 const haversineDistance = (lat1, lng1, lat2, lng2) => {
@@ -738,46 +719,75 @@ export default function LocationTab({
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="rounded-xl border border-border/50 bg-muted/15 p-2.5 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5" />
-                    Filtre temporel
-                  </div>
-                  <span className="text-[11px] font-medium text-foreground truncate max-w-[180px] text-right">
-                    {periodLabel}
-                  </span>
+              <div className="rounded-xl border border-border/50 bg-muted/15 p-2.5 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  P{'\u00e9'}riode
                 </div>
-
-                {TRAJET_PERIOD_GROUPS.map(group => (
-                  <div key={group.id} className="space-y-1">
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">
-                      {group.label}
-                    </p>
-                    <div
-                      className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1"
-                      style={{ scrollbarWidth: 'none' }}
-                    >
-                      {group.options.map(option => {
-                        const active = periodKey === option.key
-                        return (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => handlePeriodChange(option.key)}
-                            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                              active
-                                ? 'border-primary/40 bg-primary/10 text-primary'
-                                : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        )
-                      })}
+                <div className="flex items-center gap-1.5">
+                  {TRAJET_QUICK_FILTERS.map(opt => {
+                    const active = periodKey === opt.key
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => handlePeriodChange(opt.key)}
+                        className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          active
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => handlePeriodChange('custom')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      periodKey === 'custom'
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Autre date
+                  </button>
+                </div>
+                {periodKey === 'custom' && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="grid grid-cols-[24px_1fr_92px] gap-2 items-center">
+                      <span className="text-[11px] font-medium text-muted-foreground">Du</span>
+                      <input
+                        type="date"
+                        value={customFrom}
+                        onChange={e => setCustomFrom(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <input
+                        type="time"
+                        value={customFromTime}
+                        onChange={e => setCustomFromTime(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div className="grid grid-cols-[24px_1fr_92px] gap-2 items-center">
+                      <span className="text-[11px] font-medium text-muted-foreground">Au</span>
+                      <input
+                        type="date"
+                        value={customTo || customFrom}
+                        onChange={e => setCustomTo(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <input
+                        type="time"
+                        value={customToTime}
+                        onChange={e => setCustomToTime(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
                     </div>
                   </div>
-                ))}
+                )}
               </div>
 
               <div className="space-y-1">
@@ -829,47 +839,6 @@ export default function LocationTab({
                   })}
                 </div>
               </div>
-
-              {periodKey === 'custom' && (
-                <div className="rounded-xl border border-primary/25 bg-primary/5 p-2.5 space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] text-primary font-semibold uppercase tracking-wide">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Intervalle personnalisé
-                  </div>
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-[24px_1fr_92px] gap-2 items-center">
-                      <span className="text-[11px] font-medium text-muted-foreground">Du</span>
-                      <input
-                        type="date"
-                        value={customFrom}
-                        onChange={e => setCustomFrom(e.target.value)}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                      <input
-                        type="time"
-                        value={customFromTime}
-                        onChange={e => setCustomFromTime(e.target.value)}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                    </div>
-                    <div className="grid grid-cols-[24px_1fr_92px] gap-2 items-center">
-                      <span className="text-[11px] font-medium text-muted-foreground">Au</span>
-                      <input
-                        type="date"
-                        value={customTo || customFrom}
-                        onChange={e => setCustomTo(e.target.value)}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                      <input
-                        type="time"
-                        value={customToTime}
-                        onChange={e => setCustomToTime(e.target.value)}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="flex items-center justify-between text-xs rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5">
                 <span className="text-muted-foreground">{periodLabel}</span>
