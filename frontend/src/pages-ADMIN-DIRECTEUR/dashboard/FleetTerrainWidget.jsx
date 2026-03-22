@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import MapboxMap, { Marker } from 'react-map-gl/mapbox'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -16,13 +16,14 @@ import {
   Clock3,
   Circle,
 } from 'lucide-react'
-import { useGpsLatestPositions, useDeviceMappings } from '@/hooks/metier/api/gps-tracking'
+import { useGpsLatestPositions, useDeviceMappings, useGpsDailyRoute } from '@/hooks/metier/api/gps-tracking'
+import { Layer, Source } from 'react-map-gl/mapbox'
 import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
 
-const IDF_CENTER = { longitude: 2.35, latitude: 48.85, zoom: 10 }
+const IDF_CENTER = { longitude: 2.35, latitude: 48.85, zoom: 10, pitch: 45, bearing: -15 }
 const LOW_BATTERY_THRESHOLD = 20
 
 const MARKER_COLORS = [
@@ -62,11 +63,11 @@ async function reverseGeocode(lat, lng) {
     const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
     if (!token) return null
     const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=place,locality,neighborhood&language=fr&limit=1`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address,poi,place&language=fr&limit=1`
     )
     if (!res.ok) return null
     const data = await res.json()
-    const name = data.features?.[0]?.text || data.features?.[0]?.place_name || null
+    const name = data.features?.[0]?.place_name || data.features?.[0]?.text || null
     geocodeCache.set(key, name)
     return name
   } catch (error) {
@@ -95,6 +96,40 @@ function CommercialMarker({ color, initial }) {
   )
 }
 
+function BuildingMarker({ onClick, color, dimmed }) {
+  const bg = color || '#f59e0b'
+  return (
+    <div
+      className={`relative flex flex-col items-center cursor-pointer group transition-opacity ${dimmed ? 'opacity-30' : ''}`}
+      style={{ transform: 'translate(0, -50%)' }}
+      onClick={onClick}
+    >
+      <div
+        className="h-8 w-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center transition-transform group-hover:scale-110"
+        style={{ backgroundColor: bg }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4 text-white"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+          <path d="M9 22v-4h6v4" />
+          <path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01" />
+        </svg>
+      </div>
+      <div
+        className="h-2 w-2 rounded-full -mt-0.5 border border-white"
+        style={{ backgroundColor: bg }}
+      />
+    </div>
+  )
+}
+
 function FleetStatPill({ icon, count, label, colorClass }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -107,13 +142,31 @@ function FleetStatPill({ icon, count, label, colorClass }) {
   )
 }
 
-export default function FleetTerrainWidget() {
+export default function FleetTerrainWidget({ todayImmeubles }) {
+  const navigate = useNavigate()
   const { data: gpsPositions, isLoading: gpsLoading } = useGpsLatestPositions()
   const { data: kioskDevices, isLoading: kioskLoading } = useKioskDevices()
   const { data: deviceMappings } = useDeviceMappings()
   const [locationNames, setLocationNames] = useState({})
   const [selectedId, setSelectedId] = useState(null)
   const mapRef = useRef(null)
+
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+
+  const { data: dailyRoute } = useGpsDailyRoute(selectedId || '', todayStr)
+
+  const routeGeoJson = useMemo(() => {
+    if (!dailyRoute?.positions?.length) return null
+    const coords = dailyRoute.positions.map(p => [p.longitude, p.latitude])
+    return {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: coords },
+      properties: {},
+    }
+  }, [dailyRoute])
 
   const mappingsMap = useMemo(() => {
     const map = new Map()
@@ -230,7 +283,9 @@ export default function FleetTerrainWidget() {
       return {
         longitude: onlineWithPosition[0].longitude,
         latitude: onlineWithPosition[0].latitude,
-        zoom: 13,
+        zoom: 14,
+        pitch: 45,
+        bearing: -15,
       }
     }
     const lats = onlineWithPosition.map(c => c.latitude)
@@ -238,7 +293,9 @@ export default function FleetTerrainWidget() {
     return {
       longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
       latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
-      zoom: 10,
+      zoom: 11,
+      pitch: 45,
+      bearing: -15,
     }
   }, [onlineWithPosition])
 
@@ -362,11 +419,12 @@ export default function FleetTerrainWidget() {
                 initialViewState={mapViewState}
                 style={{ width: '100%', height: '100%' }}
                 mapStyle="mapbox://styles/mapbox/streets-v12"
-                scrollZoom={false}
-                dragPan={false}
-                dragRotate={false}
-                doubleClickZoom={false}
-                touchZoomRotate={false}
+                terrain={{ source: 'mapbox-dem', exaggeration: 1 }}
+                scrollZoom
+                dragPan
+                dragRotate
+                doubleClickZoom
+                touchZoomRotate
                 keyboard={false}
                 attributionControl={false}
               >
@@ -394,6 +452,30 @@ export default function FleetTerrainWidget() {
                     </Marker>
                   )
                 })}
+                {todayImmeubles?.filter(imm => imm.latitude && imm.longitude).map(imm => (
+                  <Marker
+                    key={`imm-${imm.id}`}
+                    longitude={imm.longitude}
+                    latitude={imm.latitude}
+                    anchor="bottom"
+                  >
+                    <BuildingMarker onClick={() => navigate(`/immeubles/${imm.id}`)} />
+                  </Marker>
+                ))}
+                {routeGeoJson && selectedId && (
+                  <Source id="route" type="geojson" data={routeGeoJson}>
+                    <Layer
+                      id="route-line"
+                      type="line"
+                      paint={{
+                        'line-color': getMarkerColor(selectedId),
+                        'line-width': 3,
+                        'line-opacity': 0.7,
+                        'line-dasharray': [2, 1],
+                      }}
+                    />
+                  </Source>
+                )}
               </MapboxMap>
             )}
           </div>

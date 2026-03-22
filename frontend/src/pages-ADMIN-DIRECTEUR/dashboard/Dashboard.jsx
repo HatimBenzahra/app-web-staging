@@ -377,25 +377,31 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
     })
   }, [segments])
 
-  const visible = sorted.slice(0, 8)
-  const overflow = sorted.length > 8 ? sorted.length - 8 : 0
+  const stats = useMemo(() => {
+    if (!segments?.length) return null
+    const statuts = {}
+    let totalDuration = 0
+    const commerciaux = new Set()
+    for (const seg of segments) {
+      if (seg.statut) statuts[seg.statut] = (statuts[seg.statut] || 0) + 1
+      if (seg.durationSec) totalDuration += seg.durationSec
+      if (seg.commercialNom) commerciaux.add(seg.commercialNom)
+    }
+    return { total: segments.length, totalDuration, commerciaux: commerciaux.size, statuts }
+  }, [segments])
+
+  const visible = sorted.slice(0, 10)
+  const overflow = sorted.length > 10 ? sorted.length - 10 : 0
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-1.5 rounded-lg bg-rose-100 dark:bg-rose-900/30">
               <Mic className="h-4 w-4 text-rose-600 dark:text-rose-400" />
             </div>
-            <div className="min-w-0">
-              <CardTitle className="text-sm font-semibold">Enregistrements du jour</CardTitle>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {sorted.length > 0
-                  ? `${sorted.length} enregistrement${sorted.length > 1 ? 's' : ''} \u00b7 tri\u00e9s par score`
-                  : 'Aucun enregistrement aujourd\u2019hui'}
-              </p>
-            </div>
+            <CardTitle className="text-sm font-semibold">Enregistrements du jour</CardTitle>
           </div>
           {sorted.length > 0 && (
             <Button
@@ -404,23 +410,67 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
               className="text-xs gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={() => navigate('/ecoutes/enregistrement')}
             >
-              Voir tout
+              Tous les enregistrements
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-0">
+
+      <CardContent className="pt-0 space-y-4">
+        {/* ── Summary stats ── */}
+        {!loading && stats && (
+          <div className="flex flex-wrap items-center gap-4 px-1">
+            <div className="flex items-center gap-1.5">
+              <Mic className="h-3.5 w-3.5 text-rose-500" />
+              <span className="text-sm font-bold tabular-nums">{stats.total}</span>
+              <span className="text-xs text-muted-foreground">segments</span>
+            </div>
+            <div className="h-4 w-px bg-border/60 shrink-0" />
+            <div className="flex items-center gap-1.5">
+              <DoorOpen className="h-3.5 w-3.5 text-primary" />
+              <span className="text-sm font-bold tabular-nums">{stats.commerciaux}</span>
+              <span className="text-xs text-muted-foreground">commerciaux</span>
+            </div>
+            {stats.totalDuration > 0 && (
+              <>
+                <div className="h-4 w-px bg-border/60 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold tabular-nums">
+                    {formatDuration(stats.totalDuration)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">total</span>
+                </div>
+              </>
+            )}
+            <div className="h-4 w-px bg-border/60 shrink-0" />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {Object.entries(stats.statuts).map(([statut, count]) => (
+                <Badge
+                  key={statut}
+                  className={`text-[9px] px-1.5 py-0 leading-4 font-semibold border-0 ${getStatusColor(statut)}`}
+                >
+                  {getStatusLabel(statut)} {count}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Recording list ── */}
         {loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-muted/60 shrink-0 animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className="flex items-center gap-3 p-3 rounded-xl border border-border/40"
+              >
+                <div className="w-9 h-9 rounded-full bg-muted/60 shrink-0 animate-pulse" />
                 <div className="flex-1 space-y-1.5">
                   <div className="h-3 bg-muted/60 rounded animate-pulse w-2/5" />
                   <div className="h-2.5 bg-muted/40 rounded animate-pulse w-3/5" />
                 </div>
-                <div className="h-2 bg-muted/50 rounded animate-pulse w-12 shrink-0" />
+                <div className="h-6 w-10 bg-muted/50 rounded-md animate-pulse shrink-0" />
               </div>
             ))}
           </div>
@@ -430,141 +480,133 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
               <Mic className="h-6 w-6 opacity-30" />
             </div>
             <p className="text-sm font-medium">Aucun enregistrement</p>
-            <p className="text-xs mt-0.5">Les enregistrements du jour appara\u00eetront ici</p>
+            <p className="text-xs mt-0.5">Les enregistrements du jour appara{'\u00ee'}tront ici</p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {visible.map(seg => {
-              const duration = formatDuration(seg.durationSec)
-              const time = seg.createdAt
-                ? new Date(seg.createdAt).toLocaleTimeString('fr-FR', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : null
-              const score = seg.speechScore != null ? Math.round(seg.speechScore) : null
-              const initials = (seg.commercialNom || 'C')
-                .split(' ')
-                .map(w => w[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase()
-              const avatarColor = getAvatarColor(seg.commercialNom || '')
-              const scoreColor =
-                score == null
-                  ? 'text-muted-foreground'
-                  : score >= 50
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : score >= 20
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-red-600 dark:text-red-400'
-              const scoreBg =
-                score == null
-                  ? 'bg-muted/40'
-                  : score >= 50
-                    ? 'bg-emerald-500/10'
-                    : score >= 20
-                      ? 'bg-amber-500/10'
-                      : 'bg-red-500/10'
-              const canNavigate = !!(seg.immeubleId && seg.porteId)
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {visible.map(seg => {
+                const duration = formatDuration(seg.durationSec)
+                const time = seg.createdAt
+                  ? new Date(seg.createdAt).toLocaleTimeString('fr-FR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : null
+                const score = seg.speechScore != null ? Math.round(seg.speechScore) : null
+                const initials = (seg.commercialNom || 'C')
+                  .split(' ')
+                  .map(w => w[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()
+                const avatarColor = getAvatarColor(seg.commercialNom || '')
+                const scoreColor =
+                  score == null
+                    ? 'text-muted-foreground'
+                    : score >= 50
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : score >= 20
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-red-600 dark:text-red-400'
+                const scoreBg =
+                  score == null
+                    ? 'bg-muted/40'
+                    : score >= 50
+                      ? 'bg-emerald-500/10'
+                      : score >= 20
+                        ? 'bg-amber-500/10'
+                        : 'bg-red-500/10'
+                const canNavigate = !!(seg.immeubleId && seg.porteId)
 
-              return (
-                <button
-                  type="button"
-                  key={seg.id}
-                  disabled={!canNavigate}
-                  onClick={() => {
-                    if (canNavigate) {
-                      navigate(`/immeubles/${seg.immeubleId}/portes/${seg.porteId}`)
-                    }
-                  }}
-                  className="group flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors active:scale-[0.99] disabled:pointer-events-none disabled:opacity-60"
-                  aria-label={`Voir l'enregistrement de ${seg.commercialNom || 'Commercial'}`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarColor}`}
+                return (
+                  <button
+                    type="button"
+                    key={seg.id}
+                    disabled={!canNavigate}
+                    onClick={() => {
+                      if (canNavigate) {
+                        navigate(`/immeubles/${seg.immeubleId}/portes/${seg.porteId}`)
+                      }
+                    }}
+                    className="group flex items-center gap-3 w-full rounded-xl border border-border/50 p-3 text-left hover:border-border hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-[0.99] disabled:pointer-events-none disabled:opacity-60"
                   >
-                    {initials}
-                  </div>
-
-                  {/* Main info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[13px] font-semibold truncate leading-tight">
-                        {seg.commercialNom || 'Commercial'}
-                      </span>
-                      {seg.statut && (
-                        <Badge
-                          className={`text-[9px] px-1.5 py-0 leading-4 font-semibold border-0 shrink-0 ${getStatusColor(seg.statut)}`}
-                        >
-                          {getStatusLabel(seg.statut)}
-                        </Badge>
-                      )}
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarColor}`}
+                    >
+                      {initials}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      {seg.immeubleAdresse && (
-                        <span className="flex items-center gap-1 truncate">
-                          <Building2 className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{seg.immeubleAdresse}</span>
-                        </span>
-                      )}
-                      {seg.porteNumero != null && (
-                        <>
-                          <span className="shrink-0 text-border/80">&middot;</span>
-                          <span className="shrink-0">
-                            P.{seg.porteNumero}
-                            {seg.porteEtage != null ? ` \u00c9t.${seg.porteEtage}` : ''}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Score + meta */}
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    {score != null ? (
-                      <div
-                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md ${scoreBg}`}
-                      >
-                        <span
-                          className={`text-[13px] font-bold tabular-nums leading-none ${scoreColor}`}
-                        >
-                          {score}
-                        </span>
-                        <span
-                          className={`text-[9px] font-semibold leading-none ${scoreColor} opacity-70`}
-                        >
-                          %
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[13px] font-semibold truncate leading-tight">
+                          {seg.commercialNom || 'Commercial'}
                         </span>
                       </div>
-                    ) : (
-                      <div className="w-8 h-5" />
-                    )}
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-                      {time && <span>{time}</span>}
-                      {duration && time && <span className="text-border/60">&middot;</span>}
-                      {duration && <span>{duration}</span>}
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Building2 className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{seg.immeubleAdresse || 'Immeuble'}</span>
+                        {seg.porteNumero != null && (
+                          <>
+                            <span className="shrink-0 text-border/80">&middot;</span>
+                            <span className="shrink-0">P.{seg.porteNumero}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {seg.statut && (
+                          <Badge
+                            className={`text-[9px] px-1.5 py-0 leading-4 font-semibold border-0 ${getStatusColor(seg.statut)}`}
+                          >
+                            {getStatusLabel(seg.statut)}
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+                          {time}
+                          {duration && ` \u00b7 ${duration}`}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Hover arrow */}
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 -mr-0.5" />
-                </button>
-              )
-            })}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {score != null ? (
+                        <div
+                          className={`flex items-center gap-0.5 px-2 py-1 rounded-lg ${scoreBg}`}
+                        >
+                          <span
+                            className={`text-base font-bold tabular-nums leading-none ${scoreColor}`}
+                          >
+                            {score}
+                          </span>
+                          <span
+                            className={`text-[9px] font-semibold leading-none ${scoreColor} opacity-70`}
+                          >
+                            %
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-0.5 px-2 py-1 rounded-lg bg-muted/30">
+                          <span className="text-[10px] text-muted-foreground/50">—</span>
+                        </div>
+                      )}
+                      <ArrowRight className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
 
             {overflow > 0 && (
               <button
                 type="button"
                 onClick={() => navigate('/ecoutes/enregistrement')}
-                className="flex items-center justify-center gap-1.5 w-full mt-1 py-2 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-dashed border-border/60 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/20 transition-all"
               >
-                +{overflow} de plus
-                <ArrowRight className="h-3 w-3" />
+                +{overflow} enregistrement{overflow > 1 ? 's' : ''} de plus
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
             )}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -652,10 +694,16 @@ export default function Dashboard() {
     offreMaxCount,
     segments,
     segmentsLoading,
-    data: { immeubles, assignments, rdvToday },
+    data: { immeubles, assignments, rdvToday, portesModifiedToday },
   } = useDashboardLogic()
 
   const navigate = useNavigate()
+
+  const todayImmeubles = useMemo(() => {
+    if (!immeubles || !portesModifiedToday) return []
+    const todayIds = new Set(portesModifiedToday.map(p => p.immeubleId))
+    return immeubles.filter(imm => todayIds.has(imm.id))
+  }, [immeubles, portesModifiedToday])
 
   useEffect(() => {
     const saved = sessionStorage.getItem('dashboard-scroll')
@@ -775,123 +823,136 @@ export default function Dashboard() {
         />
       </div>
 
-      <div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-6 dash-stagger"
-        style={{ animationDelay: '160ms' }}
-      >
-        <div className="lg:col-span-3 flex">
-          <FleetTerrainWidget />
-        </div>
-
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          {rdvToday && rdvToday.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Calendar className="h-4 w-4 text-primary" />
-                    RDV du jour
-                  </CardTitle>
-                  <Badge variant="secondary" className="text-xs">
-                    {rdvToday.length}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y divide-border/40">
-                  {paginatedRdv.items.map(porte => {
-                    const immeuble = immeubles?.find(imm => imm.id === porte.immeubleId)
-                    return (
-                      <button
-                        type="button"
-                        key={porte.id}
-                        onClick={() => setSelectedPorteId(porte.id)}
-                        className="group flex items-start gap-3 w-full px-4 py-3.5 text-left hover:bg-muted/30 transition-colors active:scale-[0.99]"
-                      >
-                        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary shrink-0 mt-0.5">
-                          <DoorOpen className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-semibold leading-none truncate">
-                              {immeuble?.adresse || '—'} — Porte {porte.numero}
-                              {porte.etage != null && (
-                                <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-                                  · Ét. {porte.etage}
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[13px] font-bold tabular-nums text-primary shrink-0">
-                              {porte.rdvTime || '—'}
-                            </span>
-                          </div>
-                          {porte.nomPersonnalise && (
-                            <p className="text-[12px] text-muted-foreground truncate leading-none">
-                              {porte.nomPersonnalise}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between gap-2 pt-0.5">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Badge
-                                className={`text-[10px] px-1.5 py-0 leading-5 font-medium border-0 ${getStatusColor(porte.statut)}`}
-                              >
-                                {getStatusLabel(porte.statut)}
-                              </Badge>
-                              {immeuble?.commercial && (
-                                <span className="text-[11px] text-muted-foreground truncate">
-                                  {immeuble.commercial.prenom} {immeuble.commercial.nom}
-                                </span>
-                              )}
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-                {paginatedRdv.totalPages > 1 && (
-                  <div className="px-4 py-2 border-t">
-                    <Pagination
-                      currentPage={currentRdvPage}
-                      totalPages={paginatedRdv.totalPages}
-                      startIndex={paginatedRdv.startIndex}
-                      endIndex={paginatedRdv.endIndex}
-                      totalItems={rdvToday.length}
-                      itemLabel="rendez-vous"
-                      onPrevious={() => setCurrentRdvPage(prev => Math.max(1, prev - 1))}
-                      onNext={() =>
-                        setCurrentRdvPage(prev => Math.min(paginatedRdv.totalPages, prev + 1))
-                      }
-                      hasPreviousPage={currentRdvPage > 1}
-                      hasNextPage={currentRdvPage < paginatedRdv.totalPages}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <TopOffresCard
-            selectedMonth={offreMonth}
-            setSelectedMonth={setOffreMonth}
-            distribution={offreDistribution}
-            loading={offreDistributionLoading}
-            totalContrats={offreTotalContrats}
-            maxCount={offreMaxCount}
-          />
-        </div>
+      {/* ── Map : pleine largeur ── */}
+      <div className="dash-stagger" style={{ animationDelay: '160ms' }}>
+        <FleetTerrainWidget todayImmeubles={todayImmeubles} />
       </div>
 
-      <div
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6 dash-stagger"
-        style={{ animationDelay: '240ms' }}
-      >
-        <Top3PerfCard mode={perfMode} setMode={setPerfMode} top3={top3} loading={rankingLoading} />
+      {/* ── Enregistrements du jour : pleine largeur ── */}
+      <div className="dash-stagger" style={{ animationDelay: '220ms' }}>
         <TodaysRecordingsCard segments={segments} loading={segmentsLoading} navigate={navigate} />
       </div>
 
+      {/* ── RDV du jour (pleine largeur si présents) ── */}
+      {rdvToday && rdvToday.length > 0 && (
+        <div className="dash-stagger" style={{ animationDelay: '240ms' }}>
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  RDV du jour
+                </CardTitle>
+                <Badge variant="secondary" className="text-xs">
+                  {rdvToday.length}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border/40">
+                {paginatedRdv.items.map(porte => {
+                  const immeuble = immeubles?.find(imm => imm.id === porte.immeubleId)
+                  return (
+                    <button
+                      type="button"
+                      key={porte.id}
+                      onClick={() => setSelectedPorteId(porte.id)}
+                      className="group flex items-start gap-3 w-full px-4 py-3.5 text-left hover:bg-muted/30 transition-colors active:scale-[0.99]"
+                    >
+                      <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary shrink-0 mt-0.5">
+                        <DoorOpen className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold leading-none truncate">
+                            {immeuble?.adresse || '—'} — Porte {porte.numero}
+                            {porte.etage != null && (
+                              <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                                · Ét. {porte.etage}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[13px] font-bold tabular-nums text-primary shrink-0">
+                            {porte.rdvTime || '—'}
+                          </span>
+                        </div>
+                        {porte.nomPersonnalise && (
+                          <p className="text-[12px] text-muted-foreground truncate leading-none">
+                            {porte.nomPersonnalise}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Badge
+                              className={`text-[10px] px-1.5 py-0 leading-5 font-medium border-0 ${getStatusColor(porte.statut)}`}
+                            >
+                              {getStatusLabel(porte.statut)}
+                            </Badge>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              {paginatedRdv.totalPages > 1 && (
+                <div className="px-4 py-2 border-t">
+                  <Pagination
+                    currentPage={currentRdvPage}
+                    totalPages={paginatedRdv.totalPages}
+                    startIndex={paginatedRdv.startIndex}
+                    endIndex={paginatedRdv.endIndex}
+                    totalItems={rdvToday.length}
+                    itemLabel="rendez-vous"
+                    onPrevious={() => setCurrentRdvPage(prev => Math.max(1, prev - 1))}
+                    onNext={() =>
+                      setCurrentRdvPage(prev => Math.min(paginatedRdv.totalPages, prev + 1))
+                    }
+                    hasPreviousPage={currentRdvPage > 1}
+                    hasNextPage={currentRdvPage < paginatedRdv.totalPages}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── WinLead+ Stats : Performances + Offres ── */}
       <div className="dash-stagger" style={{ animationDelay: '320ms' }}>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-sky-100 dark:bg-sky-900/30">
+              <TrendingUp className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">WinLead+ Stats</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Performances et contrats sync WinLead+
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Top3PerfCard
+              mode={perfMode}
+              setMode={setPerfMode}
+              top3={top3}
+              loading={rankingLoading}
+            />
+            <TopOffresCard
+              selectedMonth={offreMonth}
+              setSelectedMonth={setOffreMonth}
+              distribution={offreDistribution}
+              loading={offreDistributionLoading}
+              totalContrats={offreTotalContrats}
+              maxCount={offreMaxCount}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="dash-stagger" style={{ animationDelay: '400ms' }}>
         <ActiveZonesSlider_Dashboard assignments={assignments || []} />
       </div>
 

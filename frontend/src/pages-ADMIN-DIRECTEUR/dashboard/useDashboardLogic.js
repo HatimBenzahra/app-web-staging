@@ -200,6 +200,7 @@ export function useDashboardLogic() {
       immeubles,
       assignments,
       rdvToday,
+      portesModifiedToday,
     },
   }
 }
