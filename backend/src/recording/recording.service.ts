@@ -729,7 +729,6 @@ export class RecordingService {
 
     const where: any = {
       createdAt: { gte: startOfDay },
-      status: 'COMPLETED',
     };
     if (statut) where.statut = statut;
 
@@ -861,6 +860,7 @@ export class RecordingService {
             data: { status: 'PROCESSING' },
           });
 
+          // Step 1: Découpage ffmpeg + upload S3 (essentiel)
           await execFileAsync(
             'ffmpeg',
             [
@@ -879,18 +879,30 @@ export class RecordingService {
           );
 
           await this.uploadSegmentToS3(segmentFilePath, segmentS3Key);
-          const transcription = await this.transcribeSegment(segmentFilePath);
-          const speechScore = await this.speechAnalysis.computeScore(segmentFilePath);
 
+          // Segment découpé et uploadé — sauvegarde immédiate
           await this.prisma.recordingSegment.update({
             where: { id: segment.id },
             data: {
               s3KeySegment: segmentS3Key,
-              transcription,
-              speechScore,
               status: 'COMPLETED',
             },
           });
+
+          // Step 2: Transcription + speech score (optionnel)
+          try {
+            const transcription = await this.transcribeSegment(segmentFilePath);
+            const speechScore = await this.speechAnalysis.computeScore(segmentFilePath);
+
+            await this.prisma.recordingSegment.update({
+              where: { id: segment.id },
+              data: { transcription, speechScore },
+            });
+          } catch (transcriptionError) {
+            this.logger.warn(
+              `Transcription failed for segmentId=${segment.id} (segment still usable): ${transcriptionError?.message || transcriptionError}`,
+            );
+          }
         } catch (error) {
           this.logger.error(
             `Segment processing failed for segmentId=${segment.id}: ${error?.message || error}`,

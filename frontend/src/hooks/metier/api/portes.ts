@@ -22,8 +22,8 @@ export function usePortes(): UseApiListState<Porte> & UseApiActions {
   return useApiCall(api.portes.getAll, [], 'portes')
 }
 
-export function usePorte(id: number): UseApiState<Porte> & UseApiActions {
-  return useApiCall(() => api.portes.getById(id), [id], 'portes')
+export function usePorte(id: number | null): UseApiState<Porte> & UseApiActions {
+  return useApiCall(() => api.portes.getById(id!), [id], 'portes', { enabled: id != null })
 }
 
 export function usePortesByImmeuble(immeubleId: number): UseApiListState<Porte> & UseApiActions {

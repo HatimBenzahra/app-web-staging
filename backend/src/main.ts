@@ -43,7 +43,7 @@ async function bootstrap() {
   app.use(
     '/livekit-proxy',
     createProxyMiddleware({
-      target: process.env.LK_HOST || 'http://100.68.221.26:7880', // URL du serveur LiveKit
+      target: process.env.LK_HOST || 'http://localhost:7880', // URL du serveur LiveKit
       ws: true, // Active le support WebSocket
       changeOrigin: true,
       pathRewrite: {
@@ -52,7 +52,7 @@ async function bootstrap() {
       // @ts-ignore - Type mismatch in library but valid option
       onProxyReqWs: (_proxyReq: any, req: any, _socket: any) => {
          proxyLogger.log(`🔌 WebSocket connection request: ${req.url}`);
-         proxyLogger.log(`🎯 Target: ${process.env.LK_HOST || 'http://100.68.221.26:7880'}`);
+         proxyLogger.log(`🎯 Target: ${process.env.LK_HOST || 'http://localhost:7880'}`);
          proxyLogger.debug(`📋 Headers: ${JSON.stringify(req.headers)}`);
       },
       onOpen: (_proxySocket: any) => {
@@ -68,6 +68,7 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(3000, '0.0.0.0');
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
 }
 void bootstrap();

@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ActiveZonesSlider_Dashboard from '@/components/ActiveZonesSlider_Dashboard'
 import { Pagination } from '@/components/Pagination'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,6 @@ import {
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import {
   Building2,
-  Users,
   Trophy,
   Medal,
   Award,
@@ -25,7 +25,12 @@ import {
   Loader2,
   Star,
   FileText,
+  Mic,
+  Clock,
+  Play,
+  Timer,
 } from 'lucide-react'
+import { formatDuration, SpeechScoreBar } from '../ecoutes/EnregistrementComponents'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardLogic } from './useDashboardLogic'
 import PorteDetailModal from './PorteDetailModal'
@@ -365,6 +370,142 @@ function TopOffresCard({
   )
 }
 
+function TodaysRecordingsCard({ segments, loading, navigate }) {
+  const sorted = useMemo(() => {
+    if (!segments?.length) return []
+    return [...segments].sort((a, b) => {
+      const scoreA = a.speechScore ?? 999
+      const scoreB = b.speechScore ?? 999
+      return scoreA - scoreB
+    })
+  }, [segments])
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-rose-100 dark:bg-rose-900/30">
+              <Mic className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div className="min-w-0">
+              <CardTitle className="text-sm font-semibold">Enregistrements du jour</CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {sorted.length > 0
+                  ? `${sorted.length} enregistrement${sorted.length > 1 ? 's' : ''} · tri${'\u00e9'}s par score`
+                  : 'Aucun enregistrement'}
+              </p>
+            </div>
+          </div>
+          {sorted.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1.5 shrink-0"
+              onClick={() => navigate('/ecoutes/enregistrement')}
+            >
+              Voir tout
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-1">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+            <div className="p-3 rounded-full bg-muted/50 mb-3">
+              <Mic className="h-6 w-6 opacity-30" />
+            </div>
+            <p className="text-sm font-medium">Aucun enregistrement</p>
+            <p className="text-xs mt-0.5">Les enregistrements du jour appara{'\u00ee'}tront ici</p>
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
+            {sorted.map(seg => {
+              const duration = formatDuration(seg.durationSec)
+              const time = seg.createdAt
+                ? new Date(seg.createdAt).toLocaleTimeString('fr-FR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : null
+              const hasAudio = !!seg.streamingUrl
+              const score = seg.speechScore != null ? Math.round(seg.speechScore) : null
+
+              return (
+                <button
+                  type="button"
+                  key={seg.id}
+                  onClick={() => navigate('/ecoutes/enregistrement')}
+                  className="group flex items-start gap-3 w-full rounded-lg px-3 py-2.5 text-left hover:bg-muted/30 transition-colors active:scale-[0.99]"
+                >
+                  <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-rose-500/10 shrink-0 mt-0.5">
+                    {hasAudio ? (
+                      <Play className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    ) : (
+                      <Mic className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] font-semibold truncate">
+                        {seg.commercialNom || 'Commercial'}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {score != null && score > 0 && <SpeechScoreBar score={score} />}
+                        {seg.statut && (
+                          <Badge
+                            className={`text-[10px] px-1.5 py-0 leading-5 font-medium border-0 ${getStatusColor(seg.statut)}`}
+                          >
+                            {getStatusLabel(seg.statut)}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      {seg.immeubleAdresse && (
+                        <span className="flex items-center gap-1 truncate">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          {seg.immeubleAdresse}
+                        </span>
+                      )}
+                      {seg.porteNumero && (
+                        <span className="shrink-0">
+                          P.{seg.porteNumero}
+                          {seg.porteEtage != null ? ` · \u00c9t.${seg.porteEtage}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      {time && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {time}
+                        </span>
+                      )}
+                      {duration && (
+                        <span className="flex items-center gap-1">
+                          <Timer className="h-3 w-3" />
+                          {duration}
+                        </span>
+                      )}
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0" />
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 const KPI_COLORS = {
   emerald: {
     iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
@@ -444,8 +585,12 @@ export default function Dashboard() {
     offreDistributionLoading,
     offreTotalContrats,
     offreMaxCount,
+    segments,
+    segmentsLoading,
     data: { immeubles, assignments, rdvToday },
   } = useDashboardLogic()
+
+  const navigate = useNavigate()
 
   useEffect(() => {
     const saved = sessionStorage.getItem('dashboard-scroll')
@@ -673,8 +818,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="dash-stagger" style={{ animationDelay: '240ms' }}>
+      <div
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6 dash-stagger"
+        style={{ animationDelay: '240ms' }}
+      >
         <Top3PerfCard mode={perfMode} setMode={setPerfMode} top3={top3} loading={rankingLoading} />
+        <TodaysRecordingsCard segments={segments} loading={segmentsLoading} navigate={navigate} />
       </div>
 
       <div className="dash-stagger" style={{ animationDelay: '320ms' }}>

@@ -40,7 +40,8 @@ export interface UseApiMutation<TInput, TOutput> {
 export function useApiCall<T>(
   apiCall: () => Promise<T>,
   dependencies: any[] = [],
-  namespace?: string
+  namespace?: string,
+  options?: { enabled?: boolean }
 ): UseApiState<T> & UseApiActions {
   const queryKey = ['api', namespace || 'global', ...dependencies]
 
@@ -48,6 +49,7 @@ export function useApiCall<T>(
     queryKey,
     queryFn: apiCall,
     retry: 1,
+    enabled: options?.enabled ?? true,
   })
 
   const refetch = useCallback(async () => {
