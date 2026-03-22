@@ -26,11 +26,8 @@ import {
   Star,
   FileText,
   Mic,
-  Clock,
-  Play,
-  Timer,
 } from 'lucide-react'
-import { formatDuration, SpeechScoreBar } from '../ecoutes/EnregistrementComponents'
+import { formatDuration } from '../ecoutes/EnregistrementComponents'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardLogic } from './useDashboardLogic'
 import PorteDetailModal from './PorteDetailModal'
@@ -380,9 +377,12 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
     })
   }, [segments])
 
+  const visible = sorted.slice(0, 8)
+  const overflow = sorted.length > 8 ? sorted.length - 8 : 0
+
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-1.5 rounded-lg bg-rose-100 dark:bg-rose-900/30">
@@ -392,8 +392,8 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
               <CardTitle className="text-sm font-semibold">Enregistrements du jour</CardTitle>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {sorted.length > 0
-                  ? `${sorted.length} enregistrement${sorted.length > 1 ? 's' : ''} · tri${'\u00e9'}s par score`
-                  : 'Aucun enregistrement'}
+                  ? `${sorted.length} enregistrement${sorted.length > 1 ? 's' : ''} \u00b7 tri\u00e9s par score`
+                  : 'Aucun enregistrement aujourd\u2019hui'}
               </p>
             </div>
           </div>
@@ -401,7 +401,7 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs gap-1.5 shrink-0"
+              className="text-xs gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={() => navigate('/ecoutes/enregistrement')}
             >
               Voir tout
@@ -410,22 +410,31 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-1">
+      <CardContent className="pt-0">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg">
+                <div className="w-8 h-8 rounded-full bg-muted/60 shrink-0 animate-pulse" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-muted/60 rounded animate-pulse w-2/5" />
+                  <div className="h-2.5 bg-muted/40 rounded animate-pulse w-3/5" />
+                </div>
+                <div className="h-2 bg-muted/50 rounded animate-pulse w-12 shrink-0" />
+              </div>
+            ))}
           </div>
         ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <div className="p-3 rounded-full bg-muted/50 mb-3">
               <Mic className="h-6 w-6 opacity-30" />
             </div>
             <p className="text-sm font-medium">Aucun enregistrement</p>
-            <p className="text-xs mt-0.5">Les enregistrements du jour appara{'\u00ee'}tront ici</p>
+            <p className="text-xs mt-0.5">Les enregistrements du jour appara\u00eetront ici</p>
           </div>
         ) : (
-          <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
-            {sorted.map(seg => {
+          <div className="space-y-0.5">
+            {visible.map(seg => {
               const duration = formatDuration(seg.durationSec)
               const time = seg.createdAt
                 ? new Date(seg.createdAt).toLocaleTimeString('fr-FR', {
@@ -433,72 +442,128 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
                     minute: '2-digit',
                   })
                 : null
-              const hasAudio = !!seg.streamingUrl
               const score = seg.speechScore != null ? Math.round(seg.speechScore) : null
+              const initials = (seg.commercialNom || 'C')
+                .split(' ')
+                .map(w => w[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()
+              const avatarColor = getAvatarColor(seg.commercialNom || '')
+              const scoreColor =
+                score == null
+                  ? 'text-muted-foreground'
+                  : score >= 50
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : score >= 20
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-red-600 dark:text-red-400'
+              const scoreBg =
+                score == null
+                  ? 'bg-muted/40'
+                  : score >= 50
+                    ? 'bg-emerald-500/10'
+                    : score >= 20
+                      ? 'bg-amber-500/10'
+                      : 'bg-red-500/10'
+              const canNavigate = !!(seg.immeubleId && seg.porteId)
 
               return (
                 <button
                   type="button"
                   key={seg.id}
-                  onClick={() => navigate('/ecoutes/enregistrement')}
-                  className="group flex items-start gap-3 w-full rounded-lg px-3 py-2.5 text-left hover:bg-muted/30 transition-colors active:scale-[0.99]"
+                  disabled={!canNavigate}
+                  onClick={() => {
+                    if (canNavigate) {
+                      navigate(`/immeubles/${seg.immeubleId}/portes/${seg.porteId}`)
+                    }
+                  }}
+                  className="group flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors active:scale-[0.99] disabled:pointer-events-none disabled:opacity-60"
+                  aria-label={`Voir l'enregistrement de ${seg.commercialNom || 'Commercial'}`}
                 >
-                  <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-rose-500/10 shrink-0 mt-0.5">
-                    {hasAudio ? (
-                      <Play className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                    ) : (
-                      <Mic className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                    )}
+                  {/* Avatar */}
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarColor}`}
+                  >
+                    {initials}
                   </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-semibold truncate">
+
+                  {/* Main info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-[13px] font-semibold truncate leading-tight">
                         {seg.commercialNom || 'Commercial'}
                       </span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {score != null && score > 0 && <SpeechScoreBar score={score} />}
-                        {seg.statut && (
-                          <Badge
-                            className={`text-[10px] px-1.5 py-0 leading-5 font-medium border-0 ${getStatusColor(seg.statut)}`}
-                          >
-                            {getStatusLabel(seg.statut)}
-                          </Badge>
-                        )}
-                      </div>
+                      {seg.statut && (
+                        <Badge
+                          className={`text-[9px] px-1.5 py-0 leading-4 font-semibold border-0 shrink-0 ${getStatusColor(seg.statut)}`}
+                        >
+                          {getStatusLabel(seg.statut)}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       {seg.immeubleAdresse && (
                         <span className="flex items-center gap-1 truncate">
                           <Building2 className="h-3 w-3 shrink-0" />
-                          {seg.immeubleAdresse}
+                          <span className="truncate">{seg.immeubleAdresse}</span>
                         </span>
                       )}
-                      {seg.porteNumero && (
-                        <span className="shrink-0">
-                          P.{seg.porteNumero}
-                          {seg.porteEtage != null ? ` · \u00c9t.${seg.porteEtage}` : ''}
-                        </span>
+                      {seg.porteNumero != null && (
+                        <>
+                          <span className="shrink-0 text-border/80">&middot;</span>
+                          <span className="shrink-0">
+                            P.{seg.porteNumero}
+                            {seg.porteEtage != null ? ` \u00c9t.${seg.porteEtage}` : ''}
+                          </span>
+                        </>
                       )}
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                      {time && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {time}
-                        </span>
-                      )}
-                      {duration && (
-                        <span className="flex items-center gap-1">
-                          <Timer className="h-3 w-3" />
-                          {duration}
-                        </span>
-                      )}
-                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0" />
                     </div>
                   </div>
+
+                  {/* Score + meta */}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {score != null ? (
+                      <div
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md ${scoreBg}`}
+                      >
+                        <span
+                          className={`text-[13px] font-bold tabular-nums leading-none ${scoreColor}`}
+                        >
+                          {score}
+                        </span>
+                        <span
+                          className={`text-[9px] font-semibold leading-none ${scoreColor} opacity-70`}
+                        >
+                          %
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="w-8 h-5" />
+                    )}
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+                      {time && <span>{time}</span>}
+                      {duration && time && <span className="text-border/60">&middot;</span>}
+                      {duration && <span>{duration}</span>}
+                    </div>
+                  </div>
+
+                  {/* Hover arrow */}
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 -mr-0.5" />
                 </button>
               )
             })}
+
+            {overflow > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/ecoutes/enregistrement')}
+                className="flex items-center justify-center gap-1.5 w-full mt-1 py-2 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              >
+                +{overflow} de plus
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            )}
           </div>
         )}
       </CardContent>
