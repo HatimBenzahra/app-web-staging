@@ -88,9 +88,23 @@ export class AuthService {
   }
 
   /**
-   * Rafraîchit le token d'accès
+   * Rafraîchit le token d'accès.
+   * Utilise le promise coalescing : si un refresh est déjà en cours,
+   * tous les appelants partagent la même promesse au lieu de lancer
+   * des appels parallèles à Keycloak (qui révoquerait le refresh_token).
    */
   async refreshToken(): Promise<AuthResponse | null> {
+    if (this._refreshPromise) return this._refreshPromise
+
+    this._refreshPromise = this._doRefresh()
+    try {
+      return await this._refreshPromise
+    } finally {
+      this._refreshPromise = null
+    }
+  }
+
+  private async _doRefresh(): Promise<AuthResponse | null> {
     const refreshToken = this.getRefreshToken()
     if (!refreshToken) return null
 
@@ -266,6 +280,7 @@ export class AuthService {
 
   private refreshTimerId: ReturnType<typeof setTimeout> | null = null
   private _isRefreshing = false
+  private _refreshPromise: Promise<AuthResponse | null> | null = null
 
   get isRefreshing(): boolean {
     return this._isRefreshing
@@ -322,22 +337,10 @@ export class AuthService {
     if (refreshAfterMs <= 0) return
 
     this.refreshTimerId = setTimeout(async () => {
-      // Retry every 30s for up to 5 minutes before giving up
-      const MAX_RETRIES = 10
-      const RETRY_INTERVAL_MS = 30_000
-
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const result = await this.refreshToken()
-        if (result) return
-
-        if (!this.getRefreshToken()) break
-
-        if (attempt < MAX_RETRIES - 1) {
-          await new Promise<void>(r => setTimeout(r, RETRY_INTERVAL_MS))
-        }
+      const result = await this.refreshToken()
+      if (!result) {
+        window.dispatchEvent(new Event('auth-unauthorized'))
       }
-
-      window.dispatchEvent(new Event('auth-unauthorized'))
     }, refreshAfterMs)
   }
 

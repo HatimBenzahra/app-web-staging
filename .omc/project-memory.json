@@ -102,6 +102,18 @@
   },
   "hotPaths": [
     {
+      "path": "frontend/src/services/auth/auth.service.ts",
+      "accessCount": 6,
+      "lastAccessed": 1774276873719,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/SessionManager.jsx",
+      "accessCount": 5,
+      "lastAccessed": 1774276874062,
+      "type": "file"
+    },
+    {
       "path": "",
       "accessCount": 2,
       "lastAccessed": 1774272422232,
@@ -120,12 +132,6 @@
       "type": "file"
     },
     {
-      "path": "frontend/src/services/auth/auth.service.ts",
-      "accessCount": 2,
-      "lastAccessed": 1774272671324,
-      "type": "file"
-    },
-    {
       "path": "backend/src/auth/auth.service.ts",
       "accessCount": 2,
       "lastAccessed": 1774272672090,
@@ -135,12 +141,6 @@
       "path": "backend/src/auth/guards/jwt-auth.guard.ts",
       "accessCount": 2,
       "lastAccessed": 1774272672429,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/components/SessionManager.jsx",
-      "accessCount": 2,
-      "lastAccessed": 1774272679590,
       "type": "file"
     },
     {

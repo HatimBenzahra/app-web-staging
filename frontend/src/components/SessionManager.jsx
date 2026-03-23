@@ -4,7 +4,6 @@ import { useRole } from '@/contexts/userole'
 
 const IDLE_TIMEOUT = 24 * 60 * 60 * 1000 // 24 heures
 const CHECK_INTERVAL = 60 * 1000 // 1 minute
-const REFRESH_THRESHOLD = 5 * 60 * 1000 // 5 minutes
 
 export function SessionManager() {
   const { logout } = useRole()
@@ -34,28 +33,13 @@ export function SessionManager() {
     const events = ['mousemove', 'keydown', 'scroll', 'touchstart', 'click']
     events.forEach(event => window.addEventListener(event, updateActivity, { passive: true }))
 
-    const checkSession = async () => {
+    const checkSession = () => {
       if (!authService.isAuthenticated()) return
 
-      const now = Date.now()
-      const idleTime = now - lastActivityRef.current
+      const idleTime = Date.now() - lastActivityRef.current
 
-      // 1. Check Inactivity
       if (idleTime >= IDLE_TIMEOUT) {
         logout()
-        return
-      }
-
-      // 2. Check Token Expiration
-      const exp = authService.getTokenExpiration()
-      if (exp) {
-        const timeUntilExp = exp * 1000 - now
-        if (timeUntilExp < REFRESH_THRESHOLD) {
-          const success = await authService.refreshToken()
-          if (!success) {
-            logout()
-          }
-        }
       }
     }
 
