@@ -91,6 +91,12 @@ export class RecordingService {
     private speechAnalysis: SpeechAnalysisService,
   ) {}
 
+  private getStartOfToday(): Date {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay;
+  }
+
   private normalizeRoomName(roomName: string): string {
     if (roomName.includes(':')) {
       return roomName;
@@ -238,9 +244,15 @@ export class RecordingService {
     return Number.isFinite(immeubleId) ? immeubleId : undefined;
   }
 
-  private buildSegmentKey(originalKey: string, porteId: number, startTime: number): string {
+  private buildSegmentKey(
+    originalKey: string,
+    porteId: number,
+    startTime: number,
+  ): string {
     const originalWithoutExt = originalKey.replace(/\.[^/.]+$/u, '');
-    const safeStartTime = Number(startTime.toFixed(3)).toString().replace(/\./g, '_');
+    const safeStartTime = Number(startTime.toFixed(3))
+      .toString()
+      .replace(/\./g, '_');
     return `${originalWithoutExt}_porte_${porteId}_${safeStartTime}s.mp4`;
   }
 
@@ -544,11 +556,10 @@ export class RecordingService {
       ) ?? [];
 
     if (validSegments.length > 0) {
-      const roomTarget = roomName
-        ? this.parseRoomIdentifier(roomName)
-        : null;
+      const roomTarget = roomName ? this.parseRoomIdentifier(roomName) : null;
       const createdAfter = new Date();
-      const commercialId = roomTarget?.type === 'COMMERCIAL' ? roomTarget.id : null;
+      const commercialId =
+        roomTarget?.type === 'COMMERCIAL' ? roomTarget.id : null;
       const managerId = roomTarget?.type === 'MANAGER' ? roomTarget.id : null;
       let immeubleId = this.extractImmeubleIdFromKey(s3Key) ?? null;
       if (!immeubleId && validSegments.length > 0) {
@@ -565,7 +576,7 @@ export class RecordingService {
           commercialId,
           managerId,
           immeubleId,
-          statut: segment.statut as any ?? null,
+          statut: (segment.statut as any) ?? null,
           s3KeyOriginal: s3Key,
           startTime: segment.startTime,
           endTime: segment.endTime,
@@ -683,7 +694,15 @@ export class RecordingService {
 
     const segments = await this.prisma.recordingSegment.findMany({
       where: { s3KeyOriginal: s3Key },
-      include: { porte: { select: { numero: true, etage: true, immeuble: { select: { adresse: true } } } } },
+      include: {
+        porte: {
+          select: {
+            numero: true,
+            etage: true,
+            immeuble: { select: { adresse: true } },
+          },
+        },
+      },
       orderBy: { startTime: 'asc' },
     });
 
@@ -724,18 +743,28 @@ export class RecordingService {
       throw new ForbiddenException('Access denied to recording segments');
     }
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
     const where: any = {
-      createdAt: { gte: startOfDay },
+      createdAt: { gte: this.getStartOfToday() },
     };
     if (statut) where.statut = statut;
 
     const segments = await this.prisma.recordingSegment.findMany({
       where,
       include: {
-        porte: { select: { numero: true, etage: true, immeuble: { select: { id: true, adresse: true, commercial: { select: { nom: true, prenom: true } }, manager: { select: { nom: true, prenom: true } } } } } },
+        porte: {
+          select: {
+            numero: true,
+            etage: true,
+            immeuble: {
+              select: {
+                id: true,
+                adresse: true,
+                commercial: { select: { nom: true, prenom: true } },
+                manager: { select: { nom: true, prenom: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { speechScore: 'desc' },
       take: limit,
@@ -749,7 +778,11 @@ export class RecordingService {
 
         const comm = segment.porte.immeuble.commercial;
         const mgr = segment.porte.immeuble.manager;
-        const commercialNom = comm ? `${comm.prenom} ${comm.nom}` : mgr ? `${mgr.prenom} ${mgr.nom}` : undefined;
+        const commercialNom = comm
+          ? `${comm.prenom} ${comm.nom}`
+          : mgr
+            ? `${mgr.prenom} ${mgr.nom}`
+            : undefined;
 
         return {
           id: segment.id,
@@ -776,6 +809,59 @@ export class RecordingService {
     return mapped;
   }
 
+  async removeSegmentsToday(
+    statut: string | null,
+    segmentIds: number[] | null,
+    commercialId: number | null,
+    limit: number,
+    currentUser: { id: number; role: string },
+  ): Promise<number> {
+    if (currentUser.role !== 'admin' && currentUser.role !== 'directeur') {
+      throw new ForbiddenException('Access denied to recording segments');
+    }
+
+    // Si des IDs spécifiques sont fournis, supprimer uniquement ceux-là (d'aujourd'hui)
+    if (segmentIds && segmentIds.length > 0) {
+      const result = await this.prisma.recordingSegment.deleteMany({
+        where: {
+          id: { in: segmentIds },
+          createdAt: { gte: this.getStartOfToday() },
+        },
+      });
+      return result.count;
+    }
+
+    const safeLimit = Math.max(0, limit);
+    if (safeLimit === 0) {
+      return 0;
+    }
+
+    const where: any = {
+      createdAt: { gte: this.getStartOfToday() },
+    };
+    if (statut) where.statut = statut;
+    if (commercialId) where.commercialId = commercialId;
+
+    const segmentsToDelete = await this.prisma.recordingSegment.findMany({
+      where,
+      select: { id: true },
+      orderBy: { speechScore: 'desc' },
+      take: safeLimit,
+    });
+
+    if (segmentsToDelete.length === 0) {
+      return 0;
+    }
+
+    const result = await this.prisma.recordingSegment.deleteMany({
+      where: {
+        id: { in: segmentsToDelete.map((segment) => segment.id) },
+      },
+    });
+
+    return result.count;
+  }
+
   async getSegmentsByImmeuble(
     immeubleId: number,
     currentUser: { id: number; role: string },
@@ -786,7 +872,15 @@ export class RecordingService {
 
     const segments = await this.prisma.recordingSegment.findMany({
       where: { immeubleId },
-      include: { porte: { select: { numero: true, etage: true, immeuble: { select: { adresse: true } } } } },
+      include: {
+        porte: {
+          select: {
+            numero: true,
+            etage: true,
+            immeuble: { select: { adresse: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -835,7 +929,10 @@ export class RecordingService {
 
     try {
       fs.mkdirSync(tmpDir, { recursive: true });
-      const downloaded = await this.downloadFromS3(originalS3Key, originalFilePath);
+      const downloaded = await this.downloadFromS3(
+        originalS3Key,
+        originalFilePath,
+      );
       if (!downloaded) {
         for (const segment of segments) {
           await this.prisma.recordingSegment.update({
@@ -892,7 +989,8 @@ export class RecordingService {
           // Step 2: Transcription + speech score (optionnel)
           try {
             const transcription = await this.transcribeSegment(segmentFilePath);
-            const speechScore = await this.speechAnalysis.computeScore(segmentFilePath);
+            const speechScore =
+              await this.speechAnalysis.computeScore(segmentFilePath);
 
             await this.prisma.recordingSegment.update({
               where: { id: segment.id },
@@ -928,7 +1026,10 @@ export class RecordingService {
     }
   }
 
-  private async downloadFromS3(s3Key: string, outputPath: string): Promise<boolean> {
+  private async downloadFromS3(
+    s3Key: string,
+    outputPath: string,
+  ): Promise<boolean> {
     try {
       const resp = await this.s3.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
@@ -942,12 +1043,17 @@ export class RecordingService {
       await pipeline(resp.Body as Readable, writeStream);
       return true;
     } catch (error) {
-      this.logger.error(`Unable to download ${s3Key}: ${error?.message || error}`);
+      this.logger.error(
+        `Unable to download ${s3Key}: ${error?.message || error}`,
+      );
       return false;
     }
   }
 
-  private async uploadSegmentToS3(filePath: string, s3Key: string): Promise<void> {
+  private async uploadSegmentToS3(
+    filePath: string,
+    s3Key: string,
+  ): Promise<void> {
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
 
@@ -962,7 +1068,9 @@ export class RecordingService {
     );
   }
 
-  private async transcribeSegment(filePath: string): Promise<string | undefined> {
+  private async transcribeSegment(
+    filePath: string,
+  ): Promise<string | undefined> {
     if (!this.whisperUrl) {
       return undefined;
     }
@@ -989,7 +1097,9 @@ export class RecordingService {
       );
 
       if (!response.ok) {
-        throw new Error(`Whisper responded with ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Whisper responded with ${response.status} ${response.statusText}`,
+        );
       }
 
       const data = (await response.json()) as { text?: string };
@@ -1065,7 +1175,9 @@ export class RecordingService {
     return true;
   }
 
-  getExtractionProgress(key: string): { step: string; current: number; total: number } | null {
+  getExtractionProgress(
+    key: string,
+  ): { step: string; current: number; total: number } | null {
     return this.transcription.getProgress(key);
   }
 
@@ -1079,7 +1191,11 @@ export class RecordingService {
       const roomName = this.extractRoomFromKey(key);
       if (roomName) {
         try {
-          await this.ensureRoomAccess(roomName, currentUser.id, currentUser.role);
+          await this.ensureRoomAccess(
+            roomName,
+            currentUser.id,
+            currentUser.role,
+          );
         } catch {
           continue;
         }
@@ -1106,7 +1222,12 @@ export class RecordingService {
     return started;
   }
 
-  getExtractionQueue(): { key: string; step: string; current: number; total: number }[] {
+  getExtractionQueue(): {
+    key: string;
+    step: string;
+    current: number;
+    total: number;
+  }[] {
     return this.transcription.getQueueState();
   }
 
@@ -1122,7 +1243,9 @@ export class RecordingService {
     );
 
     return results
-      .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+      .filter(
+        (r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled',
+      )
       .map((r) => r.value);
   }
 
@@ -1213,9 +1336,7 @@ export class RecordingService {
     return { items: allItems, totalCount: allItems.length };
   }
 
-  getSpeechScores(
-    keys: string[],
-  ): Array<{
+  getSpeechScores(keys: string[]): Array<{
     key: string;
     score?: number;
     totalDurationSec?: number;

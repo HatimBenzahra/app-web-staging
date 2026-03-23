@@ -192,4 +192,24 @@ export class RecordingResolver {
   ): Promise<RecordingSegmentDto[]> {
     return this.svc.getSegmentsToday(statut, limit, user);
   }
+
+  @Mutation(() => Int)
+  @Roles('admin', 'directeur')
+  async removeRecordingSegmentsToday(
+    @Args('statut', { nullable: true }) statut: string,
+    @Args('segmentIds', { type: () => [Int], nullable: true })
+    segmentIds: number[],
+    @Args('commercialId', { type: () => Int, nullable: true })
+    commercialId: number,
+    @Args('limit', { type: () => Int, defaultValue: 20 }) limit: number,
+    @CurrentUser() user: any,
+  ): Promise<number> {
+    return this.svc.removeSegmentsToday(
+      statut,
+      segmentIds,
+      commercialId,
+      limit,
+      user,
+    );
+  }
 }
