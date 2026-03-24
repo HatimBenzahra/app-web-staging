@@ -376,9 +376,7 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
   const sorted = useMemo(() => {
     if (!segments?.length) return []
     return [...segments].sort((a, b) => {
-      const scoreA = a.speechScore ?? 999
-      const scoreB = b.speechScore ?? 999
-      return scoreA - scoreB
+      return new Date(b.createdAt) - new Date(a.createdAt)
     })
   }, [segments])
 

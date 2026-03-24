@@ -740,13 +740,19 @@ export class RecordingService {
     currentUser: { id: number; role: string },
   ): Promise<RecordingSegmentDto[]> {
     if (currentUser.role !== 'admin' && currentUser.role !== 'directeur') {
-      throw new ForbiddenException('Access denied to recording segments');
+      throw new ForbiddenException('Access denied');
     }
+
+    const EXPLOITABLE_STATUTS = ['REFUS', 'ARGUMENTE', 'CONTRAT_SIGNE'];
 
     const where: any = {
       createdAt: { gte: this.getStartOfToday() },
     };
-    if (statut) where.statut = statut;
+    if (statut) {
+      where.statut = statut;
+    } else {
+      where.statut = { in: EXPLOITABLE_STATUTS };
+    }
 
     const segments = await this.prisma.recordingSegment.findMany({
       where,
@@ -766,7 +772,7 @@ export class RecordingService {
           },
         },
       },
-      orderBy: { speechScore: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
 

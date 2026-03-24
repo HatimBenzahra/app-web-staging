@@ -73,15 +73,15 @@ export function useDashboardLogic() {
   const { data: portesModifiedToday, loading: loadingPortesModified } = usePortesModifiedToday()
   const { data: rdvToday, loading: loadingRdvToday } = usePortesRdvToday()
 
-  const fetchSegments = useCallback(async statut => {
-    setSegmentsLoading(true)
+  const fetchSegments = useCallback(async (statut, { silent = false } = {}) => {
+    if (!silent) setSegmentsLoading(true)
     try {
       const response = await gql(GET_SEGMENTS_TODAY, { statut, limit: 15 })
       setSegments(response.recordingSegmentsToday || [])
     } catch {
       setSegments([])
     } finally {
-      setSegmentsLoading(false)
+      if (!silent) setSegmentsLoading(false)
     }
   }, [])
 
@@ -95,7 +95,7 @@ export function useDashboardLogic() {
     const hasPending = segments.some(s => s.status === 'PENDING' || s.status === 'PROCESSING')
     if (!hasPending) return
     const statut = segmentFilter === 'TOUS' ? null : segmentFilter
-    const interval = setInterval(() => fetchSegments(statut), 5000)
+    const interval = setInterval(() => fetchSegments(statut, { silent: true }), 5000)
     return () => clearInterval(interval)
   }, [segments, segmentFilter, fetchSegments])
 
