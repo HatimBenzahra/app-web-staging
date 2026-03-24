@@ -4,10 +4,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { ArrowLeft, Mic, Clock, User, Calendar, MessageSquare, DoorOpen, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Mic,
+  Clock,
+  User,
+  Calendar,
+  MessageSquare,
+  DoorOpen,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+} from 'lucide-react'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import PorteHistoriqueTimeline from './components/PorteHistoriqueTimeline'
-import { SpeechScoreBar, formatDuration } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
+import {
+  SpeechScoreBar,
+  formatDuration,
+} from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
 import AudioPlayer from '@/components/AudioPlayer'
 
 function SegmentCard({ segment }) {
@@ -33,7 +47,9 @@ function SegmentCard({ segment }) {
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
           <Clock className="h-3 w-3 shrink-0" />
-          <span>{dateStr} à {timeStr}</span>
+          <span>
+            {dateStr} à {timeStr}
+          </span>
           {duration && (
             <>
               <span className="text-muted-foreground/50">·</span>
@@ -47,9 +63,7 @@ function SegmentCard({ segment }) {
               {getStatusLabel(segment.statut)}
             </Badge>
           )}
-          {segment.speechScore != null && (
-            <SpeechScoreBar score={segment.speechScore} />
-          )}
+          {segment.speechScore != null && <SpeechScoreBar score={segment.speechScore} />}
           {segment.status && (
             <Badge variant="outline" className="text-[10px]">
               {segment.status}
@@ -58,9 +72,14 @@ function SegmentCard({ segment }) {
         </div>
       </div>
 
-      {segment.streamingUrl && (
+      {segment.streamingUrl ? (
         <AudioPlayer src={segment.streamingUrl} />
-      )}
+      ) : segment.status === 'PENDING' || segment.status === 'PROCESSING' ? (
+        <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-muted/30 border border-border/40">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          <span className="text-[11px] text-muted-foreground">Traitement audio en cours...</span>
+        </div>
+      ) : null}
 
       {segment.transcription && (
         <div className="bg-muted/40 rounded-lg p-2.5 border border-border/40">
@@ -77,9 +96,13 @@ function SegmentCard({ segment }) {
                   className="mt-1 text-[11px] text-primary hover:underline flex items-center gap-0.5"
                 >
                   {expanded ? (
-                    <>Voir moins <ChevronUp className="h-3 w-3" /></>
+                    <>
+                      Voir moins <ChevronUp className="h-3 w-3" />
+                    </>
                   ) : (
-                    <>Voir plus <ChevronDown className="h-3 w-3" /></>
+                    <>
+                      Voir plus <ChevronDown className="h-3 w-3" />
+                    </>
                   )}
                 </button>
               )}
@@ -171,7 +194,9 @@ export default function PorteDetails() {
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-4">
               <div className="space-y-1">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Statut actuel</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                  Statut actuel
+                </p>
                 <Badge className={statusColor}>{statusLabel}</Badge>
               </div>
 

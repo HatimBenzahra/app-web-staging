@@ -266,6 +266,16 @@ export function useRecordingSegmentsByPorte(porteId: number | null): UseApiState
     fetchData()
   }, [fetchData])
 
+  // Poll toutes les 5s tant qu'il y a des segments PENDING ou PROCESSING
+  useEffect(() => {
+    const hasPending = data.some(
+      (s: any) => s.status === 'PENDING' || s.status === 'PROCESSING'
+    )
+    if (!hasPending) return
+    const interval = setInterval(() => fetchData(), 5000)
+    return () => clearInterval(interval)
+  }, [data, fetchData])
+
   return { data, loading, error, refetch: fetchData }
 }
 

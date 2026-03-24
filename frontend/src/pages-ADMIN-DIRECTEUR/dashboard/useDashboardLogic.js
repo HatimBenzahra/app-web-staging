@@ -90,6 +90,15 @@ export function useDashboardLogic() {
     fetchSegments(segmentFilter === 'TOUS' ? null : segmentFilter)
   }, [segmentFilter, fetchSegments])
 
+  // Poll toutes les 5s tant qu'il y a des segments PENDING/PROCESSING
+  useEffect(() => {
+    const hasPending = segments.some(s => s.status === 'PENDING' || s.status === 'PROCESSING')
+    if (!hasPending) return
+    const statut = segmentFilter === 'TOUS' ? null : segmentFilter
+    const interval = setInterval(() => fetchSegments(statut), 5000)
+    return () => clearInterval(interval)
+  }, [segments, segmentFilter, fetchSegments])
+
   const today = useMemo(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -99,7 +108,16 @@ export function useDashboardLogic() {
   // Calcul des stats à partir des portes modifiées aujourd'hui
   const totals = useMemo(() => {
     if (!portesModifiedToday)
-      return { contrats: 0, rdv: 0, refus: 0, absents: 0, argumentes: 0, repassages: 0, portes: 0, immeubles: 0 }
+      return {
+        contrats: 0,
+        rdv: 0,
+        refus: 0,
+        absents: 0,
+        argumentes: 0,
+        repassages: 0,
+        portes: 0,
+        immeubles: 0,
+      }
 
     const stats = {
       contrats: 0,
