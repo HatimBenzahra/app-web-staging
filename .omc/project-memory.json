@@ -102,6 +102,18 @@
   },
   "hotPaths": [
     {
+      "path": "frontend/src/pages-ADMIN-DIRECTEUR/dashboard/Dashboard.jsx",
+      "accessCount": 11,
+      "lastAccessed": 1774342640431,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/recording/recording.service.ts",
+      "accessCount": 10,
+      "lastAccessed": 1774342717194,
+      "type": "file"
+    },
+    {
       "path": "frontend/src/services/auth/auth.service.ts",
       "accessCount": 6,
       "lastAccessed": 1774276873719,
@@ -111,6 +123,18 @@
       "path": "frontend/src/components/SessionManager.jsx",
       "accessCount": 5,
       "lastAccessed": 1774276874062,
+      "type": "file"
+    },
+    {
+      "path": "backend/src",
+      "accessCount": 3,
+      "lastAccessed": 1774342871447,
+      "type": "directory"
+    },
+    {
+      "path": "backend/src/recording/recording.resolver.ts",
+      "accessCount": 3,
+      "lastAccessed": 1774345953126,
       "type": "file"
     },
     {
@@ -156,6 +180,18 @@
       "type": "file"
     },
     {
+      "path": "frontend/src/services/api/audio/audio.service.ts",
+      "accessCount": 2,
+      "lastAccessed": 1774342645010,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/main.ts",
+      "accessCount": 2,
+      "lastAccessed": 1774345952734,
+      "type": "file"
+    },
+    {
       "path": "backend/src/auth/auth.module.ts",
       "accessCount": 1,
       "lastAccessed": 1774272287028,
@@ -183,18 +219,6 @@
       "path": "backend/src/auth/guards/roles.guard.ts",
       "accessCount": 1,
       "lastAccessed": 1774272291062,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/main.ts",
-      "accessCount": 1,
-      "lastAccessed": 1774272416655,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/services/api/audio/audio.service.ts",
-      "accessCount": 1,
-      "lastAccessed": 1774272422393,
       "type": "file"
     },
     {
@@ -244,6 +268,60 @@
       "accessCount": 1,
       "lastAccessed": 1774272567264,
       "type": "file"
+    },
+    {
+      "path": "frontend/src/pages-ADMIN-DIRECTEUR/dashboard/useDashboardLogic.js",
+      "accessCount": 1,
+      "lastAccessed": 1774280773820,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/services/api/audio/audio.mutations.ts",
+      "accessCount": 1,
+      "lastAccessed": 1774342645054,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/services/api/portes/porte.queries.ts",
+      "accessCount": 1,
+      "lastAccessed": 1774342656075,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/services/audio/recordings/recording.service.ts",
+      "accessCount": 1,
+      "lastAccessed": 1774342688589,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages-ADMIN-DIRECTEUR/immeubles/PorteDetails.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1774342695081,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages-ADMIN-DIRECTEUR/immeubles/usePorteDetailsLogic.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1774342699276,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/hooks/metier/api/portes.ts",
+      "accessCount": 1,
+      "lastAccessed": 1774342702990,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/services/api/portes/porte.service.ts",
+      "accessCount": 1,
+      "lastAccessed": 1774342713086,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/schema.gql",
+      "accessCount": 1,
+      "lastAccessed": 1774342870429,
+      "type": "directory"
     }
   ],
   "userDirectives": []
