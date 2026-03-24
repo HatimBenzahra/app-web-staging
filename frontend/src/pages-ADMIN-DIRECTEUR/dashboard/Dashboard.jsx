@@ -371,6 +371,8 @@ function TopOffresCard({
 }
 
 function TodaysRecordingsCard({ segments, loading, navigate }) {
+  const [expanded, setExpanded] = React.useState(false)
+
   const sorted = useMemo(() => {
     if (!segments?.length) return []
     return [...segments].sort((a, b) => {
@@ -393,7 +395,7 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
     return { total: segments.length, totalDuration, commerciaux: commerciaux.size, statuts }
   }, [segments])
 
-  const visible = sorted.slice(0, 10)
+  const visible = expanded ? sorted : sorted.slice(0, 10)
   const overflow = sorted.length > 10 ? sorted.length - 10 : 0
 
   return (
@@ -599,14 +601,23 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
               })}
             </div>
 
-            {overflow > 0 && (
+            {overflow > 0 && !expanded && (
               <button
                 type="button"
-                onClick={() => navigate('/ecoutes/enregistrement')}
+                onClick={() => setExpanded(true)}
                 className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-dashed border-border/60 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/20 transition-all"
               >
-                +{overflow} enregistrement{overflow > 1 ? 's' : ''} de plus
+                +{overflow} segment{overflow > 1 ? 's' : ''} de plus
                 <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {expanded && sorted.length > 10 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-dashed border-border/60 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/20 transition-all"
+              >
+                Voir moins
               </button>
             )}
           </>
