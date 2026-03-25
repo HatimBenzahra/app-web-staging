@@ -61,6 +61,7 @@ import {
   RANK_PERIODS,
   BADGE_CATEGORIES,
   BADGE_PRODUCT_KEYS,
+  CONTRACT_STATUS_FILTERS,
 } from './useGamificationLogic'
 
 // =============================================================================
@@ -609,12 +610,17 @@ function DetailModal({
   displayPrenom,
   isManager,
   periodKey,
+  contractStatuses,
 }) {
   const [activeSection, setActiveSection] = useState('badges')
   const { data: contratsCommercial, loading: loadingContrats } = useContratsByCommercial(
-    commercialId || 0
+    commercialId || 0,
+    contractStatuses
   )
-  const { data: contratsManager, loading: loadingContratsM } = useContratsByManager(managerId || 0)
+  const { data: contratsManager, loading: loadingContratsM } = useContratsByManager(
+    managerId || 0,
+    contractStatuses
+  )
   const { data: badgesCommercial, loading: loadingBadges } = useCommercialBadges(commercialId || 0)
   const { data: badgesManager, loading: loadingBadgesM } = useManagerBadges(managerId || 0)
 
@@ -623,6 +629,10 @@ function DetailModal({
     : loadingContratsM || loadingBadgesM
   const rawContrats = commercialId ? contratsCommercial : contratsManager
   const rawBadges = commercialId ? badgesCommercial : badgesManager
+  const getPrimaryContractDate = useCallback(
+    contrat => contrat.dateValidation || contrat.dateSignature || null,
+    []
+  )
 
   const formatDate = dateStr => {
     if (!dateStr) return null
@@ -876,7 +886,7 @@ function DetailModal({
                           {contrat.offreNom || 'Offre inconnue'}
                         </p>
                         <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {[contrat.offreCategorie, contrat.offreFournisseur]
+                          [contrat.statutContrat, contrat.offreCategorie, contrat.offreFournisseur]
                             .filter(Boolean)
                             .join(' · ')}
                         </p>
@@ -885,7 +895,7 @@ function DetailModal({
                         <div className="text-right text-xs">
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            <span>{formatDate(contrat.dateValidation)}</span>
+                            <span>{formatDate(getPrimaryContractDate(contrat))}</span>
                           </div>
                           {contrat.dateSignature && (
                             <div className="flex items-center gap-1 text-muted-foreground mt-0.5">
@@ -907,7 +917,7 @@ function DetailModal({
                           </span>
                         )}
                         <span className="text-[10px] text-muted-foreground">
-                          {formatDate(contrat.dateValidation)}
+                          {formatDate(getPrimaryContractDate(contrat))}
                         </span>
                       </div>
                     </div>
@@ -927,7 +937,7 @@ function DetailModal({
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-5 w-5 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">Aucun contrat validé</p>
+                  <p className="text-sm">Aucun contrat pour les statuts sélectionnés</p>
                 </div>
               )}
             </div>
@@ -970,8 +980,30 @@ function ClassementTab({
   computeRankingLoading,
   includeContratFinie,
   setIncludeContratFinie,
+  selectedContractStatuses,
+  setSelectedContractStatuses,
 }) {
   const [selectedEntry, setSelectedEntry] = useState(null)
+  const activeStatusLabels = useMemo(() => {
+    if (!selectedContractStatuses?.length) return 'aucun'
+    return CONTRACT_STATUS_FILTERS.filter(filter => selectedContractStatuses.includes(filter.value))
+      .map(filter => filter.label.toLowerCase())
+      .join(', ')
+  }, [selectedContractStatuses])
+
+  const toggleContractStatus = useCallback(
+    statusValue => {
+      setSelectedContractStatuses(currentStatuses => {
+        if (currentStatuses.includes(statusValue)) {
+          return currentStatuses.filter(status => status !== statusValue)
+        }
+
+        return [...currentStatuses, statusValue]
+      })
+    },
+    [setSelectedContractStatuses]
+  )
+
   const classementStats = useMemo(() => {
     if (!ranking?.length) return { total: 0, totalPoints: 0, totalContrats: 0 }
     return {
@@ -1018,7 +1050,7 @@ function ClassementTab({
               <div className="text-2xl font-bold tabular-nums">
                 {formatNumber(classementStats.totalContrats)}
               </div>
-              <div className="text-xs text-muted-foreground">Contrats signés</div>
+              <div className="text-xs text-muted-foreground">Contrats retenus</div>
             </div>
           </CardContent>
         </Card>
@@ -1037,7 +1069,7 @@ function ClassementTab({
               </CardTitle>
               <CardDescription>
                 {RANK_PERIODS.find(p => p.value === rankPeriod)?.label} — Points basés sur le prix
-                des contrats validés
+                des contrats filtrés ({activeStatusLabels})
               </CardDescription>
             </div>
             <div className="flex items-center gap-3">
@@ -1073,6 +1105,26 @@ function ClassementTab({
                   />
                 </button>
               </div>
+              <div className="flex items-center gap-2 rounded-lg border border-border/70 px-3 py-1.5 bg-muted/30 flex-wrap">
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Statuts inclus
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {CONTRACT_STATUS_FILTERS.map(filter => {
+                    const isActive = selectedContractStatuses.includes(filter.value)
+                    return (
+                      <button
+                        key={filter.value}
+                        type="button"
+                        onClick={() => toggleContractStatus(filter.value)}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${isActive ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:text-foreground'}`}
+                      >
+                        {filter.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -1100,7 +1152,7 @@ function ClassementTab({
                 <Trophy className="h-8 w-8 opacity-50" />
               </div>
               <p className="font-medium">Aucun classement disponible</p>
-              <p className="text-xs mt-1">Lancez un recalcul ou attendez le prochain cycle CRON</p>
+              <p className="text-xs mt-1">Aucun résultat pour les statuts sélectionnés ({activeStatusLabels})</p>
             </div>
           ) : (
             <Table>
@@ -1110,7 +1162,7 @@ function ClassementTab({
                   <TableHead>Participant</TableHead>
                   <TableHead>Niveau</TableHead>
                   <TableHead className="text-right">Points</TableHead>
-                  <TableHead className="text-right">Contrats validés</TableHead>
+                  <TableHead className="text-right">Contrats retenus</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1194,6 +1246,7 @@ function ClassementTab({
         displayPrenom={selectedEntry?.commercialPrenom || selectedEntry?.managerPrenom || ''}
         isManager={!!selectedEntry?.managerId && !selectedEntry?.commercialId}
         periodKey={periodKey}
+        contractStatuses={selectedContractStatuses}
       />
     </div>
   )
@@ -2067,6 +2120,8 @@ export default function Gamification() {
           computeRankingLoading={logic.computeRankingLoading}
           includeContratFinie={logic.includeContratFinie}
           setIncludeContratFinie={logic.setIncludeContratFinie}
+          selectedContractStatuses={logic.selectedContractStatuses}
+          setSelectedContractStatuses={logic.setSelectedContractStatuses}
         />
       )}
       {logic.activeTab === 'badges' && (

@@ -3,8 +3,8 @@
  */
 
 export const GET_RANKING = `
-  query GetRanking($period: RankPeriod!, $periodKey: String!, $includeContratFinie: Boolean) {
-    ranking(period: $period, periodKey: $periodKey, includeContratFinie: $includeContratFinie) {
+  query GetRanking($period: RankPeriod!, $periodKey: String!, $includeContratFinie: Boolean, $contractStatuses: [ContractRankingStatus!]) {
+    ranking(period: $period, periodKey: $periodKey, includeContratFinie: $includeContratFinie, contractStatuses: $contractStatuses) {
       id
       commercialId
       managerId
@@ -168,8 +168,8 @@ export const GET_MAPPING_SUGGESTIONS = `
 `
 
 export const GET_CONTRATS_BY_COMMERCIAL = `
-  query GetContratsByCommercial($commercialId: Int!) {
-    contratsByCommercial(commercialId: $commercialId) {
+  query GetContratsByCommercial($commercialId: Int!, $contractStatuses: [ContractRankingStatus!]) {
+    contratsByCommercial(commercialId: $commercialId, contractStatuses: $contractStatuses) {
       id
       externalContratId
       externalProspectId
@@ -180,6 +180,7 @@ export const GET_CONTRATS_BY_COMMERCIAL = `
       offreId
       dateValidation
       dateSignature
+      statutContrat
       periodDay
       periodWeek
       periodMonth
@@ -198,8 +199,8 @@ export const GET_CONTRATS_BY_COMMERCIAL = `
 `
 
 export const GET_CONTRATS_BY_MANAGER = `
-  query GetContratsByManager($managerId: Int!) {
-    contratsByManager(managerId: $managerId) {
+  query GetContratsByManager($managerId: Int!, $contractStatuses: [ContractRankingStatus!]) {
+    contratsByManager(managerId: $managerId, contractStatuses: $contractStatuses) {
       id
       externalContratId
       externalProspectId
@@ -210,6 +211,7 @@ export const GET_CONTRATS_BY_MANAGER = `
       offreId
       dateValidation
       dateSignature
+      statutContrat
       periodDay
       periodWeek
       periodMonth

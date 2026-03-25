@@ -45,6 +45,12 @@ export const BADGE_PRODUCT_KEYS = [
   { value: 'ASSURANCE', label: 'Assurance' },
 ]
 
+export const CONTRACT_STATUS_FILTERS = [
+  { value: 'VALIDE', label: 'Validé' },
+  { value: 'SIGNE', label: 'Signé' },
+  { value: 'RETRACTE', label: 'Rétracté' },
+]
+
 /**
  * Calcule la clé de période en fonction du type de période
  */
@@ -87,6 +93,7 @@ export function useGamificationLogic() {
   const [syncResults, setSyncResults] = useState({})
   const [editingOffre, setEditingOffre] = useState(null)
   const [includeContratFinie, setIncludeContratFinie] = useState(false)
+  const [selectedContractStatuses, setSelectedContractStatuses] = useState(['VALIDE'])
 
   // --- Clé de période calculée ---
   const periodKey = useMemo(() => computePeriodKey(rankPeriod), [rankPeriod])
@@ -97,7 +104,7 @@ export function useGamificationLogic() {
     loading: rankingLoading,
     error: rankingError,
     refetch: refetchRanking,
-  } = useRanking(rankPeriod, periodKey, includeContratFinie)
+  } = useRanking(rankPeriod, periodKey, includeContratFinie, selectedContractStatuses)
 
   const {
     data: offres,
@@ -328,6 +335,8 @@ export function useGamificationLogic() {
     setEditingOffre,
     includeContratFinie,
     setIncludeContratFinie,
+    selectedContractStatuses,
+    setSelectedContractStatuses,
     syncResults,
 
     // Data

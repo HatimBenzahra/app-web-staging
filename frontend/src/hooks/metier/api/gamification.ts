@@ -4,10 +4,20 @@
 
 import { gamificationApi } from '@/services/api/gamification'
 import { useApiCall, useApiMutation } from './core'
+import type { ContractRankingStatus } from '@/services/api/gamification'
 
 // --- Ranking ---
-export function useRanking(period: string, periodKey: string, includeContratFinie?: boolean) {
-  return useApiCall(() => gamificationApi.getRanking(period, periodKey, includeContratFinie), [period, periodKey, includeContratFinie], 'ranking')
+export function useRanking(
+  period: string,
+  periodKey: string,
+  includeContratFinie?: boolean,
+  contractStatuses: ContractRankingStatus[] = ['VALIDE']
+) {
+  return useApiCall(
+    () => gamificationApi.getRanking(period, periodKey, includeContratFinie, contractStatuses),
+    [period, periodKey, includeContratFinie, contractStatuses.join('|')],
+    'ranking'
+  )
 }
 
 export function useCommercialRankings(commercialId: number) {
@@ -121,18 +131,24 @@ export function useSyncContrats() {
   return useApiMutation(() => gamificationApi.syncContrats(), 'contrats')
 }
 
-export function useContratsByCommercial(commercialId: number) {
+export function useContratsByCommercial(
+  commercialId: number,
+  contractStatuses: ContractRankingStatus[] = ['VALIDE']
+) {
   return useApiCall(
-    () => gamificationApi.getContratsByCommercial(commercialId),
-    [commercialId],
+    () => gamificationApi.getContratsByCommercial(commercialId, contractStatuses),
+    [commercialId, contractStatuses.join('|')],
     'contrats'
   )
 }
 
-export function useContratsByManager(managerId: number) {
+export function useContratsByManager(
+  managerId: number,
+  contractStatuses: ContractRankingStatus[] = ['VALIDE']
+) {
   return useApiCall(
-    () => gamificationApi.getContratsByManager(managerId),
-    [managerId],
+    () => gamificationApi.getContratsByManager(managerId, contractStatuses),
+    [managerId, contractStatuses.join('|')],
     'contrats'
   )
 }

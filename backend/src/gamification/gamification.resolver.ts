@@ -23,6 +23,7 @@ import {
   ContratValideType,
   SyncContratsResult,
   OffreDistributionEntry,
+  ContractRankingStatus,
 } from './gamification.dto';
 import { BadgeCategory, RankPeriod } from '@prisma/client';
 import { MappingService } from './mapping.service';
@@ -257,7 +258,9 @@ export class GamificationResolver {
       managerId: c.managerId ?? undefined,
       offreExternalId: c.offreExternalId ?? undefined,
       offreId: c.offreId ?? undefined,
+      dateValidation: c.dateValidation ?? undefined,
       dateSignature: c.dateSignature ?? undefined,
+      statutContrat: c.statutContrat ?? c.metadata?.statutContrat ?? undefined,
       metadata: c.metadata ? JSON.stringify(c.metadata) : undefined,
       offreNom: c.offre?.nom ?? undefined,
       offreCategorie: c.offre?.categorie ?? undefined,
@@ -367,8 +370,21 @@ export class GamificationResolver {
     @Args('period', { type: () => RankPeriod }) period: RankPeriod,
     @Args('periodKey') periodKey: string,
     @Args('includeContratFinie', { type: () => Boolean, defaultValue: false }) includeContratFinie: boolean,
+    @Args('contractStatuses', {
+      type: () => [ContractRankingStatus],
+      nullable: true,
+      defaultValue: [ContractRankingStatus.VALIDE],
+    })
+    contractStatuses: ContractRankingStatus[],
+    @Context() context: any,
   ): Promise<RankSnapshotType[]> {
-    const snapshots = await this.rankingService.getRanking(period, periodKey, includeContratFinie);
+    const snapshots = await this.rankingService.getRanking(
+      period,
+      periodKey,
+      includeContratFinie,
+      contractStatuses,
+      this.extractToken(context),
+    );
     return snapshots.map((s) => {
       const tier = this.rankingService.resolvePointTier(s.points);
       return {
@@ -505,8 +521,19 @@ export class GamificationResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   async getContratsByCommercial(
     @Args('commercialId', { type: () => Int }) commercialId: number,
+    @Args('contractStatuses', {
+      type: () => [ContractRankingStatus],
+      nullable: true,
+      defaultValue: [ContractRankingStatus.VALIDE],
+    })
+    contractStatuses: ContractRankingStatus[],
+    @Context() context: any,
   ): Promise<ContratValideType[]> {
-    const contrats = await this.contratService.getContratsByCommercial(commercialId);
+    const contrats = await this.contratService.getContratsByCommercial(
+      commercialId,
+      contractStatuses,
+      this.extractToken(context),
+    );
     return contrats.map((c) => this.toContratType(c));
   }
 
@@ -514,8 +541,19 @@ export class GamificationResolver {
   @Roles('admin', 'directeur', 'manager')
   async getContratsByManager(
     @Args('managerId', { type: () => Int }) managerId: number,
+    @Args('contractStatuses', {
+      type: () => [ContractRankingStatus],
+      nullable: true,
+      defaultValue: [ContractRankingStatus.VALIDE],
+    })
+    contractStatuses: ContractRankingStatus[],
+    @Context() context: any,
   ): Promise<ContratValideType[]> {
-    const contrats = await this.contratService.getContratsByManager(managerId);
+    const contrats = await this.contratService.getContratsByManager(
+      managerId,
+      contractStatuses,
+      this.extractToken(context),
+    );
     return contrats.map((c) => this.toContratType(c));
   }
 

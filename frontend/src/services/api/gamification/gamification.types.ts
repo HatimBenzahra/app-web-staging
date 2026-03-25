@@ -21,6 +21,8 @@ export interface RankSnapshot {
   managerPrenom?: string
 }
 
+export type ContractRankingStatus = 'VALIDE' | 'SIGNE' | 'RETRACTE'
+
 export interface Offre {
   id: number
   externalId: number
@@ -100,8 +102,9 @@ export interface ContratValide {
   managerId?: number
   offreExternalId?: number
   offreId?: number
-  dateValidation: string
+  dateValidation?: string
   dateSignature?: string
+  statutContrat?: string
   periodDay: string
   periodWeek: string
   periodMonth: string

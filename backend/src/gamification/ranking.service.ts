@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { RankPeriod } from '@prisma/client';
+import { WinleadPlusApiService } from './winleadplus-api.service';
+import { ContractRankingStatus } from './gamification.dto';
 
 type PointTier = {
   key: string;
@@ -10,8 +12,15 @@ type PointTier = {
 };
 
 type ScoreEntry = {
+  id: number;
   commercialId: number | null;
   managerId: number | null;
+  commercialWinleadPlusId?: string | null;
+  managerWinleadPlusId?: string | null;
+  commercialNom?: string | null;
+  commercialPrenom?: string | null;
+  managerNom?: string | null;
+  managerPrenom?: string | null;
   points: number;
   contratsSignes: number;
 };
@@ -31,7 +40,10 @@ export class RankingService {
     { key: 'LEGEND', label: 'Legend', minPoints: 7000, maxPoints: null },
   ];
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly winleadPlusApi: WinleadPlusApiService,
+  ) {}
 
   // ============================================================================
   // COMPUTE — Calculer le classement pour une période donnée
@@ -79,7 +91,7 @@ export class RankingService {
         periodField,
         periodKey,
       );
-      scores.push({ commercialId: commercial.id, managerId: null, points, contratsSignes });
+      scores.push({ id: commercial.id, commercialId: commercial.id, managerId: null, points, contratsSignes });
     }
 
     for (const manager of managers) {
@@ -89,7 +101,7 @@ export class RankingService {
         periodField,
         periodKey,
       );
-      scores.push({ commercialId: null, managerId: manager.id, points, contratsSignes });
+      scores.push({ id: manager.id, commercialId: null, managerId: manager.id, points, contratsSignes });
     }
 
     // 4. Trier par points décroissants, puis par contrats signés en cas d'égalité
@@ -164,7 +176,25 @@ export class RankingService {
   // READ — Récupérer le classement d'une période
   // ============================================================================
 
-  async getRanking(period: RankPeriod, periodKey: string, includeContratFinie = false) {
+  async getRanking(
+    period: RankPeriod,
+    periodKey: string,
+    includeContratFinie = false,
+    contractStatuses: ContractRankingStatus[] = [ContractRankingStatus.VALIDE],
+    token?: string,
+  ) {
+    if (contractStatuses.length === 0) {
+      return [];
+    }
+
+    if (this.requiresDynamicRanking(contractStatuses)) {
+      if (!token) {
+        throw new Error('Token requis pour filtrer le classement par statuts de contrats');
+      }
+
+      return this.getDynamicRanking(period, periodKey, includeContratFinie, contractStatuses, token);
+    }
+
     const statusFilter = includeContratFinie
       ? { in: ['ACTIF' as const, 'CONTRAT_FINIE' as const] }
       : { equals: 'ACTIF' as const };
@@ -275,6 +305,212 @@ export class RankingService {
     );
 
     return { points, contratsSignes: contrats.length };
+  }
+
+  private async getDynamicRanking(
+    period: RankPeriod,
+    periodKey: string,
+    includeContratFinie: boolean,
+    contractStatuses: ContractRankingStatus[],
+    token: string,
+  ) {
+    if (contractStatuses.length === 0) {
+      return [];
+    }
+
+    const statusFilter = includeContratFinie
+      ? { in: ['ACTIF' as const, 'CONTRAT_FINIE' as const] }
+      : { equals: 'ACTIF' as const };
+
+    const [commercials, managers, offres, prospects] = await Promise.all([
+      this.prisma.commercial.findMany({
+        where: { status: statusFilter, winleadPlusId: { not: null } },
+        select: { id: true, nom: true, prenom: true, winleadPlusId: true },
+      }),
+      this.prisma.manager.findMany({
+        where: { status: statusFilter, winleadPlusId: { not: null } },
+        select: { id: true, nom: true, prenom: true, winleadPlusId: true },
+      }),
+      this.prisma.offre.findMany({
+        select: { externalId: true, prixBase: true },
+      }),
+      this.winleadPlusApi.getProspects(token),
+    ]);
+
+    const periodField = this.getPeriodField(period);
+    const allowedStatuses = this.mapContractStatuses(contractStatuses);
+    const offrePointsMap = new Map(offres.map((offre) => [offre.externalId, offre.prixBase ?? 0]));
+    const scores = new Map<string, ScoreEntry>();
+
+    for (const commercial of commercials) {
+      if (!commercial.winleadPlusId) continue;
+      scores.set(`commercial:${commercial.id}`, {
+        id: commercial.id,
+        commercialId: commercial.id,
+        managerId: null,
+        commercialWinleadPlusId: commercial.winleadPlusId,
+        commercialNom: commercial.nom,
+        commercialPrenom: commercial.prenom,
+        points: 0,
+        contratsSignes: 0,
+      });
+    }
+
+    for (const manager of managers) {
+      if (!manager.winleadPlusId) continue;
+      scores.set(`manager:${manager.id}`, {
+        id: -manager.id,
+        commercialId: null,
+        managerId: manager.id,
+        managerWinleadPlusId: manager.winleadPlusId,
+        managerNom: manager.nom,
+        managerPrenom: manager.prenom,
+        points: 0,
+        contratsSignes: 0,
+      });
+    }
+
+    const commercialIdByWinlead = new Map(
+      commercials
+        .filter((commercial) => commercial.winleadPlusId)
+        .map((commercial) => [commercial.winleadPlusId!, commercial.id]),
+    );
+    const managerIdByWinlead = new Map(
+      managers
+        .filter((manager) => manager.winleadPlusId)
+        .map((manager) => [manager.winleadPlusId!, manager.id]),
+    );
+
+    for (const prospect of prospects) {
+      const mappedCommercialId = commercialIdByWinlead.get(prospect.commercialId);
+      const mappedManagerId = managerIdByWinlead.get(prospect.commercialId);
+
+      for (const souscription of prospect.Souscription || []) {
+        const offreExternalId = souscription.offreId ?? souscription.offre?.id;
+        const contractPoints = offreExternalId
+          ? Math.round(offrePointsMap.get(offreExternalId) ?? souscription.offre?.prix_base ?? souscription.offre?.prixBase ?? 0)
+          : 0;
+
+        for (const contrat of souscription.contrats || []) {
+          if (!allowedStatuses.has(contrat.statut)) {
+            continue;
+          }
+
+          const referenceDate = this.resolveContractReferenceDate(contrat);
+          if (!referenceDate) {
+            continue;
+          }
+
+          const periods = this.computePeriodKeys(referenceDate);
+          if (periods[periodField] !== periodKey) {
+            continue;
+          }
+
+          if (mappedCommercialId) {
+            const commercialEntry = scores.get(`commercial:${mappedCommercialId}`);
+            if (commercialEntry) {
+              commercialEntry.contratsSignes += 1;
+              commercialEntry.points += contractPoints;
+            }
+          }
+
+          if (mappedManagerId) {
+            const managerEntry = scores.get(`manager:${mappedManagerId}`);
+            if (managerEntry) {
+              managerEntry.contratsSignes += 1;
+              managerEntry.points += contractPoints;
+            }
+          }
+        }
+      }
+    }
+
+    const orderedScores = Array.from(scores.values()).sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      return b.contratsSignes - a.contratsSignes;
+    });
+
+    let currentRank = 1;
+    return orderedScores.map((entry, index) => {
+      if (index > 0) {
+        const previousEntry = orderedScores[index - 1];
+        if (entry.points < previousEntry.points) {
+          currentRank = index + 1;
+        }
+      }
+
+      return {
+        id: entry.id,
+        commercialId: entry.commercialId,
+        managerId: entry.managerId,
+        period,
+        periodKey,
+        rank: currentRank,
+        points: entry.points,
+        contratsSignes: entry.contratsSignes,
+        metadata: {
+          previousRank: null,
+          delta: null,
+          dynamicStatuses: contractStatuses,
+          dynamicSource: 'live_winleadplus',
+        },
+        computedAt: new Date(),
+        commercial: entry.commercialId
+          ? { id: entry.commercialId, nom: entry.commercialNom, prenom: entry.commercialPrenom }
+          : undefined,
+        manager: entry.managerId
+          ? { id: entry.managerId, nom: entry.managerNom, prenom: entry.managerPrenom }
+          : undefined,
+      };
+    });
+  }
+
+  private requiresDynamicRanking(contractStatuses: ContractRankingStatus[]): boolean {
+    return contractStatuses.some((status) => status !== ContractRankingStatus.VALIDE);
+  }
+
+  private mapContractStatuses(contractStatuses: ContractRankingStatus[]): Set<string> {
+    return new Set(
+      contractStatuses.map((status) => {
+        switch (status) {
+          case ContractRankingStatus.SIGNE:
+            return 'Signé';
+          case ContractRankingStatus.RETRACTE:
+            return 'Rétracté';
+          case ContractRankingStatus.VALIDE:
+          default:
+            return 'Validé';
+        }
+      }),
+    );
+  }
+
+  private resolveContractReferenceDate(contrat: any): Date | null {
+    const rawDate = contrat.dateValidation ?? contrat.dateSignature ?? null;
+    return rawDate ? new Date(rawDate) : null;
+  }
+
+  private computePeriodKeys(date: Date): Record<string, string> {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+
+    return {
+      periodDay: `${y}-${m}-${d}`,
+      periodWeek: `${y}-W${this.getISOWeek(date)}`,
+      periodMonth: `${y}-${m}`,
+      periodQuarter: `${y}-Q${Math.ceil((date.getMonth() + 1) / 3)}`,
+      periodYear: `${y}`,
+    };
+  }
+
+  private getISOWeek(date: Date): string {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return String(weekNo).padStart(2, '0');
   }
 
   /**

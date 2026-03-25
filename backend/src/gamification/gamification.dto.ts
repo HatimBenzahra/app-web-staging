@@ -19,6 +19,17 @@ registerEnumType(PrismaRankPeriod, {
   description: 'Période de classement (jour, semaine, mois, trimestre, année)',
 });
 
+export enum ContractRankingStatus {
+  VALIDE = 'VALIDE',
+  SIGNE = 'SIGNE',
+  RETRACTE = 'RETRACTE',
+}
+
+registerEnumType(ContractRankingStatus, {
+  name: 'ContractRankingStatus',
+  description: 'Statuts de contrat inclus dans le classement ou le détail',
+});
+
 // ============================================================================
 // ObjectTypes — Réponses GraphQL
 // ============================================================================
@@ -519,11 +530,14 @@ export class ContratValideType {
 
   @Field(() => Int, { nullable: true })
   offreId?: number;
-  @Field()
-  dateValidation: Date;
+  @Field({ nullable: true })
+  dateValidation?: Date;
 
   @Field({ nullable: true })
   dateSignature?: Date;
+
+  @Field({ nullable: true })
+  statutContrat?: string;
 
   @Field()
   periodDay: string;

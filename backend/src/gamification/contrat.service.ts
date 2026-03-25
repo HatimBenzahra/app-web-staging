@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { WinleadPlusApiService } from './winleadplus-api.service';
+import { ContractRankingStatus } from './gamification.dto';
 
 /**
  * Service de synchronisation des contrats validés depuis WinLead+ /api/prospects.
@@ -14,6 +15,7 @@ import { WinleadPlusApiService } from './winleadplus-api.service';
 @Injectable()
 export class ContratService {
   private readonly logger = new Logger(ContratService.name);
+  private readonly defaultStatuses = [ContractRankingStatus.VALIDE];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -95,21 +97,63 @@ export class ContratService {
   // ============================================================================
 
   /** Contrats validés d'un commercial (par son ID Pro-Win) */
-  async getContratsByCommercial(commercialId: number) {
-    return this.prisma.contratValide.findMany({
-      where: { commercialId },
-      include: { offre: true },
-      orderBy: { dateValidation: 'desc' },
-    });
+  async getContratsByCommercial(
+    commercialId: number,
+    contractStatuses: ContractRankingStatus[] = this.defaultStatuses,
+    token?: string,
+  ) {
+    if (contractStatuses.length === 0) {
+      return [];
+    }
+
+    if (!this.requiresLiveContracts(contractStatuses)) {
+      return this.prisma.contratValide.findMany({
+        where: { commercialId },
+        include: { offre: true },
+        orderBy: { dateValidation: 'desc' },
+      });
+    }
+
+    if (!token) {
+      throw new Error('Token requis pour charger les contrats signés ou rétractés');
+    }
+
+    return this.getLiveContractsForParticipant(
+      'commercialId',
+      commercialId,
+      contractStatuses,
+      token,
+    );
   }
 
   /** Contrats validés d'un manager (par son ID Pro-Win) */
-  async getContratsByManager(managerId: number) {
-    return this.prisma.contratValide.findMany({
-      where: { managerId },
-      include: { offre: true },
-      orderBy: { dateValidation: 'desc' },
-    });
+  async getContratsByManager(
+    managerId: number,
+    contractStatuses: ContractRankingStatus[] = this.defaultStatuses,
+    token?: string,
+  ) {
+    if (contractStatuses.length === 0) {
+      return [];
+    }
+
+    if (!this.requiresLiveContracts(contractStatuses)) {
+      return this.prisma.contratValide.findMany({
+        where: { managerId },
+        include: { offre: true },
+        orderBy: { dateValidation: 'desc' },
+      });
+    }
+
+    if (!token) {
+      throw new Error('Token requis pour charger les contrats signés ou rétractés');
+    }
+
+    return this.getLiveContractsForParticipant(
+      'managerId',
+      managerId,
+      contractStatuses,
+      token,
+    );
   }
 
   /** Contrats validés d'un commercial par période */
@@ -122,6 +166,97 @@ export class ContratService {
       where: { commercialId, [periodField]: periodValue },
       include: { offre: true },
       orderBy: { dateValidation: 'desc' },
+    });
+  }
+
+  private async getLiveContractsForParticipant(
+    participantField: 'commercialId' | 'managerId',
+    participantId: number,
+    contractStatuses: ContractRankingStatus[],
+    token: string,
+  ) {
+    const [prospects, commercialMap, managerMap, offreMap] = await Promise.all([
+      this.winleadPlusApi.getProspects(token),
+      this.buildCommercialMap(),
+      this.buildManagerMap(),
+      this.buildOffreDetailsMap(),
+    ]);
+
+    const allowedStatuses = this.mapContractStatuses(contractStatuses);
+    const contracts: any[] = [];
+
+    for (const prospect of prospects) {
+      const commercialId = commercialMap.get(prospect.commercialId) ?? null;
+      const managerId = managerMap.get(prospect.commercialId) ?? null;
+
+      if ((participantField === 'commercialId' && commercialId !== participantId)
+        || (participantField === 'managerId' && managerId !== participantId)) {
+        continue;
+      }
+
+      for (const souscription of prospect.Souscription || []) {
+        const offerDetails = this.resolveOfferDetails(souscription, offreMap);
+
+        for (const contrat of souscription.contrats || []) {
+          if (!allowedStatuses.has(contrat.statut)) {
+            continue;
+          }
+
+          const referenceDate = this.resolveContractReferenceDate(contrat);
+          if (!referenceDate) {
+            continue;
+          }
+
+          const periods = this.computePeriodKeys(referenceDate);
+          contracts.push({
+            id: contrat.id,
+            externalContratId: contrat.id,
+            externalProspectId: prospect.idProspect ?? prospect.id,
+            commercialWinleadPlusId: prospect.commercialId,
+            commercialId,
+            managerId,
+            offreExternalId: souscription.offreId ?? offerDetails.externalId ?? null,
+            offreId: offerDetails.id,
+            dateValidation: contrat.dateValidation ? new Date(contrat.dateValidation) : null,
+            dateSignature: contrat.dateSignature ? new Date(contrat.dateSignature) : null,
+            statutContrat: contrat.statut ?? null,
+            periodDay: periods.day,
+            periodWeek: periods.week,
+            periodMonth: periods.month,
+            periodQuarter: periods.quarter,
+            periodYear: periods.year,
+            metadata: {
+              prospectNom: [prospect.prenom, prospect.nom].filter(Boolean).join(' ').trim(),
+              prospectStatut: prospect.statutProspect,
+              contratType: contrat.type ?? null,
+              signatureMode: contrat.signatureMode ?? null,
+            },
+            syncedAt: new Date(),
+            createdAt: referenceDate,
+            offre: offerDetails.id
+              ? {
+                  id: offerDetails.id,
+                  nom: offerDetails.nom,
+                  categorie: offerDetails.categorie,
+                  fournisseur: offerDetails.fournisseur,
+                  logoUrl: offerDetails.logoUrl,
+                  points: offerDetails.points,
+                }
+              : null,
+            offreNom: offerDetails.nom,
+            offreCategorie: offerDetails.categorie,
+            offreFournisseur: offerDetails.fournisseur,
+            offreLogoUrl: offerDetails.logoUrl,
+            offrePoints: offerDetails.points,
+          });
+        }
+      }
+    }
+
+    return contracts.sort((a, b) => {
+      const bDate = this.resolveContractSortTime(b);
+      const aDate = this.resolveContractSortTime(a);
+      return bDate - aDate;
     });
   }
 
@@ -241,6 +376,110 @@ export class ContratService {
       map.set(o.externalId, o.id);
     }
     return map;
+  }
+
+  private async buildOffreDetailsMap(): Promise<
+    Map<
+      number,
+      {
+        id: number | null;
+        externalId: number | null;
+        nom?: string | null;
+        categorie?: string | null;
+        fournisseur?: string | null;
+        logoUrl?: string | null;
+        points?: number | null;
+      }
+    >
+  > {
+    const offres = await this.prisma.offre.findMany({
+      select: {
+        id: true,
+        externalId: true,
+        nom: true,
+        categorie: true,
+        fournisseur: true,
+        logoUrl: true,
+        points: true,
+      },
+    });
+
+    return new Map(
+      offres.map((offre) => [
+        offre.externalId,
+        {
+          id: offre.id,
+          externalId: offre.externalId,
+          nom: offre.nom,
+          categorie: offre.categorie,
+          fournisseur: offre.fournisseur,
+          logoUrl: offre.logoUrl,
+          points: offre.points,
+        },
+      ]),
+    );
+  }
+
+  private resolveOfferDetails(
+    souscription: any,
+    offreMap: Map<
+      number,
+      {
+        id: number | null;
+        externalId: number | null;
+        nom?: string | null;
+        categorie?: string | null;
+        fournisseur?: string | null;
+        logoUrl?: string | null;
+        points?: number | null;
+      }
+    >,
+  ) {
+    const externalId = souscription.offreId ?? souscription.offre?.id ?? null;
+    const local = externalId ? offreMap.get(externalId) : null;
+    return {
+      id: local?.id ?? null,
+      externalId,
+      nom: local?.nom ?? souscription.offre?.nom ?? null,
+      categorie: local?.categorie ?? souscription.offre?.categorie ?? null,
+      fournisseur: local?.fournisseur ?? souscription.offre?.fournisseur ?? null,
+      logoUrl: local?.logoUrl ?? souscription.offre?.logo_url ?? souscription.offre?.logoUrl ?? null,
+      points: local?.points ?? null,
+    };
+  }
+
+  private mapContractStatuses(contractStatuses: ContractRankingStatus[]): Set<string> {
+    return new Set(
+      contractStatuses.map((status) => {
+        switch (status) {
+          case ContractRankingStatus.SIGNE:
+            return 'Signé';
+          case ContractRankingStatus.RETRACTE:
+            return 'Rétracté';
+          case ContractRankingStatus.VALIDE:
+          default:
+            return 'Validé';
+        }
+      }),
+    );
+  }
+
+  private requiresLiveContracts(contractStatuses: ContractRankingStatus[]): boolean {
+    return contractStatuses.some((status) => status !== ContractRankingStatus.VALIDE);
+  }
+
+  private resolveContractReferenceDate(contrat: any): Date | null {
+    const date = contrat.dateValidation ?? contrat.dateSignature ?? null;
+    if (!date) {
+      return null;
+    }
+
+    return new Date(date);
+  }
+
+  private resolveContractSortTime(contrat: any): number {
+    const date = contrat.dateValidation ?? contrat.dateSignature ?? contrat.createdAt ?? null;
+    return date ? new Date(date).getTime() : 0;
   }
 
   /**

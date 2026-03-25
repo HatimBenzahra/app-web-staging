@@ -61,12 +61,23 @@ import type {
   MutationComputeRankingResponse,
   MutationEvaluateBadgesResponse,
   MutationEvaluateTropheesResponse,
+  ContractRankingStatus,
 } from './gamification.types'
 
 export const gamificationApi = {
   // --- Ranking ---
-  async getRanking(period: string, periodKey: string, includeContratFinie?: boolean): Promise<RankSnapshot[]> {
-    const response = await gql<QueryRankingResponse>(GET_RANKING, { period, periodKey, includeContratFinie })
+  async getRanking(
+    period: string,
+    periodKey: string,
+    includeContratFinie?: boolean,
+    contractStatuses?: ContractRankingStatus[]
+  ): Promise<RankSnapshot[]> {
+    const response = await gql<QueryRankingResponse>(GET_RANKING, {
+      period,
+      periodKey,
+      includeContratFinie,
+      contractStatuses,
+    })
     return response.ranking
   },
 
@@ -164,13 +175,25 @@ export const gamificationApi = {
     return response.syncContrats
   },
 
-  async getContratsByCommercial(commercialId: number): Promise<ContratValide[]> {
-    const response = await gql<QueryContratsByCommercialResponse>(GET_CONTRATS_BY_COMMERCIAL, { commercialId })
+  async getContratsByCommercial(
+    commercialId: number,
+    contractStatuses?: ContractRankingStatus[]
+  ): Promise<ContratValide[]> {
+    const response = await gql<QueryContratsByCommercialResponse>(GET_CONTRATS_BY_COMMERCIAL, {
+      commercialId,
+      contractStatuses,
+    })
     return response.contratsByCommercial
   },
 
-  async getContratsByManager(managerId: number): Promise<ContratValide[]> {
-    const response = await gql<QueryContratsByManagerResponse>(GET_CONTRATS_BY_MANAGER, { managerId })
+  async getContratsByManager(
+    managerId: number,
+    contractStatuses?: ContractRankingStatus[]
+  ): Promise<ContratValide[]> {
+    const response = await gql<QueryContratsByManagerResponse>(GET_CONTRATS_BY_MANAGER, {
+      managerId,
+      contractStatuses,
+    })
     return response.contratsByManager
   },
 
