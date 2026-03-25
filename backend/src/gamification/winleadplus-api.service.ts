@@ -3,6 +3,7 @@ import axios from 'axios';
 import { WinleadPlusUser } from './gamification.dto';
 
 const WINLEADPLUS_API_BASE = 'https://www.winleadplus.com/api';
+const DEFAULT_PAGE_SIZE = 50;
 
 @Injectable()
 export class WinleadPlusApiService {
@@ -14,12 +15,7 @@ export class WinleadPlusApiService {
 
   async getUsers(token: string): Promise<WinleadPlusUser[]> {
     try {
-      const response = await axios.get(
-        `${WINLEADPLUS_API_BASE}/users?page=1&limit=1000`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      const items: any[] = response.data?.items || [];
+      const items = await this.fetchPaginatedResource(token, '/users', 1000);
 
       return items
         .filter(
@@ -53,10 +49,7 @@ export class WinleadPlusApiService {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      // L'API retourne directement un array (pas paginé)
-      return Array.isArray(response.data)
-        ? response.data
-        : response.data?.items || [];
+      return this.extractCollectionItems(response.data);
     } catch (error: any) {
       this.logger.error(`Erreur synchro offres WinLead+: ${error.message}`);
       this.handleApiError(error, 'offres');
@@ -69,19 +62,65 @@ export class WinleadPlusApiService {
 
   async getProspects(token: string): Promise<any[]> {
     try {
-      const response = await axios.get(
-        `${WINLEADPLUS_API_BASE}/prospects`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      // L'API retourne directement un array (pas paginé)
-      return Array.isArray(response.data)
-        ? response.data
-        : response.data?.items || [];
+      return this.fetchPaginatedResource(token, '/prospects', DEFAULT_PAGE_SIZE);
     } catch (error: any) {
       this.logger.error(`Erreur synchro prospects WinLead+: ${error.message}`);
       this.handleApiError(error, 'prospects');
     }
+  }
+
+  private async fetchPaginatedResource(
+    token: string,
+    resourcePath: string,
+    limit: number,
+  ): Promise<any[]> {
+    const headers = { Authorization: `Bearer ${token}` };
+    const collectedItems: any[] = [];
+
+    let currentPage = 1;
+    let totalPages = 1;
+
+    do {
+      const response = await axios.get(`${WINLEADPLUS_API_BASE}${resourcePath}`, {
+        headers,
+        params: {
+          page: currentPage,
+          limit,
+        },
+      });
+
+      const pageItems = this.extractCollectionItems(response.data);
+      collectedItems.push(...pageItems);
+
+      const responseTotalPages = Number(response.data?.totalPages);
+      totalPages = Number.isFinite(responseTotalPages) && responseTotalPages > 0
+        ? responseTotalPages
+        : 1;
+
+      currentPage += 1;
+    } while (currentPage <= totalPages);
+
+    this.logger.log(
+      `WinLead+ ${resourcePath}: ${collectedItems.length} élément(s) récupéré(s) sur ${totalPages} page(s)`,
+    );
+
+    return collectedItems;
+  }
+
+  private extractCollectionItems(data: any): any[] {
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (Array.isArray(data?.data)) {
+      return data.data;
+    }
+
+    if (Array.isArray(data?.items)) {
+      return data.items;
+    }
+
+    return [];
   }
 
   // ============================================================================

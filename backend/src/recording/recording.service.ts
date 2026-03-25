@@ -60,8 +60,7 @@ export class RecordingService {
   private readonly prefix = process.env.S3_PREFIX || 'recordings/';
   private readonly awsAccessKey = process.env.AWS_ACCESS_KEY_ID!;
   private readonly awsSecretKey = process.env.AWS_SECRET_ACCESS_KEY!;
-  private readonly whisperUrl = process.env.WHISPER_API_URL;
-  private readonly whisperTimeoutMs = 300_000;
+
 
   // EgressClient needs HTTP(S) URL, convert if WSS provided
   private readonly egress = new EgressClient(
@@ -545,8 +544,6 @@ export class RecordingService {
       `Upload confirmed: key=${s3Key} size=${head.ContentLength} user=${currentUser.role}-${currentUser.id} duration=${duration ?? 'unknown'}`,
     );
 
-    void this.transcription.processRecording(s3Key);
-
     const validSegments =
       doorSegments?.filter(
         (segment) =>
@@ -949,74 +946,88 @@ export class RecordingService {
         return;
       }
 
-      for (const segment of segments) {
-        const segmentFilePath = path.join(tmpDir, `segment-${segment.id}.mp4`);
-        const segmentS3Key = this.buildSegmentKey(
-          originalS3Key,
-          segment.porteId,
-          segment.startTime,
-        );
+      // ── PASSE 1 : Découpage + upload en parallèle (audio jouable, max 3) ──
+      const MAX_CONCURRENT = 3;
+      let running = 0;
+      const queue: (() => void)[] = [];
+      const limitFn = <T>(fn: () => Promise<T>): Promise<T> =>
+        new Promise<T>((resolve, reject) => {
+          const run = () => {
+            running++;
+            fn().then(resolve, reject).finally(() => {
+              running--;
+              const next = queue.shift();
+              if (next) next();
+            });
+          };
+          if (running < MAX_CONCURRENT) run();
+          else queue.push(run);
+        });
 
-        try {
-          await this.prisma.recordingSegment.update({
-            where: { id: segment.id },
-            data: { status: 'PROCESSING' },
-          });
-
-          // Step 1: Découpage ffmpeg + upload S3 (essentiel)
-          await execFileAsync(
-            'ffmpeg',
-            [
-              '-y',
-              '-i',
-              originalFilePath,
-              '-ss',
-              String(segment.startTime),
-              '-to',
-              String(segment.endTime),
-              '-c',
-              'copy',
-              segmentFilePath,
-            ],
-            { maxBuffer: FFMPEG_MAX_BUFFER },
-          );
-
-          await this.uploadSegmentToS3(segmentFilePath, segmentS3Key);
-
-          // Segment découpé et uploadé — sauvegarde immédiate
-          await this.prisma.recordingSegment.update({
-            where: { id: segment.id },
-            data: {
-              s3KeySegment: segmentS3Key,
-              status: 'COMPLETED',
-            },
-          });
-
-          // Step 2: Transcription + speech score (optionnel)
-          try {
-            const transcription = await this.transcribeSegment(segmentFilePath);
-            const speechScore =
-              await this.speechAnalysis.computeScore(segmentFilePath);
+      const results = await Promise.allSettled(
+        segments.map((segment) =>
+          limitFn(async () => {
+            const segmentFilePath = path.join(tmpDir, `segment-${segment.id}.mp4`);
+            const segmentS3Key = this.buildSegmentKey(
+              originalS3Key,
+              segment.porteId,
+              segment.startTime,
+            );
 
             await this.prisma.recordingSegment.update({
               where: { id: segment.id },
-              data: { transcription, speechScore },
+              data: { status: 'PROCESSING' },
             });
-          } catch (transcriptionError) {
-            this.logger.warn(
-              `Transcription failed for segmentId=${segment.id} (segment still usable): ${transcriptionError?.message || transcriptionError}`,
+
+            await execFileAsync(
+              'ffmpeg',
+              [
+                '-y',
+                '-i',
+                originalFilePath,
+                '-ss',
+                String(segment.startTime),
+                '-to',
+                String(segment.endTime),
+                '-c',
+                'copy',
+                segmentFilePath,
+              ],
+              { maxBuffer: FFMPEG_MAX_BUFFER },
             );
-          }
-        } catch (error) {
+
+            await this.uploadSegmentToS3(segmentFilePath, segmentS3Key);
+
+            await this.prisma.recordingSegment.update({
+              where: { id: segment.id },
+              data: {
+                s3KeySegment: segmentS3Key,
+                status: 'COMPLETED',
+              },
+            });
+
+            return { id: segment.id, s3Key: segmentS3Key };
+          }),
+        ),
+      );
+
+      // Marquer les échecs
+      for (let i = 0; i < results.length; i++) {
+        if (results[i].status === 'rejected') {
+          const seg = segments[i];
           this.logger.error(
-            `Segment processing failed for segmentId=${segment.id}: ${error?.message || error}`,
+            `Segment cut failed for segmentId=${seg.id}: ${(results[i] as PromiseRejectedResult).reason?.message || (results[i] as PromiseRejectedResult).reason}`,
           );
           await this.prisma.recordingSegment.update({
-            where: { id: segment.id },
+            where: { id: seg.id },
             data: { status: 'FAILED' },
           });
         }
       }
+
+      // ── PASSE 2 : Enrichissement en arrière-plan (transcription + _conv.mp4) ──
+      void this.enrichSegments(originalS3Key, originalFilePath, segments);
+
     } catch (error) {
       this.logger.error(
         `Unexpected error while processing segments for ${originalS3Key}: ${error?.message || error}`,
@@ -1027,6 +1038,94 @@ export class RecordingService {
           data: { status: 'FAILED' },
         });
       }
+      this.cleanupDir(tmpDir);
+    }
+    // Note: tmpDir cleanup happens in enrichSegments after it finishes
+  }
+
+  /**
+   * Passe 2 : Enrichissement — 1 seul appel Whisper pour tout le fichier.
+   * Produit : transcription par segment, speech score, et _conv.mp4.
+   * Fire-and-forget — ne bloque jamais la passe 1.
+   */
+  private async enrichSegments(
+    originalS3Key: string,
+    originalFilePath: string,
+    segments: Array<{ id: number; startTime: number; endTime: number }>,
+  ): Promise<void> {
+    const tmpDir = path.dirname(originalFilePath);
+
+    try {
+      // 1. Un seul appel Whisper sur le fichier complet
+      const whisperResult = await this.transcription.transcribeFile(originalFilePath);
+      if (!whisperResult || whisperResult.segments.length === 0) {
+        this.logger.warn(`Whisper returned no segments for ${originalS3Key}`);
+        return;
+      }
+
+      const { segments: whisperSegments, duration: whisperDuration } = whisperResult;
+
+      // 2. Extraire la transcription par segment (match par timestamps)
+      for (const segment of segments) {
+        try {
+          const overlapping = whisperSegments.filter(
+            (ws) => ws.end > segment.startTime && ws.start < segment.endTime,
+          );
+          const transcription = overlapping.map((ws) => ws.text).join(' ').trim() || undefined;
+
+          // Speech score basé sur Whisper (ratio parole/durée du segment)
+          const segDuration = segment.endTime - segment.startTime;
+          const speechDuration = overlapping.reduce((sum, ws) => {
+            const overlapStart = Math.max(ws.start, segment.startTime);
+            const overlapEnd = Math.min(ws.end, segment.endTime);
+            return sum + Math.max(0, overlapEnd - overlapStart);
+          }, 0);
+          const speechScore = segDuration > 0
+            ? Math.round(Math.min(100, (speechDuration / segDuration) * 100))
+            : null;
+
+          await this.prisma.recordingSegment.update({
+            where: { id: segment.id },
+            data: { transcription, speechScore },
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Enrichment failed for segmentId=${segment.id}: ${err?.message || err}`,
+          );
+        }
+      }
+
+      // 3. Générer _conv.mp4 (audio nettoyé — seulement la parole)
+      try {
+        const merged = this.transcription.mergeSegments(whisperSegments, 2.0);
+        if (merged.length > 0) {
+          const convFile = path.join(tmpDir, 'conversation.mp4');
+          const cut = await this.transcription.cutAudio(originalFilePath, convFile, merged);
+          if (cut) {
+            const convKey = originalS3Key.replace(/\.mp4$/i, '_conv.mp4');
+            await this.transcription.uploadToS3(convFile, convKey);
+            this.logger.log(`_conv.mp4 generated for ${originalS3Key}`);
+          }
+        }
+      } catch (convErr) {
+        this.logger.warn(
+          `_conv.mp4 generation failed for ${originalS3Key}: ${convErr?.message || convErr}`,
+        );
+      }
+
+      // 4. Cache le score global Whisper
+      if (whisperDuration > 0) {
+        this.speechAnalysis.cacheFromWhisperSegments(
+          originalS3Key,
+          whisperSegments,
+          whisperDuration,
+        );
+      }
+
+    } catch (error) {
+      this.logger.error(
+        `Enrichment failed for ${originalS3Key}: ${error?.message || error}`,
+      );
     } finally {
       this.cleanupDir(tmpDir);
     }
@@ -1072,47 +1171,6 @@ export class RecordingService {
         ContentLength: stat.size,
       }),
     );
-  }
-
-  private async transcribeSegment(
-    filePath: string,
-  ): Promise<string | undefined> {
-    if (!this.whisperUrl) {
-      return undefined;
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const formData = new FormData();
-    formData.append(
-      'file',
-      new Blob([fileBuffer], { type: 'audio/mp4' }),
-      'segment.mp4',
-    );
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.whisperTimeoutMs);
-
-    try {
-      const response = await fetch(
-        `${this.whisperUrl}/transcribe/prospection?language=auto`,
-        {
-          method: 'POST',
-          body: formData,
-          signal: controller.signal,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Whisper responded with ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const data = (await response.json()) as { text?: string };
-      return data.text?.trim() || undefined;
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 
   private cleanupDir(dirPath: string): void {

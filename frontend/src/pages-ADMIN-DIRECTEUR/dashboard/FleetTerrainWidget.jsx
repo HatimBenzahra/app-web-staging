@@ -6,17 +6,12 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Navigation2, ArrowRight, MapPin, Clock3 } from 'lucide-react'
 import {
-  Wifi,
-  WifiOff,
-  BatteryWarning,
-  Navigation2,
-  ArrowRight,
-  MapPin,
-  Clock3,
-  Circle,
-} from 'lucide-react'
-import { useGpsLatestPositions, useDeviceMappings, useGpsDailyRoute } from '@/hooks/metier/api/gps-tracking'
+  useGpsLatestPositions,
+  useDeviceMappings,
+  useGpsDailyRoute,
+} from '@/hooks/metier/api/gps-tracking'
 import { Layer, Source } from 'react-map-gl/mapbox'
 import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 
@@ -24,8 +19,6 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
 
 const IDF_CENTER = { longitude: 2.35, latitude: 48.85, zoom: 10, pitch: 45, bearing: -15 }
-const LOW_BATTERY_THRESHOLD = 20
-
 const MARKER_COLORS = [
   '#6366f1',
   '#f43f5e',
@@ -126,18 +119,6 @@ function BuildingMarker({ onClick, color, dimmed }) {
         className="h-2 w-2 rounded-full -mt-0.5 border border-white"
         style={{ backgroundColor: bg }}
       />
-    </div>
-  )
-}
-
-function FleetStatPill({ icon, count, label, colorClass }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {React.createElement(icon, {
-        className: `h-3.5 w-3.5 shrink-0 ${colorClass}`,
-      })}
-      <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>{count}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   )
 }
@@ -265,18 +246,6 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     }
   }, [onlineWithPosition, locationNames])
 
-  const fleetStats = useMemo(() => {
-    const devices = kioskDevices ?? []
-    return {
-      online: devices.filter(d => d.online).length,
-      offline: devices.filter(d => !d.online).length,
-      lowBattery: devices.filter(
-        d => d.batteryLevel != null && d.batteryLevel <= LOW_BATTERY_THRESHOLD
-      ).length,
-      total: devices.length,
-    }
-  }, [kioskDevices])
-
   const mapViewState = useMemo(() => {
     if (onlineWithPosition.length === 0) return IDF_CENTER
     if (onlineWithPosition.length === 1) {
@@ -378,12 +347,12 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
             Équipe terrain
           </CardTitle>
           <div className="flex items-center gap-2">
-            {fleetStats.total > 0 && (
+            {onlineWithPosition.length > 0 && (
               <Badge
                 variant="secondary"
                 className="text-xs bg-chart-2/15 text-chart-2 border-chart-2/20"
               >
-                {fleetStats.online}/{fleetStats.total} actifs
+                {onlineWithPosition.length} localisé{onlineWithPosition.length > 1 ? 's' : ''}
               </Badge>
             )}
           </div>
@@ -452,16 +421,18 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                     </Marker>
                   )
                 })}
-                {todayImmeubles?.filter(imm => imm.latitude && imm.longitude).map(imm => (
-                  <Marker
-                    key={`imm-${imm.id}`}
-                    longitude={imm.longitude}
-                    latitude={imm.latitude}
-                    anchor="bottom"
-                  >
-                    <BuildingMarker onClick={() => navigate(`/immeubles/${imm.id}`)} />
-                  </Marker>
-                ))}
+                {todayImmeubles
+                  ?.filter(imm => imm.latitude && imm.longitude)
+                  .map(imm => (
+                    <Marker
+                      key={`imm-${imm.id}`}
+                      longitude={imm.longitude}
+                      latitude={imm.latitude}
+                      anchor="bottom"
+                    >
+                      <BuildingMarker onClick={() => navigate(`/immeubles/${imm.id}`)} />
+                    </Marker>
+                  ))}
                 {routeGeoJson && selectedId && (
                   <Source id="route" type="geojson" data={routeGeoJson}>
                     <Layer
@@ -481,13 +452,13 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
           </div>
 
           <div className="flex-2 overflow-y-auto space-y-1.5 pr-0.5">
-            {commercials.length === 0 ? (
+            {onlineWithPosition.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-center py-10">
                 <Navigation2 className="h-5 w-5 text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground">Aucun appareil enregistré</p>
+                <p className="text-xs text-muted-foreground">Aucun appareil localisé</p>
               </div>
             ) : (
-              commercials.map(c => {
+              onlineWithPosition.map(c => {
                 const color = getMarkerColor(c.id)
                 const location = locationNames[c.id]
                 const isSelected = selectedId === c.id
@@ -496,52 +467,33 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                     type="button"
                     key={c.id}
                     onClick={() => handleSelectCommercial(c)}
-                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg border transition-all ${
+                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg border transition-all cursor-pointer ${
                       isSelected
                         ? 'border-primary/50 bg-primary/8 ring-1 ring-primary/20'
-                        : c.isOnline
-                          ? 'border-border/50 bg-background/80 hover:bg-muted/20'
-                          : 'border-border/50 opacity-50 bg-muted/20'
-                    } ${c.hasPosition && c.isOnline ? 'cursor-pointer' : 'cursor-default'}`}
+                        : 'border-border/50 bg-background/80 hover:bg-muted/20'
+                    }`}
                   >
                     <div
-                      className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
-                        c.isOnline ? 'text-white' : 'text-muted-foreground bg-muted'
-                      }`}
-                      style={c.isOnline ? { backgroundColor: color } : undefined}
+                      className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 text-white"
+                      style={{ backgroundColor: color }}
                     >
                       {(c.name || '?').charAt(0).toUpperCase()}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold truncate leading-tight">{c.name}</p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {c.isOnline ? (
-                          <>
-                            <Circle className="h-1.5 w-1.5 fill-chart-2 text-chart-2 shrink-0" />
-                            <span className="text-[10px] font-medium text-chart-2">Actif</span>
-                          </>
+                      <div className="mt-0.5">
+                        {location ? (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{location}</span>
+                          </span>
                         ) : (
-                          <>
-                            <Circle className="h-1.5 w-1.5 fill-muted-foreground/40 text-muted-foreground/40 shrink-0" />
-                            <span className="text-[10px] text-muted-foreground/70">Hors ligne</span>
-                          </>
+                          <span className="text-[10px] text-muted-foreground/50 italic">
+                            Localisation...
+                          </span>
                         )}
                       </div>
-                      {c.isOnline && (
-                        <div className="mt-0.5">
-                          {location ? (
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                              <MapPin className="h-2.5 w-2.5 shrink-0" />
-                              <span className="truncate">{location}</span>
-                            </span>
-                          ) : c.hasPosition ? (
-                            <span className="text-[10px] text-muted-foreground/50 italic">
-                              Localisation...
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
                     </div>
 
                     {c.lastSeen && (
@@ -560,31 +512,14 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
         </div>
 
         <div className="flex items-center justify-between gap-4 pt-1 border-t border-border/40">
-          <div className="flex items-center gap-4 flex-wrap">
-            <FleetStatPill
-              icon={Wifi}
-              count={fleetStats.online}
-              label="en ligne"
-              colorClass="text-chart-2"
-            />
-            <div className="h-3 w-px bg-border/60 shrink-0" />
-            <FleetStatPill
-              icon={WifiOff}
-              count={fleetStats.offline}
-              label="hors ligne"
-              colorClass="text-destructive"
-            />
-            {fleetStats.lowBattery > 0 && (
-              <>
-                <div className="h-3 w-px bg-border/60 shrink-0" />
-                <FleetStatPill
-                  icon={BatteryWarning}
-                  count={fleetStats.lowBattery}
-                  label="batt. faible"
-                  colorClass="text-chart-5"
-                />
-              </>
-            )}
+          <div className="flex items-center gap-1.5">
+            <Navigation2 className="h-3.5 w-3.5 text-chart-2 shrink-0" />
+            <span className="text-xs font-semibold tabular-nums text-chart-2">
+              {onlineWithPosition.length}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              localisé{onlineWithPosition.length > 1 ? 's' : ''}
+            </span>
           </div>
           <Link
             to="/kiosk/localisation"

@@ -186,7 +186,7 @@ export class TranscriptionService implements OnModuleDestroy {
       }
 
       this.setProgress(s3Key, 'transcribing', 2);
-      const whisperResult = await this.transcribe(originalFile);
+      const whisperResult = await this.transcribeFile(originalFile);
       if (!whisperResult || whisperResult.segments.length === 0) {
         this.logger.warn(
           `Aucun segment de parole détecté pour ${s3Key} — pas de version conversation`,
@@ -275,7 +275,7 @@ export class TranscriptionService implements OnModuleDestroy {
     }
   }
 
-  private async transcribe(filePath: string): Promise<{ segments: WhisperSegment[]; duration: number } | null> {
+  async transcribeFile(filePath: string): Promise<{ segments: WhisperSegment[]; duration: number } | null> {
     try {
       const fileBuffer = fs.readFileSync(filePath);
 
@@ -335,7 +335,7 @@ export class TranscriptionService implements OnModuleDestroy {
    * Fusionne les segments proches pour éviter les micro-coupures.
    * padding = secondes ajoutées avant/après chaque segment.
    */
-  private mergeSegments(
+  mergeSegments(
     segments: WhisperSegment[],
     padding: number,
   ): { start: number; end: number }[] {
@@ -367,7 +367,7 @@ export class TranscriptionService implements OnModuleDestroy {
     return merged;
   }
 
-  private async cutAudio(
+  async cutAudio(
     inputPath: string,
     outputPath: string,
     segments: { start: number; end: number }[],
@@ -451,7 +451,7 @@ export class TranscriptionService implements OnModuleDestroy {
   }
 
   /** Upload vers S3 en streaming depuis le disque (pas de buffering mémoire) */
-  private async uploadToS3(filePath: string, s3Key: string): Promise<boolean> {
+  async uploadToS3(filePath: string, s3Key: string): Promise<boolean> {
     try {
       const stat = fs.statSync(filePath);
       const stream = fs.createReadStream(filePath);
