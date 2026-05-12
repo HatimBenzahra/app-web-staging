@@ -30,9 +30,6 @@ export default function Login() {
 
       Logger.debug('✅ Connexion réussie:', authResponse)
 
-      // Notifier le contexte du changement d'authentification
-      window.dispatchEvent(new Event('auth-changed'))
-
       // Redirection selon le rôle
       setTimeout(() => {
         navigate('/')

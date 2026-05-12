@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { MapSkeleton, TableSkeleton } from '@/components/LoadingSkeletons'
 import { useCommercials, useManagers } from '@/services'
+import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 import { useEntityPage } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
+import useDeviceCommercialNames from '@/pages-ADMIN-DIRECTEUR/kiosk/useDeviceCommercialNames'
 import {
   MapPin,
   Search,
@@ -28,27 +30,42 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN
 }
-// Générer position GPS simulée
-const generateMockGPSPosition = commercialId => {
-  const centerLat = 48.8566
-  const centerLng = 2.3522
-  const radius = 0.15
-  const seed = commercialId * 123456
-  return {
-    latitude: centerLat + Math.sin(seed) * radius,
-    longitude: centerLng + Math.cos(seed) * radius,
-    lastUpdate: new Date(Date.now() - Math.floor(Math.random() * 3600000)).toISOString(),
+const normalizeName = value =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[^\w\s-]|_/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const parseTimestamp = value => {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value === 'number') {
+    const d = new Date(value)
+    return Number.isNaN(d.getTime()) ? null : d
   }
+  if (typeof value !== 'string') return null
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const isoWithoutTimezone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)
+  const parsed = new Date(isoWithoutTimezone ? `${trimmed}Z` : trimmed)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 // Formater le temps écoulé
 const formatLastUpdate = dateString => {
-  const diffMins = Math.floor((new Date() - new Date(dateString)) / 60000)
+  const date = parseTimestamp(dateString)
+  if (!date) return 'Inconnu'
+  const diffMins = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000))
   if (diffMins < 1) return "À l'instant"
   if (diffMins < 60) return `Il y a ${diffMins} min`
   const diffHours = Math.floor(diffMins / 60)
   if (diffHours < 24) return `Il y a ${diffHours}h`
-  return new Date(dateString).toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -75,7 +92,8 @@ const CommercialListItem = React.memo(function CommercialListItem({
     wasSelectedRef.current = isSelected
   }, [isSelected])
 
-  const isActive = gpsData && new Date(gpsData.lastUpdate) > new Date(Date.now() - 3600000)
+  const lastUpdate = parseTimestamp(gpsData?.lastUpdate)
+  const isActive = Boolean(lastUpdate && Date.now() - lastUpdate.getTime() <= 3600000)
 
   return (
     <button
@@ -148,6 +166,8 @@ const CommercialListItem = React.memo(function CommercialListItem({
 export default function GPSTracking() {
   const { data: commercials, loading, error } = useCommercials()
   const { data: managers } = useManagers()
+  const devicesQuery = useKioskDevices()
+  const { getCommercialName } = useDeviceCommercialNames()
   const { showError, showInfo } = useErrorToast()
 
   // Utilisation du système de rôles
@@ -187,11 +207,45 @@ export default function GPSTracking() {
   // Préparer les données avec GPS
   const commercialsWithGPS = useMemo(() => {
     if (!filteredCommercials) return []
+
+    const devicesWithGps = (devicesQuery.data || []).filter(
+      device => typeof device.latitude === 'number' && typeof device.longitude === 'number'
+    )
+
+    const devicesByCommercialName = new Map()
+    for (const device of devicesWithGps) {
+      const mappedCommercialName = normalizeName(getCommercialName(device))
+      if (!mappedCommercialName) continue
+
+      const current = devicesByCommercialName.get(mappedCommercialName)
+      if (!current) {
+        devicesByCommercialName.set(mappedCommercialName, device)
+        continue
+      }
+
+      const currentSeen = parseTimestamp(current.lastSeen)?.getTime() || 0
+      const nextSeen = parseTimestamp(device.lastSeen)?.getTime() || 0
+      if ((device.online && !current.online) || nextSeen > currentSeen) {
+        devicesByCommercialName.set(mappedCommercialName, device)
+      }
+    }
+
     return filteredCommercials.map(commercial => ({
       ...commercial,
-      gpsData: generateMockGPSPosition(commercial.id),
+      gpsData: (() => {
+        const key = normalizeName(`${commercial.prenom} ${commercial.nom}`)
+        const matchedDevice = devicesByCommercialName.get(key)
+        if (!matchedDevice) return null
+        return {
+          latitude: matchedDevice.latitude,
+          longitude: matchedDevice.longitude,
+          lastUpdate: matchedDevice.lastSeen,
+          deviceId: matchedDevice.deviceId,
+          online: matchedDevice.online,
+        }
+      })(),
     }))
-  }, [filteredCommercials])
+  }, [filteredCommercials, devicesQuery.data, getCommercialName])
 
   // Filtrer par recherche
   const searchedCommercials = useMemo(() => {
@@ -250,7 +304,7 @@ export default function GPSTracking() {
     [showError]
   )
 
-  if (loading) {
+  if (loading || devicesQuery.isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-2">
@@ -287,6 +341,22 @@ export default function GPSTracking() {
     )
   }
 
+  if (devicesQuery.error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">Suivi GPS</h1>
+          <p className="text-muted-foreground text-base">
+            Localisation en temps réel de vos commerciaux
+          </p>
+        </div>
+        <div className="p-6 border border-red-200 rounded-lg bg-red-50">
+          <p className="text-red-800">Erreur lors du chargement des positions kiosk.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -318,7 +388,11 @@ export default function GPSTracking() {
                 {
                   searchedCommercials.filter(
                     c =>
-                      c.gpsData && new Date(c.gpsData.lastUpdate) > new Date(Date.now() - 3600000)
+                      c.gpsData &&
+                      (() => {
+                        const ts = parseTimestamp(c.gpsData.lastUpdate)
+                        return Boolean(ts && Date.now() - ts.getTime() <= 3600000)
+                      })()
                   ).length
                 }
               </p>
@@ -422,8 +496,10 @@ export default function GPSTracking() {
                     if (!commercial.gpsData) return null
 
                     const isSelected = commercial.id === selectedCommercialId
-                    const isActive =
-                      new Date(commercial.gpsData.lastUpdate) > new Date(Date.now() - 3600000)
+                    const isActive = (() => {
+                      const ts = parseTimestamp(commercial.gpsData.lastUpdate)
+                      return Boolean(ts && Date.now() - ts.getTime() <= 3600000)
+                    })()
 
                     return (
                       <Marker
@@ -533,8 +609,10 @@ export default function GPSTracking() {
                   if (!commercial.gpsData) return null
 
                   const isSelected = commercial.id === selectedCommercialId
-                  const isActive =
-                    new Date(commercial.gpsData.lastUpdate) > new Date(Date.now() - 3600000)
+                  const isActive = (() => {
+                    const ts = parseTimestamp(commercial.gpsData.lastUpdate)
+                    return Boolean(ts && Date.now() - ts.getTime() <= 3600000)
+                  })()
 
                   return (
                     <Marker
@@ -591,7 +669,11 @@ export default function GPSTracking() {
                 {
                   searchedCommercials.filter(
                     c =>
-                      c.gpsData && new Date(c.gpsData.lastUpdate) > new Date(Date.now() - 3600000)
+                      c.gpsData &&
+                      (() => {
+                        const ts = parseTimestamp(c.gpsData.lastUpdate)
+                        return Boolean(ts && Date.now() - ts.getTime() <= 3600000)
+                      })()
                   ).length
                 }
               </p>

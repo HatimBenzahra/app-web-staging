@@ -6,7 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Navigation2, ArrowRight, MapPin, Clock3 } from 'lucide-react'
+import { Navigation2, ArrowRight, MapPin } from 'lucide-react'
 import {
   useGpsLatestPositions,
   useDeviceMappings,
@@ -31,20 +31,6 @@ const MARKER_COLORS = [
   '#ef4444',
   '#3b82f6',
 ]
-
-const formatRelativeTime = value => {
-  if (!value) return 'Inconnu'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Inconnu'
-  const diffMs = Date.now() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffHour = Math.floor(diffMin / 60)
-
-  if (diffMin < 1) return "A l'instant"
-  if (diffMin < 60) return `il y a ${diffMin} min`
-  if (diffHour < 24) return `il y a ${diffHour}h`
-  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
-}
 
 const geocodeCache = new Map()
 
@@ -179,34 +165,20 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
       const pos = posMap.get(id) || posMap.get(device.deviceId)
       const name =
         mappingsMap.get(id) || mappingsMap.get(device.deviceId) || device.deviceName || id
+      const latitude = pos?.latitude ?? device.latitude
+      const longitude = pos?.longitude ?? device.longitude
+      const hasPosition = typeof latitude === 'number' && typeof longitude === 'number'
 
       result.push({
         id,
         name,
         isOnline: device.online,
-        latitude: pos?.latitude || device.latitude,
-        longitude: pos?.longitude || device.longitude,
+        latitude,
+        longitude,
         lastSeen: pos?.recordedAt || device.lastSeen,
         batteryLevel: device.batteryLevel,
-        hasPosition: Boolean(pos?.latitude || device.latitude),
+        hasPosition,
       })
-    }
-
-    for (const pos of positions) {
-      if (!seen.has(pos.deviceId)) {
-        seen.add(pos.deviceId)
-        const name = mappingsMap.get(pos.deviceId) || pos.deviceName || pos.deviceId
-        result.push({
-          id: pos.deviceId,
-          name,
-          isOnline: pos.isOnline,
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          lastSeen: pos.recordedAt,
-          batteryLevel: pos.batteryLevel,
-          hasPosition: true,
-        })
-      }
     }
 
     result.sort((a, b) => {
@@ -495,15 +467,6 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                         )}
                       </div>
                     </div>
-
-                    {c.lastSeen && (
-                      <div className="shrink-0">
-                        <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5 justify-end">
-                          <Clock3 className="h-2.5 w-2.5" />
-                          {formatRelativeTime(c.lastSeen)}
-                        </span>
-                      </div>
-                    )}
                   </button>
                 )
               })

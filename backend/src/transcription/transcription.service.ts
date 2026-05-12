@@ -124,7 +124,7 @@ export class TranscriptionService implements OnModuleDestroy {
   private resolveWhisperTimeout(): number {
     const raw = Number(process.env.WHISPER_TIMEOUT_MS);
     if (!Number.isFinite(raw) || raw < 10_000) {
-      return 300_000;
+      return 1_200_000;
     }
     return raw;
   }

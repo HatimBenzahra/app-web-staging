@@ -1,6 +1,7 @@
 /**
- * Contexte global pour la gestion des rôles et des données filtrées
- * Intégré avec Keycloak SSO
+ * Contexte global pour la gestion des rôles et des données filtrées.
+ * La politique de session reste centralisée dans authService; ce contexte hydrate
+ * seulement les informations utilisateur dont l'UI a besoin.
  */
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -8,34 +9,69 @@ import { ROLES } from '../hooks/metier/permissions/roleFilters'
 import { RoleContext } from './userole'
 import { authService } from '../services/auth'
 import { api } from '../services/api'
-import { clearAllAppStorage } from '../services/core'
 import LoadingScreen from '../components/LoadingScreen'
 import { useAppLoading } from './AppLoadingContext'
 import { setUser as setSentryUser } from '../config/sentry'
+
+const PUBLIC_ROUTES = ['/login', '/unauthorized']
 
 export const RoleProvider = ({ children }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const { isAppReady } = useAppLoading()
+  const initialSession = authService.getSessionSnapshot()
 
-  // État de chargement initial
   const [isInitialLoading, setIsInitialLoading] = useState(true)
   const [hasCompletedInitialLoading, setHasCompletedInitialLoading] = useState(false)
-
-  // userId sera chargé depuis l'API via api.auth.getMe()
-  const [currentRole, setCurrentRole] = useState(() => authService.getUserRole())
+  const [sessionStatus, setSessionStatus] = useState(initialSession.status)
+  const [currentRole, setCurrentRole] = useState(initialSession.role)
   const [currentUserId, setCurrentUserId] = useState(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(() => authService.isAuthenticated())
+  const [isAuthenticated, setIsAuthenticated] = useState(initialSession.hasSession)
 
-  // Envoyer les infos utilisateur à Sentry au montage initial (si authentifié)
-  useEffect(() => {
-    if (currentUserId && currentRole && authService.isAuthenticated()) {
+  const hydrateUserInfo = useCallback(async () => {
+    if (!authService.isAuthenticated()) return
+
+    try {
+      const userInfo = await api.auth.getMe()
+      setCurrentUserId(userInfo.id)
+      setCurrentRole(userInfo.role)
       setSentryUser({
-        id: currentUserId.toString(),
-        role: currentRole,
+        id: userInfo.id.toString(),
+        role: userInfo.role,
       })
+    } catch (error) {
+      console.error('Erreur récupération user info:', error)
+      const recovered = await authService.ensureAuthenticated()
+      if (!recovered) return
+
+      try {
+        const retryInfo = await api.auth.getMe()
+        setCurrentUserId(retryInfo.id)
+        setCurrentRole(retryInfo.role)
+        setSentryUser({ id: retryInfo.id.toString(), role: retryInfo.role })
+      } catch {
+        // Refresh OK mais getMe échoue encore: on conserve la session en état degraded.
+      }
     }
-  }, [currentUserId, currentRole])
+  }, [])
+
+  useEffect(() => {
+    return authService.subscribe(snapshot => {
+      setSessionStatus(snapshot.status)
+      setCurrentRole(snapshot.role)
+      setIsAuthenticated(snapshot.hasSession)
+
+      if (snapshot.status === 'anonymous') {
+        setCurrentUserId(null)
+        setSentryUser(null)
+        return
+      }
+
+      if (snapshot.isAuthenticated) {
+        hydrateUserInfo()
+      }
+    })
+  }, [hydrateUserInfo])
 
   useEffect(() => {
     if (!isInitialLoading && !hasCompletedInitialLoading) {
@@ -44,99 +80,28 @@ export const RoleProvider = ({ children }) => {
   }, [isInitialLoading, hasCompletedInitialLoading])
 
   useEffect(() => {
-    const publicRoutes = ['/login', '/unauthorized']
-    const isPublicRoute = publicRoutes.some(route => location.pathname.startsWith(route))
+    const isPublicRoute = PUBLIC_ROUTES.some(route => location.pathname.startsWith(route))
 
-    if (!isPublicRoute && !authService.hasSession()) {
+    if (!isPublicRoute && sessionStatus === 'anonymous') {
       navigate('/login', { replace: true })
       setIsInitialLoading(false)
-    } else if (isPublicRoute) {
+      return
+    }
+
+    if (isPublicRoute || isAppReady || sessionStatus === 'degraded') {
       setIsInitialLoading(false)
-    } else if (isAppReady) {
+      return
+    }
+
+    const maxTimer = setTimeout(() => {
       setIsInitialLoading(false)
-    } else {
-      const maxTimer = setTimeout(() => {
-        setIsInitialLoading(false)
-      }, 3000)
+    }, 3000)
 
-      return () => clearTimeout(maxTimer)
-    }
-  }, [navigate, location, isAppReady])
-
-  useEffect(() => {
-    let authChangeTimers = []
-
-    const handleAuthChange = () => {
-      const newRole = authService.getUserRole()
-
-      setCurrentRole(newRole)
-      // userId sera rechargé via api.auth.getMe() dans le useEffect séparé
-      // Ne pas essayer de le récupérer depuis le JWT car il n'y est pas
-
-      // Recharger les infos utilisateur depuis l'API
-      if (authService.isAuthenticated()) {
-        setIsAuthenticated(true)
-        api.auth
-          .getMe()
-          .then(userInfo => {
-            setCurrentUserId(userInfo.id)
-            setSentryUser({
-              id: userInfo.id.toString(),
-              role: userInfo.role,
-            })
-          })
-          .catch(error => {
-            console.error('Erreur récupération user info lors du changement:', error)
-          })
-      } else {
-        setCurrentUserId(null)
-        setSentryUser(null)
-        setIsAuthenticated(false)
-      }
-
-      for (const timer of authChangeTimers) {
-        clearTimeout(timer)
-      }
-      authChangeTimers = []
-
-      setIsInitialLoading(true)
-
-      const readyTimer = setTimeout(() => {
-        setIsInitialLoading(false)
-      }, 300)
-      authChangeTimers.push(readyTimer)
-    }
-
-    // Écouter les changements de storage (entre onglets)
-    window.addEventListener('storage', handleAuthChange)
-
-    // Custom event pour les changements dans le même onglet
-    window.addEventListener('auth-changed', handleAuthChange)
-
-    return () => {
-      window.removeEventListener('storage', handleAuthChange)
-      window.removeEventListener('auth-changed', handleAuthChange)
-      for (const timer of authChangeTimers) {
-        clearTimeout(timer)
-      }
-    }
-  }, [])
+    return () => clearTimeout(maxTimer)
+  }, [navigate, location, isAppReady, sessionStatus])
 
   const logout = useCallback(() => {
-    // Nettoyer les tokens et données d'authentification
     authService.logout()
-
-    clearAllAppStorage()
-
-    // Réinitialiser les états locaux
-    setCurrentRole(null)
-    setCurrentUserId(null)
-    setIsAuthenticated(false)
-
-    // Retirer l'utilisateur de Sentry
-    setSentryUser(null)
-
-    // Rediriger vers la page de connexion
     navigate('/login', { replace: true })
   }, [navigate])
 
@@ -144,7 +109,6 @@ export const RoleProvider = ({ children }) => {
     () => ({
       currentRole,
       currentUserId,
-
       logout,
       isAuthenticated,
       isAdmin: currentRole === ROLES.ADMIN,
@@ -155,93 +119,10 @@ export const RoleProvider = ({ children }) => {
     [currentRole, currentUserId, logout, isAuthenticated]
   )
 
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      if (authService.isRefreshing) return
-
-      const currentlyAuthenticated = authService.isAuthenticated()
-      if (currentlyAuthenticated !== isAuthenticated) {
-        if (!currentlyAuthenticated) {
-          const recovered = await authService.ensureAuthenticated()
-          if (recovered) return
-          setIsAuthenticated(false)
-          setCurrentRole(null)
-          setCurrentUserId(null)
-          setSentryUser(null)
-        } else {
-          setIsAuthenticated(true)
-        }
-      }
-    }
-
-    const handleUnauthorized = () => {
-      if (authService.isRefreshing) return
-
-      authService.logout()
-      setIsAuthenticated(false)
-      setCurrentRole(null)
-      setCurrentUserId(null)
-      setSentryUser(null)
-    }
-
-    checkAuthStatus()
-
-    const interval = setInterval(checkAuthStatus, 30_000)
-
-    window.addEventListener('auth-unauthorized', handleUnauthorized)
-
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('auth-unauthorized', handleUnauthorized)
-    }
-  }, [isAuthenticated])
-
-  // Charger les infos utilisateur depuis l'API au démarrage
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      if (authService.isAuthenticated()) {
-        setIsAuthenticated(true)
-        try {
-          const userInfo = await api.auth.getMe()
-          setCurrentUserId(userInfo.id)
-          setCurrentRole(userInfo.role)
-
-          // Mettre à jour Sentry
-          setSentryUser({
-            id: userInfo.id.toString(),
-            role: userInfo.role,
-          })
-        } catch (error) {
-          console.error('Erreur récupération user info:', error)
-          const recovered = await authService.ensureAuthenticated()
-          if (recovered) {
-            try {
-              const retryInfo = await api.auth.getMe()
-              setCurrentUserId(retryInfo.id)
-              setCurrentRole(retryInfo.role)
-              setSentryUser({ id: retryInfo.id.toString(), role: retryInfo.role })
-              return
-            } catch {
-              // noop — refresh OK mais getMe échoue encore
-            }
-          }
-          logout()
-        }
-      } else {
-        setIsAuthenticated(false)
-      }
-    }
-
-    fetchUserInfo()
-  }, [logout])
-
   return (
     <RoleContext.Provider value={value}>
       {children}
-      {/* LoadingScreen par-dessus tout pendant le chargement initial */}
-      {!hasCompletedInitialLoading && isInitialLoading && authService.isAuthenticated() && (
-        <LoadingScreen />
-      )}
+      {!hasCompletedInitialLoading && isInitialLoading && isAuthenticated && <LoadingScreen />}
     </RoleContext.Provider>
   )
 }

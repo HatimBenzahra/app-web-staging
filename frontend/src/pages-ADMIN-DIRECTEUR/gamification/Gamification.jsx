@@ -886,7 +886,7 @@ function DetailModal({
                           {contrat.offreNom || 'Offre inconnue'}
                         </p>
                         <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          [contrat.statutContrat, contrat.offreCategorie, contrat.offreFournisseur]
+                          {[contrat.statutContrat, contrat.offreCategorie, contrat.offreFournisseur]
                             .filter(Boolean)
                             .join(' · ')}
                         </p>

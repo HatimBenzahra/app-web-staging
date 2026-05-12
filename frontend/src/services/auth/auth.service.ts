@@ -1,9 +1,10 @@
 /**
  * @fileoverview Authentication service for Keycloak SSO integration
- * Handles login, logout, token management and role extraction
+ * Handles login, logout, token management and session state notifications.
  */
 
 import { graphqlClient } from '../core/graphql'
+import { clearAllAppStorage } from '../core/cache'
 import { LoginCredentials, AuthResponse, ALLOWED_GROUPS, GROUP_TO_ROLE_MAP } from './auth.types'
 import { decodeToken } from './token.utils'
 
@@ -43,38 +44,92 @@ const REFRESH_TOKEN_MUTATION = `
   }
 `
 
+export type SessionStatus = 'unknown' | 'anonymous' | 'authenticated' | 'refreshing' | 'degraded'
+
+export interface SessionSnapshot {
+  status: SessionStatus
+  isAuthenticated: boolean
+  hasSession: boolean
+  isRefreshing: boolean
+  role: string | null
+}
+
+type SessionListener = (snapshot: SessionSnapshot) => void
+
 // =============================================================================
 // Auth Service Class
 // =============================================================================
 
 export class AuthService {
+  private refreshTimerId: ReturnType<typeof setTimeout> | null = null
+  private refreshRetryCount = 0
+  private authGeneration = 0
+  private _isRefreshing = false
+  private _refreshPromise: Promise<AuthResponse | null> | null = null
+  private sessionStatus: SessionStatus = 'unknown'
+  private listeners = new Set<SessionListener>()
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', event => {
+        if (!event.key || this.isAuthStorageKey(event.key)) {
+          this.syncGraphQLAuthHeader()
+          this.notifySessionChanged()
+        }
+      })
+    }
+  }
+
+  get isRefreshing(): boolean {
+    return this._isRefreshing
+  }
+
+  subscribe(listener: SessionListener): () => void {
+    this.listeners.add(listener)
+    listener(this.getSessionSnapshot())
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  getSessionSnapshot(): SessionSnapshot {
+    const isAuthenticated = this.isAuthenticated()
+    const hasSession = isAuthenticated || this.getRefreshToken() !== null
+    const status = this.resolveSessionStatus(isAuthenticated, hasSession)
+
+    return {
+      status,
+      isAuthenticated,
+      hasSession,
+      isRefreshing: this._isRefreshing,
+      role: this.getUserRole(),
+    }
+  }
+
   /**
-   * Connexion avec Keycloak via GraphQL
+   * Connexion avec Keycloak via GraphQL.
    */
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
-      const data = await graphqlClient.request<{ login: AuthResponse }>(LOGIN_MUTATION, {
-        loginInput: credentials,
-      })
+      this.resetAuthStateForLogin()
+
+      const data = await graphqlClient.request<{ login: AuthResponse }>(
+        LOGIN_MUTATION,
+        { loginInput: credentials },
+        undefined,
+        true
+      )
 
       const authResponse = data.login
-
-      // Vérifier que l'utilisateur a un groupe autorisé
       const hasAuthorizedGroup = authResponse.groups.some(group => ALLOWED_GROUPS.includes(group))
 
       if (!hasAuthorizedGroup) {
         throw new Error('UNAUTHORIZED_GROUP')
       }
 
-      // Stocker les tokens et le rôle dans le localStorage
-      this.storeAuthData(authResponse)
-
-      // Configurer le token dans le client GraphQL pour les futures requêtes
-      graphqlClient.setAuthToken(authResponse.access_token)
-
+      this.applyAuthenticatedSession(authResponse)
       return authResponse
     } catch (error: any) {
-      // Si c'est une erreur de groupe non autorisé du backend
       if (
         error.message?.includes('UNAUTHORIZED_GROUP') ||
         error.graphQLErrors?.[0]?.message?.includes('UNAUTHORIZED_GROUP')
@@ -82,67 +137,51 @@ export class AuthService {
         throw new Error('UNAUTHORIZED_GROUP')
       }
 
-      // Sinon, propager l'erreur
       throw error
     }
   }
 
   /**
-   * Rafraîchit le token d'accès.
-   * Utilise le promise coalescing : si un refresh est déjà en cours,
-   * tous les appelants partagent la même promesse au lieu de lancer
-   * des appels parallèles à Keycloak (qui révoquerait le refresh_token).
+   * Rafraîchit le token d'accès avec promise coalescing.
    */
   async refreshToken(): Promise<AuthResponse | null> {
     if (this._refreshPromise) return this._refreshPromise
 
     this._refreshPromise = this._doRefresh()
+    const currentRefreshPromise = this._refreshPromise
     try {
-      return await this._refreshPromise
+      return await currentRefreshPromise
     } finally {
-      this._refreshPromise = null
-    }
-  }
-
-  private async _doRefresh(): Promise<AuthResponse | null> {
-    const refreshToken = this.getRefreshToken()
-    if (!refreshToken) return null
-
-    this._isRefreshing = true
-    try {
-      const data = await graphqlClient.request<{ refreshToken: AuthResponse }>(
-        REFRESH_TOKEN_MUTATION,
-        { refreshToken }
-      )
-
-      const authResponse = data.refreshToken
-      this.storeAuthData(authResponse)
-      graphqlClient.setAuthToken(authResponse.access_token)
-      return authResponse
-    } catch (error) {
-      console.error('Refresh token failed:', error)
-      return null
-    } finally {
-      this._isRefreshing = false
+      if (this._refreshPromise === currentRefreshPromise) {
+        this._refreshPromise = null
+      }
     }
   }
 
   /**
-   * Déconnexion : nettoie les données d'authentification
+   * Point d'entrée unique pour les clients API après un 401/auth error.
+   * Ne déconnecte jamais automatiquement: il tente de récupérer la session,
+   * puis laisse l'état central en degraded si la récupération échoue.
+   */
+  async handleAuthenticationChallenge(): Promise<boolean> {
+    if (!this.hasSession()) return false
+    return this.ensureAuthenticated()
+  }
+
+  /**
+   * Déconnexion manuelle: nettoie tokens, header GraphQL et caches applicatifs.
    */
   logout(): void {
-    this.clearAuthData()
+    this.clearAuthData({ notify: false })
     graphqlClient.clearAuthToken()
+    clearAllAppStorage()
+    this.setSessionStatus('anonymous')
   }
 
-  /**
-   * Vérifie si l'utilisateur est authentifié
-   */
   isAuthenticated(): boolean {
     const token = this.getAccessToken()
     if (!token) return false
 
-    // Vérifier si le token est expiré
     try {
       const payload = decodeToken(token)
       const now = Date.now() / 1000
@@ -152,34 +191,26 @@ export class AuthService {
     }
   }
 
-  /**
-   * Vérifie si la session est récupérable : soit le token est valide,
-   * soit un refresh token existe et le refresh réussit.
-   * Contrairement à isAuthenticated() (synchrone), cette méthode async
-   * tente un refresh si l'access token est expiré.
-   */
   async ensureAuthenticated(): Promise<boolean> {
-    if (this.isAuthenticated()) return true
+    if (this.isAuthenticated()) {
+      this.setSessionStatus('authenticated')
+      return true
+    }
 
     const refreshToken = this.getRefreshToken()
-    if (!refreshToken) return false
+    if (!refreshToken) {
+      this.setSessionStatus('anonymous')
+      return false
+    }
 
     const result = await this.refreshToken()
     return result !== null
   }
 
-  /**
-   * Vérifie si une session existe (token valide OU refresh token disponible).
-   * Check synchrone et permissif — utilisé pour les redirections de route
-   * afin de ne pas rediriger vers /login pendant qu'un refresh est possible.
-   */
   hasSession(): boolean {
     return this.isAuthenticated() || this.getRefreshToken() !== null
   }
 
-  /**
-   * Récupère l'expiration du token (timestamp en secondes)
-   */
   getTokenExpiration(): number | null {
     const token = this.getAccessToken()
     if (!token) return null
@@ -191,9 +222,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Récupère le rôle de l'utilisateur depuis le JWT token
-   */
   getUserRole(): string | null {
     const token = this.getAccessToken()
     if (!token) return null
@@ -202,7 +230,6 @@ export class AuthService {
       const payload = decodeToken(token)
       const groups = payload.groups || []
 
-      // Mapper le groupe au rôle
       for (const group of groups) {
         if (GROUP_TO_ROLE_MAP[group]) {
           return GROUP_TO_ROLE_MAP[group]
@@ -214,9 +241,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Récupère les groupes de l'utilisateur depuis le JWT token
-   */
   getUserGroups(): string[] {
     const token = this.getAccessToken()
     if (!token) return []
@@ -229,27 +253,23 @@ export class AuthService {
     }
   }
 
-  /**
-   * Récupère l'access token
-   */
   getAccessToken(): string | null {
     return localStorage.getItem('access_token')
   }
 
-  /**
-   * Récupère le refresh token
-   */
   getRefreshToken(): string | null {
     return localStorage.getItem('refresh_token')
   }
 
-  /**
-   * Initialise le client GraphQL avec le token stocké
-   */
+  getAuthorizationHeaders(): Record<string, string> {
+    const token = this.getAccessToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
   initializeAuth(): void {
     const token = this.getAccessToken()
     if (token && this.isAuthenticated()) {
-      graphqlClient.setAuthToken(token)
+      this.syncGraphQLAuthHeader()
 
       const exp = this.getTokenExpiration()
       if (exp) {
@@ -258,57 +278,32 @@ export class AuthService {
           this.scheduleTokenRefresh(remainingSeconds)
         }
       }
-    } else if (this.getRefreshToken()) {
-      // Access token expiré mais refresh token dispo — tenter un refresh silencieux
-      // au lieu de tout wiper (cas typique : retour sur l'app après background tab)
+
+      this.setSessionStatus('authenticated')
+      return
+    }
+
+    if (this.getRefreshToken()) {
+      this.setSessionStatus('refreshing')
       this.refreshToken()
         .then(result => {
-          if (result) {
-            graphqlClient.setAuthToken(result.access_token)
-            window.dispatchEvent(new Event('auth-changed'))
-          } else {
-            this.clearAuthData()
+          if (!result) {
+            this.setSessionStatus('degraded')
+            this.scheduleRefreshRetry()
           }
         })
         .catch(() => {
-          this.clearAuthData()
+          this.setSessionStatus('degraded')
+          this.scheduleRefreshRetry()
         })
-    } else {
-      this.clearAuthData()
+      return
     }
+
+    this.clearAuthData({ notify: false })
+    graphqlClient.clearAuthToken()
+    this.setSessionStatus('anonymous')
   }
 
-  private refreshTimerId: ReturnType<typeof setTimeout> | null = null
-  private _isRefreshing = false
-  private _refreshPromise: Promise<AuthResponse | null> | null = null
-
-  get isRefreshing(): boolean {
-    return this._isRefreshing
-  }
-
-  private storeAuthData(authResponse: AuthResponse): void {
-    localStorage.setItem('access_token', authResponse.access_token)
-    localStorage.setItem('refresh_token', authResponse.refresh_token)
-    const expiresAt = authResponse.expires_in / 60
-    localStorage.setItem('token_expires_at (minutes)', expiresAt.toString())
-
-    // Programmer le refresh automatique a 80% de la duree de vie du token
-    this.scheduleTokenRefresh(authResponse.expires_in)
-  }
-
-  /**
-   * Nettoie les données d'authentification du localStorage
-   */
-  private clearAuthData(): void {
-    this.cancelScheduledRefresh()
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('token_expires_at (minutes)')
-  }
-
-  /**
-   * Extrait l'email depuis le token JWT
-   */
   getUserEmail(): string | null {
     const token = this.getAccessToken()
     if (!token) return null
@@ -321,27 +316,118 @@ export class AuthService {
     }
   }
 
-  /**
-   * Programme un refresh automatique du token avant son expiration.
-   * Se declenche a 80% de la duree de vie (ex: 8 min si TTL = 10 min).
-   */
+  private async _doRefresh(): Promise<AuthResponse | null> {
+    const refreshToken = this.getRefreshToken()
+    if (!refreshToken) {
+      this.setSessionStatus('anonymous')
+      return null
+    }
+
+    const refreshGeneration = this.authGeneration
+    this._isRefreshing = true
+    this.setSessionStatus('refreshing')
+
+    try {
+      const data = await graphqlClient.request<{ refreshToken: AuthResponse }>(
+        REFRESH_TOKEN_MUTATION,
+        { refreshToken },
+        undefined,
+        true
+      )
+
+      if (this.authGeneration !== refreshGeneration) {
+        return null
+      }
+
+      const authResponse = data.refreshToken
+      this.applyAuthenticatedSession(authResponse)
+      return authResponse
+    } catch (error) {
+      console.error('Refresh token failed:', error)
+      if (this.authGeneration === refreshGeneration) {
+        this.setSessionStatus('degraded')
+      }
+      return null
+    } finally {
+      if (this.authGeneration === refreshGeneration) {
+        this._isRefreshing = false
+        this.notifySessionChanged()
+      }
+    }
+  }
+
+  private applyAuthenticatedSession(authResponse: AuthResponse): void {
+    this.storeAuthData(authResponse)
+    graphqlClient.setAuthToken(authResponse.access_token)
+    this.setSessionStatus('authenticated')
+  }
+
+  private storeAuthData(authResponse: AuthResponse): void {
+    localStorage.setItem('access_token', authResponse.access_token)
+    localStorage.setItem('refresh_token', authResponse.refresh_token)
+    const expiresAt = authResponse.expires_in / 60
+    localStorage.setItem('token_expires_at (minutes)', expiresAt.toString())
+
+    this.refreshRetryCount = 0
+    this.scheduleTokenRefresh(authResponse.expires_in)
+  }
+
+  private clearAuthData(options: { notify?: boolean } = {}): void {
+    this.authGeneration += 1
+    this.cancelScheduledRefresh()
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('token_expires_at (minutes)')
+
+    if (options.notify !== false) {
+      this.setSessionStatus('anonymous')
+    }
+  }
+
   private scheduleTokenRefresh(expiresInSeconds: number): void {
     this.cancelScheduledRefresh()
+    const scheduledGeneration = this.authGeneration
 
-    // Refresh at 50% of TTL for more buffer, minimum 60s before expiration
-    const refreshAfterMs = Math.max(
-      (expiresInSeconds * 0.5) * 1000,
-      (expiresInSeconds - 60) * 1000
-    )
+    const halfLifeMs = expiresInSeconds * 0.5 * 1000
+    const oneMinuteBeforeExpiryMs = (expiresInSeconds - 60) * 1000
+    const refreshAfterMs = expiresInSeconds > 120
+      ? Math.max(5_000, Math.min(halfLifeMs, oneMinuteBeforeExpiryMs))
+      : Math.max(5_000, halfLifeMs)
 
     if (refreshAfterMs <= 0) return
 
     this.refreshTimerId = setTimeout(async () => {
       const result = await this.refreshToken()
+      if (this.authGeneration !== scheduledGeneration) return
       if (!result) {
-        window.dispatchEvent(new Event('auth-unauthorized'))
+        this.setSessionStatus('degraded')
+        this.scheduleRefreshRetry()
+      } else {
+        this.refreshRetryCount = 0
       }
     }, refreshAfterMs)
+  }
+
+  private scheduleRefreshRetry(): void {
+    this.cancelScheduledRefresh()
+    const scheduledGeneration = this.authGeneration
+
+    const retryDelayMs = Math.min(
+      60_000,
+      Math.max(5_000, 5_000 * Math.pow(2, this.refreshRetryCount))
+    )
+    this.refreshRetryCount += 1
+
+    this.refreshTimerId = setTimeout(async () => {
+      const retryResult = await this.refreshToken()
+      if (this.authGeneration !== scheduledGeneration) return
+      if (!retryResult) {
+        this.setSessionStatus('degraded')
+        this.scheduleRefreshRetry()
+        return
+      }
+      this.refreshRetryCount = 0
+    }, retryDelayMs)
   }
 
   private cancelScheduledRefresh(): void {
@@ -349,6 +435,52 @@ export class AuthService {
       clearTimeout(this.refreshTimerId)
       this.refreshTimerId = null
     }
+  }
+
+  private resetAuthStateForLogin(): void {
+    this.authGeneration += 1
+    this.cancelScheduledRefresh()
+    this._refreshPromise = null
+    this._isRefreshing = false
+    this.refreshRetryCount = 0
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('token_expires_at (minutes)')
+    graphqlClient.clearAuthToken()
+    this.setSessionStatus('anonymous')
+  }
+
+  private syncGraphQLAuthHeader(): void {
+    const token = this.getAccessToken()
+    if (token && this.isAuthenticated()) {
+      graphqlClient.setAuthToken(token)
+    } else {
+      graphqlClient.clearAuthToken()
+    }
+  }
+
+  private setSessionStatus(status: SessionStatus): void {
+    this.sessionStatus = status
+    this.notifySessionChanged()
+  }
+
+  private notifySessionChanged(): void {
+    const snapshot = this.getSessionSnapshot()
+    for (const listener of this.listeners) {
+      listener(snapshot)
+    }
+  }
+
+  private resolveSessionStatus(isAuthenticated: boolean, hasSession: boolean): SessionStatus {
+    if (this._isRefreshing) return 'refreshing'
+    if (isAuthenticated) return 'authenticated'
+    if (!hasSession) return 'anonymous'
+    if (this.sessionStatus === 'refreshing') return 'refreshing'
+    return 'degraded'
+  }
+
+  private isAuthStorageKey(key: string): boolean {
+    return key === 'access_token' || key === 'refresh_token' || key === 'token_expires_at (minutes)'
   }
 }
 
@@ -358,5 +490,4 @@ export class AuthService {
 
 export const authService = new AuthService()
 
-// Initialiser l'authentification au chargement
 authService.initializeAuth()

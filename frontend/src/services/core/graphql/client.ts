@@ -100,10 +100,6 @@ export class GraphQLClient {
           if (refreshed !== null) return refreshed
         }
 
-        if (response.status === 401) {
-          window.dispatchEvent(new Event('auth-unauthorized'))
-        }
-
         throw error
       }
 
@@ -115,10 +111,6 @@ export class GraphQLClient {
         if (error.type === ErrorType.AUTHENTICATION && !_isRetryAfterRefresh) {
           const refreshed = await this.tryRefreshAndRetry<TData, TVariables>(query, variables)
           if (refreshed !== null) return refreshed
-        }
-
-        if (error.type === ErrorType.AUTHENTICATION) {
-          window.dispatchEvent(new Event('auth-unauthorized'))
         }
 
         throw error
@@ -148,12 +140,10 @@ export class GraphQLClient {
   ): Promise<TData | null> {
     try {
       const { authService } = await import('../../auth')
-      if (authService.isRefreshing) return null
+      const recovered = await authService.handleAuthenticationChallenge()
+      if (!recovered) return null
 
-      const refreshed = await authService.refreshToken()
-      if (!refreshed) return null
-
-      const retryHeaders = { ...this.defaultHeaders, Authorization: `Bearer ${refreshed.access_token}` }
+      const retryHeaders = { ...this.defaultHeaders, ...authService.getAuthorizationHeaders() }
       return await this.request<TData, TVariables>(query, variables, retryHeaders, true)
     } catch {
       return null

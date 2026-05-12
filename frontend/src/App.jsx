@@ -7,7 +7,6 @@ import { DetailsSectionsProvider } from '@/contexts/DetailsSectionsProvider'
 import { AppLoadingProvider } from '@/contexts/AppLoadingProvider'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import SectionErrorBoundary from '@/components/SectionErrorBoundary'
-import SessionManager from '@/components/SessionManager'
 import { OfflineSyncProvider } from '@/components/OfflineSyncProvider'
 
 // Lazy load auth pages
@@ -442,7 +441,6 @@ function App() {
       <ToastProvider>
         <AppLoadingProvider>
           <RoleProvider>
-            <SessionManager />
             <OfflineSyncProvider>
               <Suspense fallback={null}>
                 <Routes>

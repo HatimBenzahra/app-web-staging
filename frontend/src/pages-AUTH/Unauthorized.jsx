@@ -1,15 +1,13 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ShieldX, ArrowLeft } from 'lucide-react'
+import { authService } from '@/services/auth'
 
 export default function Unauthorized() {
-  const handleLogout = () => {
-    // Nettoyer le localStorage
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('token_expires_at (minutes)')
+  const navigate = useNavigate()
 
-    // Rediriger vers la page de login
-    window.location.href = '/login'
+  const handleLogout = () => {
+    authService.logout()
+    navigate('/login', { replace: true })
   }
 
   return (
