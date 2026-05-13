@@ -65,7 +65,7 @@ export default function Login() {
 
   return (
     <div
-      className={`min-h-dvh bg-gradient-to-br from-orange-50/40 via-background to-red-50/30 dark:from-orange-950/20 dark:via-background dark:to-red-950/15 flex justify-center
+      className={`min-h-dvh bg-linear-to-br from-orange-50/40 via-background to-red-50/30 dark:from-orange-950/20 dark:via-background dark:to-red-950/15 flex justify-center
       ${isKeyboardOpen ? 'items-start pt-6' : 'items-center'}
       px-4 sm:px-6 lg:px-8 overflow-y-auto transition-all duration-150
     `}
@@ -182,7 +182,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white py-3 px-4 rounded-lg text-base sm:text-lg font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              className="w-full bg-linear-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white py-3 px-4 rounded-lg text-base sm:text-lg font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               {isLoading ? (
                 <>

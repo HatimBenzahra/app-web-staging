@@ -3,13 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -211,7 +205,7 @@ function SectionNav({ currentSection }) {
               className={[
                 'h-full border-border/70 transition-all duration-150',
                 active
-                  ? 'border-primary/40 bg-primary/[0.04] shadow-sm'
+                  ? 'border-primary/40 bg-primary/4 shadow-sm'
                   : 'hover:border-border hover:bg-muted/30',
               ].join(' ')}
             >
@@ -256,7 +250,9 @@ function DashboardView({ logic }) {
         <MetricCard label="Candidats de la période" value={logic.prioritizedRecordings.length} />
         <MetricCard
           label="Jobs actifs"
-          value={(logic.queueState?.summary?.queued || 0) + (logic.queueState?.summary?.processing || 0)}
+          value={
+            (logic.queueState?.summary?.queued || 0) + (logic.queueState?.summary?.processing || 0)
+          }
         />
         <MetricCard label="Analyses lancées" value={logic.sessions.length} />
         <MetricCard label="Reviews à traiter" value={reviewSessions.length} />
@@ -267,7 +263,8 @@ function DashboardView({ logic }) {
           <div className="space-y-1">
             <CardTitle>Enregistrements les plus exploitables</CardTitle>
             <CardDescription>
-              Vue directeur. On remonte les meilleurs candidats de la période avec les signaux utiles.
+              Vue directeur. On remonte les meilleurs candidats de la période avec les signaux
+              utiles.
             </CardDescription>
           </div>
           <div className="w-full sm:w-64">
@@ -290,11 +287,18 @@ function DashboardView({ logic }) {
         <CardContent className="space-y-4">
           <div className="grid gap-4 xl:grid-cols-2">
             {logic.prioritizedRecordings.map(recording => (
-              <div key={recording.key} className="rounded-lg border border-border/70 bg-background px-5 py-4">
+              <div
+                key={recording.key}
+                className="rounded-lg border border-border/70 bg-background px-5 py-4"
+              >
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
-                    <div className="font-medium">{recording.commercialNom || 'Commercial inconnu'}</div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">{recording.key}</div>
+                    <div className="font-medium">
+                      {recording.commercialNom || 'Commercial inconnu'}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                      {recording.key}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={exploitabilityVariant(recording.exploitabilityStatus)}>
@@ -328,7 +332,11 @@ function DashboardView({ logic }) {
                 </div>
                 <div className="mt-5 flex flex-wrap justify-end gap-2">
                   {recording.latestSessionId ? (
-                    <Button variant="outline" size="sm" onClick={() => logic.openSession(recording.latestSessionId)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logic.openSession(recording.latestSessionId)}
+                    >
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                       Ouvrir la fiche
                     </Button>
@@ -477,7 +485,7 @@ function RecordingsView({ logic }) {
                     <div className="text-xs text-muted-foreground">{recording.roomName}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="max-w-[26rem] truncate text-sm">{recording.key}</div>
+                    <div className="max-w-104 truncate text-sm">{recording.key}</div>
                   </TableCell>
                   <TableCell>{formatDate(recording.lastModified)}</TableCell>
                   <TableCell>
@@ -499,7 +507,8 @@ function RecordingsView({ logic }) {
                         className="text-left text-sm text-primary hover:underline"
                         onClick={() => logic.openSession(recording.latestSessionId)}
                       >
-                        {STATUS_LABELS[recording.latestSessionStatus] || recording.latestSessionStatus}
+                        {STATUS_LABELS[recording.latestSessionStatus] ||
+                          recording.latestSessionStatus}
                       </button>
                     ) : (
                       <span className="text-sm text-muted-foreground">Aucune</span>
@@ -552,7 +561,8 @@ function SessionsView({ logic }) {
       <CardHeader>
         <CardTitle>Analyses coaching</CardTitle>
         <CardDescription>
-          Historique des sessions lancées. Ouvre une fiche pour lire le rapport détaillé et la revue.
+          Historique des sessions lancées. Ouvre une fiche pour lire le rapport détaillé et la
+          revue.
         </CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -692,7 +702,10 @@ function PlansView({ logic }) {
             </div>
 
             {logic.planForm.steps.map((step, index) => (
-              <div key={index} className="rounded-lg border border-border/70 bg-background px-4 py-4">
+              <div
+                key={index}
+                className="rounded-lg border border-border/70 bg-background px-4 py-4"
+              >
                 <div className="grid gap-4 md:grid-cols-[1fr_120px]">
                   <FieldBlock label={`Titre étape ${index + 1}`}>
                     <Input
@@ -737,11 +750,21 @@ function PlansView({ logic }) {
                 </div>
 
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => logic.duplicateStep(index)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => logic.duplicateStep(index)}
+                  >
                     Dupliquer
                   </Button>
                   {logic.planForm.steps.length > 1 ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => logic.removeStep(index)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => logic.removeStep(index)}
+                    >
                       Retirer
                     </Button>
                   ) : null}
@@ -775,7 +798,10 @@ function PlansView({ logic }) {
         </CardHeader>
         <CardContent className="space-y-4">
           {logic.plans.map(plan => (
-            <div key={plan.id} className="rounded-lg border border-border/70 bg-background px-4 py-4">
+            <div
+              key={plan.id}
+              className="rounded-lg border border-border/70 bg-background px-4 py-4"
+            >
               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
                   <div className="text-base font-semibold">{plan.nom}</div>
@@ -803,7 +829,10 @@ function PlansView({ logic }) {
 
                     <div className="mt-3 space-y-2">
                       {version.steps.map(step => (
-                        <div key={step.id} className="rounded-md border border-border/60 bg-background px-3 py-3">
+                        <div
+                          key={step.id}
+                          className="rounded-md border border-border/60 bg-background px-3 py-3"
+                        >
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                             <div className="text-sm font-medium">
                               {step.ordre}. {step.titre}
@@ -814,7 +843,9 @@ function PlansView({ logic }) {
                             <p className="mt-2 text-xs text-muted-foreground">{step.description}</p>
                           ) : null}
                           {step.expectedSignals ? (
-                            <p className="mt-2 text-xs text-muted-foreground">{step.expectedSignals}</p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {step.expectedSignals}
+                            </p>
                           ) : null}
                         </div>
                       ))}
@@ -862,7 +893,8 @@ function SessionDetailView({ logic }) {
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Session #{session.id}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {session.commercialNom || 'Commercial inconnu'} · {session.salesPlanNom || 'Plan non trouvé'}
+              {session.commercialNom || 'Commercial inconnu'} ·{' '}
+              {session.salesPlanNom || 'Plan non trouvé'}
             </p>
           </div>
         </div>
@@ -921,7 +953,11 @@ function SessionDetailView({ logic }) {
                   </p>
                 </div>
                 <div className="grid gap-4">
-                  <BulletBlock title="Points forts" items={session.strengths} empty="Aucun point fort remonté" />
+                  <BulletBlock
+                    title="Points forts"
+                    items={session.strengths}
+                    empty="Aucun point fort remonté"
+                  />
                   <BulletBlock
                     title="Axes d’amélioration"
                     items={session.improvements}
@@ -941,19 +977,24 @@ function SessionDetailView({ logic }) {
             <CardHeader>
               <CardTitle>Conversations détectées</CardTitle>
               <CardDescription>
-                Un enregistrement peut contenir plusieurs échanges. Chaque bloc est évalué séparément.
+                Un enregistrement peut contenir plusieurs échanges. Chaque bloc est évalué
+                séparément.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {(session.conversationEvaluations || []).map(conversation => (
-                <div key={conversation.id} className="rounded-lg border border-border/70 bg-background px-4 py-4">
+                <div
+                  key={conversation.id}
+                  className="rounded-lg border border-border/70 bg-background px-4 py-4"
+                >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <div className="font-medium">
                         {conversation.title || `Conversation ${conversation.ordre}`}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {formatSeconds(conversation.startTime)} → {formatSeconds(conversation.endTime)}
+                        {formatSeconds(conversation.startTime)} →{' '}
+                        {formatSeconds(conversation.endTime)}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -983,9 +1024,24 @@ function SessionDetailView({ logic }) {
                   </p>
 
                   <div className="mt-4 grid gap-4 md:grid-cols-3">
-                    <BulletBlock title="Forces" items={conversation.strengths || []} empty="n/a" compact />
-                    <BulletBlock title="À améliorer" items={conversation.improvements || []} empty="n/a" compact />
-                    <BulletBlock title="Recos" items={conversation.recommendations || []} empty="n/a" compact />
+                    <BulletBlock
+                      title="Forces"
+                      items={conversation.strengths || []}
+                      empty="n/a"
+                      compact
+                    />
+                    <BulletBlock
+                      title="À améliorer"
+                      items={conversation.improvements || []}
+                      empty="n/a"
+                      compact
+                    />
+                    <BulletBlock
+                      title="Recos"
+                      items={conversation.recommendations || []}
+                      empty="n/a"
+                      compact
+                    />
                   </div>
 
                   <Textarea
@@ -1008,11 +1064,16 @@ function SessionDetailView({ logic }) {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Évaluation par étape</CardTitle>
-              <CardDescription>Lecture détaillée du plan de vente appliqué à cette session.</CardDescription>
+              <CardDescription>
+                Lecture détaillée du plan de vente appliqué à cette session.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {session.stepEvaluations.map(step => (
-                <div key={step.id} className="rounded-lg border border-border/70 bg-background px-4 py-4">
+                <div
+                  key={step.id}
+                  className="rounded-lg border border-border/70 bg-background px-4 py-4"
+                >
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="font-medium">
                       {step.ordre}. {step.titre}
@@ -1023,12 +1084,16 @@ function SessionDetailView({ logic }) {
                     </div>
                   </div>
                   {step.verbatim ? (
-                    <div className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-sm">{step.verbatim}</div>
+                    <div className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                      {step.verbatim}
+                    </div>
                   ) : null}
                   {step.feedback ? (
                     <p className="mt-3 text-sm text-muted-foreground">{step.feedback}</p>
                   ) : null}
-                  {step.recommendation ? <p className="mt-2 text-sm">{step.recommendation}</p> : null}
+                  {step.recommendation ? (
+                    <p className="mt-2 text-sm">{step.recommendation}</p>
+                  ) : null}
                 </div>
               ))}
               {session.stepEvaluations.length === 0 ? (
@@ -1042,11 +1107,16 @@ function SessionDetailView({ logic }) {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>État exact de l’analyse</CardTitle>
-              <CardDescription>Pipeline, job queue et dernier point connu du traitement.</CardDescription>
+              <CardDescription>
+                Pipeline, job queue et dernier point connu du traitement.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {(session.pipelineSteps || []).map(step => (
-                <div key={step.key} className="flex items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-3">
+                <div
+                  key={step.key}
+                  className="flex items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                >
                   <div className="mt-0.5">
                     {step.status === 'PROCESSING' ? (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -1082,7 +1152,8 @@ function SessionDetailView({ logic }) {
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                     <span>
-                      Statut: {QUEUE_LABELS[session.analysisJob.status] || session.analysisJob.status}
+                      Statut:{' '}
+                      {QUEUE_LABELS[session.analysisJob.status] || session.analysisJob.status}
                     </span>
                     <span>
                       Tentatives: {session.analysisJob.attempts}/{session.analysisJob.maxAttempts}
@@ -1105,21 +1176,31 @@ function SessionDetailView({ logic }) {
               <InfoLine label="Lancée le" value={formatDate(session.launchedAt)} />
               <InfoLine label="Traitée le" value={formatDate(session.processedAt)} />
               <InfoLine label="Confiance" value={session.confidenceScore ?? 'n/a'} />
-              <InfoLine label="Source identification" value={session.identificationSource || 'n/a'} />
+              <InfoLine
+                label="Source identification"
+                value={session.identificationSource || 'n/a'}
+              />
               <InfoLine label="Segments Whisper" value={session.whisperSegmentsCount ?? 'n/a'} />
               <InfoLine label="Durée transcript" value={session.transcriptDurationSec ?? 'n/a'} />
-              {session.audioUrl ? <audio controls className="mt-4 w-full" src={session.audioUrl} /> : null}
+              {session.audioUrl ? (
+                <audio controls className="mt-4 w-full" src={session.audioUrl} />
+              ) : null}
             </CardContent>
           </Card>
 
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Review humaine</CardTitle>
-              <CardDescription>Valider le rapport, corriger le commercial ou relancer l’analyse.</CardDescription>
+              <CardDescription>
+                Valider le rapport, corriger le commercial ou relancer l’analyse.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <FieldBlock label="Commercial identifié">
-                <Select value={logic.reviewCommercialId} onValueChange={logic.setReviewCommercialId}>
+                <Select
+                  value={logic.reviewCommercialId}
+                  onValueChange={logic.setReviewCommercialId}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Conserver l’identification actuelle" />
                   </SelectTrigger>
@@ -1143,7 +1224,11 @@ function SessionDetailView({ logic }) {
               </FieldBlock>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <Button type="button" onClick={() => logic.reviewSession('APPROVE')} disabled={logic.submitting}>
+                <Button
+                  type="button"
+                  onClick={() => logic.reviewSession('APPROVE')}
+                  disabled={logic.submitting}
+                >
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   Valider
                 </Button>
@@ -1172,12 +1257,18 @@ function SessionDetailView({ logic }) {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Transcript</CardTitle>
-              <CardDescription>Version lisible d’abord, brute Whisper ensuite si besoin.</CardDescription>
+              <CardDescription>
+                Version lisible d’abord, brute Whisper ensuite si besoin.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Textarea
                 readOnly
-                value={session.readableTranscriptText || session.transcriptText || 'Transcript indisponible'}
+                value={
+                  session.readableTranscriptText ||
+                  session.transcriptText ||
+                  'Transcript indisponible'
+                }
                 className="min-h-[260px] font-mono text-xs"
               />
             </CardContent>
@@ -1192,7 +1283,9 @@ function InfoLine({ label, value, breakAll = false }) {
   return (
     <div className="flex items-start justify-between gap-4">
       <span className="text-muted-foreground">{label}</span>
-      <span className={breakAll ? 'max-w-[20rem] text-right break-all' : 'text-right'}>{value}</span>
+      <span className={breakAll ? 'max-w-[20rem] text-right break-all' : 'text-right'}>
+        {value}
+      </span>
     </div>
   )
 }
@@ -1209,10 +1302,22 @@ function FieldBlock({ label, children }) {
 function BulletBlock({ title, items, empty, compact = false }) {
   return (
     <div>
-      <div className={compact ? 'text-xs font-semibold uppercase tracking-wide text-muted-foreground' : 'text-sm font-medium'}>
+      <div
+        className={
+          compact
+            ? 'text-xs font-semibold uppercase tracking-wide text-muted-foreground'
+            : 'text-sm font-medium'
+        }
+      >
         {title}
       </div>
-      <ul className={compact ? 'mt-2 space-y-1 text-sm text-muted-foreground' : 'mt-2 space-y-1 text-sm text-muted-foreground'}>
+      <ul
+        className={
+          compact
+            ? 'mt-2 space-y-1 text-sm text-muted-foreground'
+            : 'mt-2 space-y-1 text-sm text-muted-foreground'
+        }
+      >
         {items.map(item => (
           <li key={item}>• {item}</li>
         ))}
@@ -1247,8 +1352,12 @@ function SessionStrip({ title, description, sessions, emptyText, logic, tone }) 
                   : formatDate(session.processedAt || session.updatedAt)}
               </span>
             </span>
-            <Badge variant={tone === 'review' && session.status === 'FAILED' ? 'destructive' : 'outline'}>
-              {tone === 'done' ? `Score ${session.overallScore ?? 'n/a'}` : STATUS_LABELS[session.status] || session.status}
+            <Badge
+              variant={tone === 'review' && session.status === 'FAILED' ? 'destructive' : 'outline'}
+            >
+              {tone === 'done'
+                ? `Score ${session.overallScore ?? 'n/a'}`
+                : STATUS_LABELS[session.status] || session.status}
             </Badge>
           </button>
         ))}
@@ -1306,8 +1415,8 @@ export default function Coaching() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Coaching IA</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                Une navigation claire par usage: prioriser les bons enregistrements, piloter la queue,
-                relire les analyses, et faire évoluer les plans sans tout mélanger.
+                Une navigation claire par usage: prioriser les bons enregistrements, piloter la
+                queue, relire les analyses, et faire évoluer les plans sans tout mélanger.
               </p>
             </div>
           </div>
@@ -1315,8 +1424,13 @@ export default function Coaching() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             {currentSection !== 'plans' ? (
               <div className="min-w-72">
-                <Label htmlFor="plan-version-select">Version publiée utilisée pour les analyses</Label>
-                <Select value={logic.selectedPlanVersionId} onValueChange={logic.setSelectedPlanVersionId}>
+                <Label htmlFor="plan-version-select">
+                  Version publiée utilisée pour les analyses
+                </Label>
+                <Select
+                  value={logic.selectedPlanVersionId}
+                  onValueChange={logic.setSelectedPlanVersionId}
+                >
                   <SelectTrigger id="plan-version-select" className="mt-2">
                     <SelectValue placeholder="Choisir une version publiée" />
                   </SelectTrigger>
@@ -1331,7 +1445,12 @@ export default function Coaching() {
               </div>
             ) : null}
 
-            <Button type="button" variant="outline" onClick={logic.refreshAll} disabled={logic.submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={logic.refreshAll}
+              disabled={logic.submitting}
+            >
               <RefreshCw className="mr-2 h-4 w-4" />
               Actualiser
             </Button>
@@ -1348,7 +1467,9 @@ export default function Coaching() {
           </Alert>
         ) : null}
 
-        {currentSection !== 'session-detail' ? <SectionNav currentSection={currentSection} /> : null}
+        {currentSection !== 'session-detail' ? (
+          <SectionNav currentSection={currentSection} />
+        ) : null}
       </div>
 
       {currentSection === 'dashboard' ? <DashboardView logic={logic} /> : null}

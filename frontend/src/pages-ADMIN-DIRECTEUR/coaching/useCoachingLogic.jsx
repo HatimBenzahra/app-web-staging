@@ -102,30 +102,25 @@ export function useCoachingLogic() {
     setError(null)
     try {
       const offset = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
-      const [
-        nextPlans,
-        nextPrioritizedRecordings,
-        nextRecordings,
-        nextSessions,
-        nextQueueState,
-      ] = await Promise.all([
-        coachingApi.getSalesPlans(),
-        coachingApi.getRecordingCandidates({
-          limit: 10,
-          offset: 0,
-          period: dashboardPeriod,
-          includeLowValue: false,
-        }),
-        coachingApi.getRecordingCandidates({
-          limit: RECORDINGS_PAGE_SIZE,
-          offset,
-          search: recordingsSearch || null,
-          period: 'ALL',
-          includeLowValue: true,
-        }),
-        coachingApi.getSessions(),
-        coachingApi.getAnalysisQueue(),
-      ])
+      const [nextPlans, nextPrioritizedRecordings, nextRecordings, nextSessions, nextQueueState] =
+        await Promise.all([
+          coachingApi.getSalesPlans(),
+          coachingApi.getRecordingCandidates({
+            limit: 10,
+            offset: 0,
+            period: dashboardPeriod,
+            includeLowValue: false,
+          }),
+          coachingApi.getRecordingCandidates({
+            limit: RECORDINGS_PAGE_SIZE,
+            offset,
+            search: recordingsSearch || null,
+            period: 'ALL',
+            includeLowValue: true,
+          }),
+          coachingApi.getSessions(),
+          coachingApi.getAnalysisQueue(),
+        ])
       setPlans(nextPlans)
       setPrioritizedRecordings(nextPrioritizedRecordings.items)
       setRecordings(nextRecordings.items)
