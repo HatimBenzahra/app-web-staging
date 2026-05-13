@@ -20,6 +20,7 @@ import { CreationCompteModule } from './creation_compte/creation_compte.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { SearchModule } from './search/search.module';
 import { GpsTrackingModule } from './gps-tracking/gps-tracking.module';
+import { CoachingModule } from './coaching/coaching.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { GpsTrackingModule } from './gps-tracking/gps-tracking.module';
     GamificationModule,
     SearchModule,
     GpsTrackingModule,
+    CoachingModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

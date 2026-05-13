@@ -21,6 +21,7 @@ import {
   Package,
   Rocket,
   ScrollText,
+  Bot,
 } from 'lucide-react'
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -97,6 +98,7 @@ const toolsItems = [
       { title: 'Enregistrements', url: '/ecoutes/enregistrement' },
     ],
   },
+  { title: 'Coaching IA', url: '/coaching', icon: Bot, entity: 'coaching' },
   {
     title: 'Gamification',
     url: '/gamification',

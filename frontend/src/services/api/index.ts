@@ -7,6 +7,7 @@ import { porteApi } from './portes'
 import { gamificationApi } from './gamification'
 import { statisticApi, authApi } from './statistics'
 import { kioskApi } from './kiosk'
+import { coachingApi } from './coaching/coaching.service'
 
 export * from './commercials'
 export * from './managers'
@@ -17,6 +18,7 @@ export * from './portes'
 export * from './statistics'
 export * from './gamification'
 export * from './kiosk'
+export * from './coaching'
 
 export const api = {
   auth: authApi,
@@ -29,6 +31,7 @@ export const api = {
   portes: porteApi,
   gamification: gamificationApi,
   kiosk: kioskApi,
+  coaching: coachingApi,
 }
 
 export default api

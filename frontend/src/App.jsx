@@ -31,13 +31,16 @@ const ZoneDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/ZoneDetails
 const GPSTracking = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gps-tracking/GPSTracking'))
 const EcouteLive = lazy(() => import('@/pages-ADMIN-DIRECTEUR/ecoutes/EcouteLive'))
 const Enregistrement = lazy(() => import('@/pages-ADMIN-DIRECTEUR/ecoutes/Enregistrement'))
+const Coaching = lazy(() => import('@/pages-ADMIN-DIRECTEUR/coaching/Coaching'))
 const Statistiques = lazy(() => import('@/pages-ADMIN-DIRECTEUR/statistiques/Statistiques'))
 const Gestion = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gestion/Gestion'))
 const Gamification = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gamification/Gamification'))
 const KioskOverview = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskOverview'))
 const KioskDevicesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDevicesPage'))
 const KioskReleasesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskReleasesPage'))
-const KioskDeploymentsPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeploymentsPage'))
+const KioskDeploymentsPage = lazy(
+  () => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeploymentsPage')
+)
 const KioskLogsPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskLogsPage'))
 const KioskLocationPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskLocationPage'))
 
@@ -80,6 +83,7 @@ function AdminLayout() {
     gestion: { label: 'Gestion', href: '/gestion' },
     'gps-tracking': { label: 'Suivi GPS', href: '/gps-tracking' },
     ecoutes: { label: 'Écoutes', href: '/ecoutes/live' },
+    coaching: { label: 'Coaching IA', href: '/coaching' },
     statistiques: { label: 'Statistiques', href: '/statistiques' },
     gamification: { label: 'Gamification', href: '/gamification' },
     kiosk: { label: 'Kiosk', href: '/kiosk' },
@@ -313,6 +317,22 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <Enregistrement />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching"
+                    element={
+                      <SectionErrorBoundary>
+                        <Coaching />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching/sessions/:sessionId"
+                    element={
+                      <SectionErrorBoundary>
+                        <Coaching />
                       </SectionErrorBoundary>
                     }
                   />

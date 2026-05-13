@@ -14,20 +14,21 @@ datasource db {
 }
 
 model Directeur {
-  id          Int         @id @default(autoincrement())
-  nom         String
-  prenom      String
-  adresse     String?
-  email       String?     @unique
+  id           Int        @id @default(autoincrement())
+  nom          String
+  prenom       String
+  adresse      String?
+  email        String?    @unique
   numTelephone String?
-  status      UserStatus   @default(ACTIF)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  status       UserStatus @default(ACTIF)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  managers        Manager[]
-  commercials     Commercial[]
-  zones           Zone[]
-  statistics      Statistic[]
+  managers           Manager[]
+  commercials        Commercial[]
+  zones              Zone[]
+  statistics         Statistic[]
+  coachingSessions   CoachingSession[]
 }
 
 model Manager {
@@ -75,7 +76,8 @@ model Commercial {
   badges           CommercialBadge[]
   rankSnapshots    RankSnapshot[]
   contratsValides  ContratValide[]
-  }
+  coachingSessions CoachingSession[]
+}
 
 model Zone {
   id          Int      @id @default(autoincrement())
@@ -88,8 +90,8 @@ model Zone {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  directeur       Directeur? @relation(fields: [directeurId], references: [id])
-  manager         Manager?   @relation(fields: [managerId], references: [id])
+  directeur       Directeur?       @relation(fields: [directeurId], references: [id])
+  manager         Manager?         @relation(fields: [managerId], references: [id])
   immeubles       Immeuble[]
   statistics      Statistic[]
   zoneEnCours     ZoneEnCours[]
@@ -97,25 +99,25 @@ model Zone {
 }
 
 model Immeuble {
-  id                Int      @id @default(autoincrement())
-  adresse           String
-  latitude          Float?   // Coordonnée latitude pour la carte
-  longitude         Float?   // Coordonnée longitude pour la carte
-  nbEtages          Int
-  nbPortesParEtage  Int
-  ascenseurPresent  Boolean  @default(false)
-  digitalCode       String?
-  commercialId      Int?
-  managerId         Int?
-  zoneId            Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               Int      @id @default(autoincrement())
+  adresse          String
+  latitude         Float? // Coordonnée latitude pour la carte
+  longitude        Float? // Coordonnée longitude pour la carte
+  nbEtages         Int
+  nbPortesParEtage Int
+  ascenseurPresent Boolean  @default(false)
+  digitalCode      String?
+  commercialId     Int?
+  managerId        Int?
+  zoneId           Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  commercial        Commercial? @relation(fields: [commercialId], references: [id])
-  manager           Manager?    @relation(fields: [managerId], references: [id])
-  zone              Zone?       @relation(fields: [zoneId], references: [id])
-  statistics        Statistic[]
-  portes            Porte[]
+  commercial Commercial? @relation(fields: [commercialId], references: [id])
+  manager    Manager?    @relation(fields: [managerId], references: [id])
+  zone       Zone?       @relation(fields: [zoneId], references: [id])
+  statistics Statistic[]
+  portes     Porte[]
 }
 
 model Statistic {
@@ -125,41 +127,41 @@ model Statistic {
   directeurId           Int?
   immeubleId            Int?
   zoneId                Int?
-  contratsSignes        Int      // Nombre de contrats signés
-  immeublesVisites      Int      // Nombre d'immeubles visités
-  rendezVousPris        Int      // Nombre de rendez-vous pris
-  refus                 Int      // Nombre de refus
+  contratsSignes        Int // Nombre de contrats signés
+  immeublesVisites      Int // Nombre d'immeubles visités
+  rendezVousPris        Int // Nombre de rendez-vous pris
+  refus                 Int // Nombre de refus
   absents               Int      @default(0) // Nombre de portes où personne n'était présent
   argumentes            Int      @default(0) // Nombre de refus après argumentation
-  nbImmeublesProspectes Int      // Nombre d'immeubles prospectés
-  nbPortesProspectes    Int      // Nombre de portes prospectées
+  nbImmeublesProspectes Int // Nombre d'immeubles prospectés
+  nbPortesProspectes    Int // Nombre de portes prospectées
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  commercial            Commercial? @relation(fields: [commercialId], references: [id])
-  manager               Manager?    @relation(fields: [managerId], references: [id])
-  directeur             Directeur?  @relation(fields: [directeurId], references: [id])
-  immeuble              Immeuble?   @relation(fields: [immeubleId], references: [id])
-  zone                  Zone?       @relation(fields: [zoneId], references: [id])
+  commercial Commercial? @relation(fields: [commercialId], references: [id])
+  manager    Manager?    @relation(fields: [managerId], references: [id])
+  directeur  Directeur?  @relation(fields: [directeurId], references: [id])
+  immeuble   Immeuble?   @relation(fields: [immeubleId], references: [id])
+  zone       Zone?       @relation(fields: [zoneId], references: [id])
 }
 
 model Porte {
-  id                Int       @id @default(autoincrement())
-  numero            String    // Ex: "101", "201A"
-  nomPersonnalise   String?   // Ex: "Porte à droite", "Appartement A"
-  etage             Int
-  immeubleId        Int
-  statut            StatutPorte @default(NON_VISITE)
-  nbRepassages      Int       @default(0)
-  nbContrats        Int       @default(1) // Nombre de contrats signés pour cette porte
-  rdvDate           DateTime?
-  rdvTime           String?   // Ex: "14:30"
-  commentaire       String?
-  derniereVisite    DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id              Int         @id @default(autoincrement())
+  numero          String // Ex: "101", "201A"
+  nomPersonnalise String? // Ex: "Porte à droite", "Appartement A"
+  etage           Int
+  immeubleId      Int
+  statut          StatutPorte @default(NON_VISITE)
+  nbRepassages    Int         @default(0)
+  nbContrats      Int         @default(1) // Nombre de contrats signés pour cette porte
+  rdvDate         DateTime?
+  rdvTime         String? // Ex: "14:30"
+  commentaire     String?
+  derniereVisite  DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  immeuble          Immeuble  @relation(fields: [immeubleId], references: [id])
+  immeuble          Immeuble           @relation(fields: [immeubleId], references: [id])
   statusHistorique  StatusHistorique[]
   recordingSegments RecordingSegment[]
 
@@ -188,13 +190,212 @@ enum UserStatus {
   UTILISATEUR_TEST
 }
 
-model ZoneEnCours {
-  id         Int      @id @default(autoincrement())
-  zoneId     Int
-  zone       Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+enum SalesPlanStatus {
+  ACTIVE
+  ARCHIVED
+}
 
-  userId     Int
-  userType   UserType
+enum SalesPlanVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CoachingSessionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  NEEDS_REVIEW
+}
+
+enum CoachingReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+enum CoachingStepCoverageStatus {
+  COVERED
+  PARTIAL
+  MISSING
+}
+
+enum CoachingConversationStatus {
+  COMPLETED
+  NEEDS_REVIEW
+  SKIPPED
+  FAILED
+}
+
+model SalesPlan {
+  id              Int             @id @default(autoincrement())
+  nom             String
+  description     String?
+  status          SalesPlanStatus @default(ACTIVE)
+  createdByRole   String
+  createdByUserId Int
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  versions SalesPlanVersion[]
+
+  @@index([status])
+}
+
+model SalesPlanVersion {
+  id                 Int                    @id @default(autoincrement())
+  salesPlanId        Int
+  versionNumber      Int
+  label              String?
+  status             SalesPlanVersionStatus @default(DRAFT)
+  promptInstructions String?
+  createdByRole      String
+  createdByUserId    Int
+  publishedAt        DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  salesPlan        SalesPlan         @relation(fields: [salesPlanId], references: [id], onDelete: Cascade)
+  steps            SalesPlanStep[]
+  coachingSessions CoachingSession[]
+
+  @@unique([salesPlanId, versionNumber])
+  @@index([salesPlanId])
+  @@index([status])
+}
+
+model SalesPlanStep {
+  id                 Int      @id @default(autoincrement())
+  salesPlanVersionId Int
+  ordre              Int
+  titre              String
+  description        String?
+  expectedSignals    String?
+  poids              Int      @default(20)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  salesPlanVersion SalesPlanVersion         @relation(fields: [salesPlanVersionId], references: [id], onDelete: Cascade)
+  stepEvaluations  CoachingStepEvaluation[]
+
+  @@unique([salesPlanVersionId, ordre])
+  @@index([salesPlanVersionId])
+}
+
+model CoachingSession {
+  id                     Int                   @id @default(autoincrement())
+  salesPlanVersionId     Int
+  s3KeyOriginal          String
+  roomName               String?
+  commercialId           Int?
+  directeurId            Int?
+  status                 CoachingSessionStatus @default(PENDING)
+  reviewStatus           CoachingReviewStatus  @default(NOT_REQUIRED)
+  confidenceScore        Float?
+  identificationSource   String?
+  transcriptText         String?
+  readableTranscriptText String?
+  transcriptDurationSec  Float?
+  whisperSegmentsCount   Int?
+  overallScore           Int?
+  planCoverageScore      Int?
+  executionQualityScore  Int?
+  objectionHandlingScore Int?
+  listeningRatioScore    Int?
+  closingScore           Int?
+  summary                String?
+  strengths              String[]
+  improvements           String[]
+  recommendations        String[]
+  llmModel               String?
+  llmRawResponse         String?
+  failureReason          String?
+  reviewReason           String?
+  reviewNotes            String?
+  createdByRole          String
+  createdByUserId        Int
+  launchedAt             DateTime              @default(now())
+  processedAt            DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  salesPlanVersion SalesPlanVersion         @relation(fields: [salesPlanVersionId], references: [id], onDelete: Cascade)
+  commercial       Commercial?              @relation(fields: [commercialId], references: [id])
+  directeur        Directeur?               @relation(fields: [directeurId], references: [id])
+  stepEvaluations  CoachingStepEvaluation[]
+  conversationEvaluations CoachingConversationEvaluation[]
+
+  @@index([salesPlanVersionId])
+  @@index([commercialId])
+  @@index([directeurId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([s3KeyOriginal])
+  @@unique([s3KeyOriginal, salesPlanVersionId])
+}
+
+model CoachingConversationEvaluation {
+  id                     Int                        @id @default(autoincrement())
+  coachingSessionId      Int
+  ordre                  Int
+  title                  String?
+  startTime              Float?
+  endTime                Float?
+  transcriptText         String?
+  readableTranscriptText String?
+  status                 CoachingConversationStatus @default(COMPLETED)
+  reviewReason           String?
+  overallScore           Int?
+  planCoverageScore      Int?
+  executionQualityScore  Int?
+  objectionHandlingScore Int?
+  listeningRatioScore    Int?
+  closingScore           Int?
+  summary                String?
+  strengths              String[]
+  improvements           String[]
+  recommendations        String[]
+  llmRawResponse         String?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  coachingSession CoachingSession @relation(fields: [coachingSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([coachingSessionId, ordre])
+  @@index([coachingSessionId])
+  @@index([status])
+}
+
+model CoachingStepEvaluation {
+  id                Int                        @id @default(autoincrement())
+  coachingSessionId Int
+  salesPlanStepId   Int?
+  ordre             Int
+  titre             String
+  coverageStatus    CoachingStepCoverageStatus
+  score             Int?
+  verbatim          String?
+  feedback          String?
+  recommendation    String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  coachingSession CoachingSession @relation(fields: [coachingSessionId], references: [id], onDelete: Cascade)
+  salesPlanStep   SalesPlanStep?  @relation(fields: [salesPlanStepId], references: [id], onDelete: SetNull)
+
+  @@index([coachingSessionId])
+  @@index([salesPlanStepId])
+}
+
+model ZoneEnCours {
+  id     Int  @id @default(autoincrement())
+  zoneId Int
+  zone   Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  userId   Int
+  userType UserType
 
   assignedAt DateTime @default(now())
 
@@ -253,23 +454,23 @@ model StatusHistorique {
 // ============================================================================
 
 model Offre {
-  id          Int      @id @default(autoincrement())
-  externalId  Int      @unique // ID retourné par l'API WinLead+
-  nom         String
-  description String?
-  categorie   String // "Téléphonie", "Assurance Santé"...
-  fournisseur String // "BLEUTEL", "Neoliane"...
-  logoUrl     String?
-  prixBase    Float?
-  features    Json? // Array de strings depuis l'API
-  popular     Boolean  @default(false)
-  rating      Float?
-  isActive    Boolean  @default(true)
-  points         Int      @default(0) // Points attribués au commercial pour ce contrat (configuré par l'admin)
-  badgeProductKey String?  // Clé produit pour le moteur de badges: MOBILE, FIBRE, DEPANSSUR, ELEC_GAZ, CONCIERGERIE, MONDIAL_TV, ASSURANCE
-  syncedAt    DateTime @default(now()) // Dernière synchro avec l'API WinLead+
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  externalId      Int      @unique // ID retourné par l'API WinLead+
+  nom             String
+  description     String?
+  categorie       String // "Téléphonie", "Assurance Santé"...
+  fournisseur     String // "BLEUTEL", "Neoliane"...
+  logoUrl         String?
+  prixBase        Float?
+  features        Json? // Array de strings depuis l'API
+  popular         Boolean  @default(false)
+  rating          Float?
+  isActive        Boolean  @default(true)
+  points          Int      @default(0) // Points attribués au commercial pour ce contrat (configuré par l'admin)
+  badgeProductKey String? // Clé produit pour le moteur de badges: MOBILE, FIBRE, DEPANSSUR, ELEC_GAZ, CONCIERGERIE, MONDIAL_TV, ASSURANCE
+  syncedAt        DateTime @default(now()) // Dernière synchro avec l'API WinLead+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   contratsValides ContratValide[]
 
@@ -284,20 +485,20 @@ model Offre {
 // ============================================================================
 
 enum BadgeCategory {
-  PROGRESSION   // Paliers tous produits confondus (1, 2, 3, 5, 10, 20, 50, 100 contrats)
-  PRODUIT       // Paliers spécifiques par produit (Mobile, Fibre, Dépanssur, Élec/Gaz, Conciergerie, MTV, Assurance)
-  PERFORMANCE   // Achievements individuels (timing, streaks, conversion, formation...)
-  TROPHEE       // Trophées numériques trimestriels
+  PROGRESSION // Paliers tous produits confondus (1, 2, 3, 5, 10, 20, 50, 100 contrats)
+  PRODUIT // Paliers spécifiques par produit (Mobile, Fibre, Dépanssur, Élec/Gaz, Conciergerie, MTV, Assurance)
+  PERFORMANCE // Achievements individuels (timing, streaks, conversion, formation...)
+  TROPHEE // Trophées numériques trimestriels
 }
 
 model BadgeDefinition {
   id          Int           @id @default(autoincrement())
-  code        String        @unique    // "PROGRESSION_10_CONTRATS", "PRODUIT_TELEPHONIE"...
-  nom         String                   // "Débutant", "Expert Téléphonie"...
-  description String?                  // Description longue pour l'UI
-  category    BadgeCategory            // Catégorie du badge
-  iconUrl     String?                  // URL icône/image du badge
-  condition   Json?                    // Critères d'attribution {"metric":"contratsSignes","threshold":10}
+  code        String        @unique // "PROGRESSION_10_CONTRATS", "PRODUIT_TELEPHONIE"...
+  nom         String // "Débutant", "Expert Téléphonie"...
+  description String? // Description longue pour l'UI
+  category    BadgeCategory // Catégorie du badge
+  iconUrl     String? // URL icône/image du badge
+  condition   Json? // Critères d'attribution {"metric":"contratsSignes","threshold":10}
   tier        Int           @default(0) // Niveau: 0=unique, 1=bronze, 2=argent, 3=or, 4=diamant
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
@@ -322,13 +523,13 @@ enum RankPeriod {
 }
 
 model CommercialBadge {
-  id                Int             @id @default(autoincrement())
+  id                Int      @id @default(autoincrement())
   commercialId      Int?
   managerId         Int?
   badgeDefinitionId Int
-  periodKey         String          // "2026-02-25", "2026-W09", "2026-02", "2026-Q1"
-  awardedAt         DateTime        @default(now())
-  metadata          Json?           // Données contextuelles: {"score": 42, "rank": 1}
+  periodKey         String // "2026-02-25", "2026-W09", "2026-02", "2026-Q1"
+  awardedAt         DateTime @default(now())
+  metadata          Json? // Données contextuelles: {"score": 42, "rank": 1}
 
   commercial      Commercial?     @relation(fields: [commercialId], references: [id], onDelete: Cascade)
   manager         Manager?        @relation(fields: [managerId], references: [id], onDelete: Cascade)
@@ -349,16 +550,16 @@ model CommercialBadge {
 // ============================================================================
 
 model RankSnapshot {
-  id            Int        @id @default(autoincrement())
-  commercialId  Int?
-  managerId     Int?
-  period        RankPeriod // DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY
-  periodKey     String     // "2026-02-25", "2026-W09", "2026-02", "2026-Q1", "2026"
-  rank          Int        // Position dans le classement (1 = premier)
-  points        Int        @default(0) // Points cumulés sur la période
-  contratsSignes Int       @default(0) // Nombre de contrats signés sur la période
-  metadata      Json?      // Données supplémentaires: {"previousRank": 3, "delta": +2}
-  computedAt    DateTime   @default(now())
+  id             Int        @id @default(autoincrement())
+  commercialId   Int?
+  managerId      Int?
+  period         RankPeriod // DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY
+  periodKey      String // "2026-02-25", "2026-W09", "2026-02", "2026-Q1", "2026"
+  rank           Int // Position dans le classement (1 = premier)
+  points         Int        @default(0) // Points cumulés sur la période
+  contratsSignes Int        @default(0) // Nombre de contrats signés sur la période
+  metadata       Json? // Données supplémentaires: {"previousRank": 3, "delta": +2}
+  computedAt     DateTime   @default(now())
 
   commercial Commercial? @relation(fields: [commercialId], references: [id], onDelete: Cascade)
   manager    Manager?    @relation(fields: [managerId], references: [id], onDelete: Cascade)
@@ -377,25 +578,25 @@ model RankSnapshot {
 // ============================================================================
 
 model ContratValide {
-  id                      Int      @id @default(autoincrement())
-  externalContratId       Int      @unique // ID du contrat côté WinLead+
-  externalProspectId      Int      // ID du prospect côté WinLead+
-  commercialWinleadPlusId String   // UUID du commercial côté WinLead+ (prospect.commercialId)
-  commercialId            Int?     // FK vers Commercial Pro-Win (résolu via mapping)
-  managerId              Int?     // FK vers Manager Pro-Win (résolu via mapping)
-  offreExternalId         Int?     // ID offre côté WinLead+ (souscription.offreId)
-  offreId                 Int?     // FK vers Offre locale (résolu via externalId)
+  id                      Int       @id @default(autoincrement())
+  externalContratId       Int       @unique // ID du contrat côté WinLead+
+  externalProspectId      Int // ID du prospect côté WinLead+
+  commercialWinleadPlusId String // UUID du commercial côté WinLead+ (prospect.commercialId)
+  commercialId            Int? // FK vers Commercial Pro-Win (résolu via mapping)
+  managerId               Int? // FK vers Manager Pro-Win (résolu via mapping)
+  offreExternalId         Int? // ID offre côté WinLead+ (souscription.offreId)
+  offreId                 Int? // FK vers Offre locale (résolu via externalId)
   dateValidation          DateTime // Date de validation du contrat
   dateSignature           DateTime? // Date de signature (peut être null)
   // Clés de période pré-calculées pour requêtes rapides
-  periodDay               String   // "2026-02-25"
-  periodWeek              String   // "2026-W09"
-  periodMonth             String   // "2026-02"
-  periodQuarter           String   // "2026-Q1"
-  periodYear              String   // "2026"
-  metadata                Json?    // Données supplémentaires (nom prospect, statut prospect...)
-  syncedAt                DateTime @default(now())
-  createdAt               DateTime @default(now())
+  periodDay               String // "2026-02-25"
+  periodWeek              String // "2026-W09"
+  periodMonth             String // "2026-02"
+  periodQuarter           String // "2026-Q1"
+  periodYear              String // "2026"
+  metadata                Json? // Données supplémentaires (nom prospect, statut prospect...)
+  syncedAt                DateTime  @default(now())
+  createdAt               DateTime  @default(now())
 
   commercial Commercial? @relation(fields: [commercialId], references: [id], onDelete: SetNull)
   manager    Manager?    @relation(fields: [managerId], references: [id], onDelete: SetNull)
@@ -431,7 +632,7 @@ model RecordingSegment {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  porte         Porte         @relation(fields: [porteId], references: [id], onDelete: Cascade)
+  porte Porte @relation(fields: [porteId], references: [id], onDelete: Cascade)
 
   @@index([porteId])
   @@index([commercialId])
