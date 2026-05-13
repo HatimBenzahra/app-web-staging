@@ -4,6 +4,7 @@ import { CoachingService } from './coaching.service';
 import {
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
+  CoachingQueueStateDto,
   CoachingSessionDto,
   CreateSalesPlanInput,
   CreateSalesPlanVersionInput,
@@ -69,6 +70,14 @@ export class CoachingResolver {
     @CurrentUser() currentUser: any,
   ): Promise<CoachingSessionDto[]> {
     return this.coachingService.getCoachingSessions(currentUser);
+  }
+
+  @Query(() => CoachingQueueStateDto)
+  @Roles('admin', 'directeur')
+  coachingAnalysisQueue(
+    @CurrentUser() currentUser: any,
+  ): Promise<CoachingQueueStateDto> {
+    return this.coachingService.getAnalysisQueue(currentUser);
   }
 
   @Query(() => CoachingSessionDto)

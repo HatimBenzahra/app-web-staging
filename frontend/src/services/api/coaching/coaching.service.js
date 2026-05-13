@@ -74,6 +74,52 @@ const GET_COACHING_RECORDING_CANDIDATES = `
         size
         latestSessionId
         latestSessionStatus
+        speechScore
+        speechScoreStatus
+        totalDurationSec
+        speechDurationSec
+        exploitabilityScore
+        exploitabilityStatus
+        exploitabilityReasons
+        analysisJobId
+        analysisJobStatus
+        analysisQueuedAt
+        analysisStartedAt
+      }
+    }
+  }
+`
+
+const GET_COACHING_ANALYSIS_QUEUE = `
+  query CoachingAnalysisQueue {
+    coachingAnalysisQueue {
+      summary {
+        queued
+        processing
+        completed
+        failed
+        cancelled
+        concurrency
+        oldestQueuedAgeSeconds
+      }
+      jobs {
+        id
+        coachingSessionId
+        status
+        priority
+        attempts
+        maxAttempts
+        currentStep
+        failureReason
+        queuedAt
+        startedAt
+        completedAt
+        failedAt
+        nextRunAt
+        lastHeartbeatAt
+        waitSeconds
+        createdAt
+        updatedAt
       }
     }
   }
@@ -113,6 +159,29 @@ const GET_COACHING_SESSIONS = `
       processedAt
       createdAt
       updatedAt
+      analysisJob {
+        id
+        status
+        priority
+        attempts
+        maxAttempts
+        currentStep
+        failureReason
+        queuedAt
+        startedAt
+        completedAt
+        failedAt
+        nextRunAt
+        lastHeartbeatAt
+        waitSeconds
+      }
+      pipelineSteps {
+        key
+        label
+        status
+        timestamp
+        detail
+      }
       stepEvaluations {
         id
         ordre
@@ -189,6 +258,29 @@ const GET_COACHING_SESSION = `
       processedAt
       createdAt
       updatedAt
+      analysisJob {
+        id
+        status
+        priority
+        attempts
+        maxAttempts
+        currentStep
+        failureReason
+        queuedAt
+        startedAt
+        completedAt
+        failedAt
+        nextRunAt
+        lastHeartbeatAt
+        waitSeconds
+      }
+      pipelineSteps {
+        key
+        label
+        status
+        timestamp
+        detail
+      }
       stepEvaluations {
         id
         ordre
@@ -278,6 +370,11 @@ export const coachingApi = {
   async getRecordingCandidates(input) {
     const response = await gql(GET_COACHING_RECORDING_CANDIDATES, { input })
     return response.coachingRecordingCandidates
+  },
+
+  async getAnalysisQueue() {
+    const response = await gql(GET_COACHING_ANALYSIS_QUEUE)
+    return response.coachingAnalysisQueue
   },
 
   async getSessions() {

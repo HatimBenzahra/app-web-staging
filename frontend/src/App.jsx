@@ -320,8 +320,33 @@ function AdminLayout() {
                       </SectionErrorBoundary>
                     }
                   />
+                  <Route path="/coaching" element={<Navigate to="/coaching/dashboard" replace />} />
                   <Route
-                    path="/coaching"
+                    path="/coaching/dashboard"
+                    element={
+                      <SectionErrorBoundary>
+                        <Coaching />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching/recordings"
+                    element={
+                      <SectionErrorBoundary>
+                        <Coaching />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching/sessions"
+                    element={
+                      <SectionErrorBoundary>
+                        <Coaching />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching/plans"
                     element={
                       <SectionErrorBoundary>
                         <Coaching />

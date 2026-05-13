@@ -1,8 +1,12 @@
 import {
   ForbiddenException,
   Injectable,
+  Inject,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { RecordingService } from '../recording/recording.service';
@@ -11,6 +15,8 @@ import {
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
   CoachingRecordingCandidateDto,
+  CoachingAnalysisJobDto,
+  CoachingQueueStateDto,
   CoachingReviewActionDto,
   CoachingSessionDto,
   CreateSalesPlanInput,
@@ -76,7 +82,7 @@ type CoachingConversationBlock = {
 };
 
 @Injectable()
-export class CoachingService {
+export class CoachingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CoachingService.name);
   private readonly prefix = process.env.S3_PREFIX || 'recordings/';
   private readonly bucket = process.env.S3_BUCKET_NAME!;
@@ -87,6 +93,10 @@ export class CoachingService {
   private readonly vllmTimeoutMs = this.resolveVllmTimeoutMs();
   private readonly maxTranscriptPromptChars =
     this.resolveMaxTranscriptPromptChars();
+  private readonly queueConcurrency = this.resolveQueueConcurrency();
+  private readonly queuePollMs = this.resolveQueuePollMs();
+  private queueTimer?: NodeJS.Timeout;
+  private runningQueueJobs = 0;
 
   private readonly s3 = new S3Client({
     region: this.region,
@@ -98,9 +108,23 @@ export class CoachingService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => RecordingService))
     private readonly recordingService: RecordingService,
     private readonly transcriptionService: TranscriptionService,
   ) {}
+
+  onModuleInit(): void {
+    void this.recoverInterruptedQueueJobs().finally(() => this.pumpQueue());
+    this.queueTimer = setInterval(() => {
+      void this.pumpQueue();
+    }, this.queuePollMs);
+  }
+
+  onModuleDestroy(): void {
+    if (this.queueTimer) {
+      clearInterval(this.queueTimer);
+    }
+  }
 
   async getSalesPlans(currentUser: CurrentUser): Promise<SalesPlanDto[]> {
     this.assertAdminOrDirecteur(currentUser);
@@ -321,6 +345,7 @@ export class CoachingService {
     const limit = this.clampPositiveInt(input?.limit, 20, 100);
     const offset = this.clampNonNegativeInt(input?.offset, 0);
     const search = this.cleanOptionalText(input?.search)?.toLowerCase() ?? '';
+    const periodRange = this.resolveRecordingPeriod(input);
 
     const commercials = await this.getAccessibleCommercials(currentUser);
     if (commercials.length === 0) {
@@ -366,8 +391,25 @@ export class CoachingService {
       };
     });
 
-    const filteredItems = search
-      ? mappedItems.filter((item) =>
+    const periodItems = mappedItems.filter((item) => {
+      if (!periodRange.from && !periodRange.to) {
+        return true;
+      }
+      if (!item.lastModified) {
+        return false;
+      }
+      const timestamp = item.lastModified.getTime();
+      if (periodRange.from && timestamp < periodRange.from.getTime()) {
+        return false;
+      }
+      if (periodRange.to && timestamp > periodRange.to.getTime()) {
+        return false;
+      }
+      return true;
+    });
+
+    const searchedItems = search
+      ? periodItems.filter((item) =>
           [
             item.key,
             item.roomName,
@@ -378,14 +420,23 @@ export class CoachingService {
             .filter(Boolean)
             .some((value) => value!.toLowerCase().includes(search)),
         )
-      : mappedItems;
+      : periodItems;
 
-    const pageItems = filteredItems.slice(offset, offset + limit);
+    const speechScores = this.recordingService.getSpeechScores(
+      searchedItems.map((item) => item.key),
+    );
+    const speechByKey = new Map(speechScores.map((score) => [score.key, score]));
 
     const latestSessions = await this.prisma.coachingSession.findMany({
       where: {
         s3KeyOriginal: {
-          in: pageItems.map((item) => item.key),
+          in: searchedItems.map((item) => item.key),
+        },
+      },
+      include: {
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
         },
       },
       orderBy: [{ updatedAt: 'desc' }],
@@ -398,17 +449,55 @@ export class CoachingService {
       }
     }
 
-    return {
-      items: pageItems.map((item) => {
+    const enrichedItems = searchedItems
+      .map((item) => {
         const latestSession = latestByKey.get(item.key);
+        const latestJob = latestSession?.analysisJobs?.[0];
+        const speechScore = speechByKey.get(item.key);
+        const exploitability = this.scoreRecordingExploitability({
+          item,
+          speechScore,
+          latestSessionStatus: latestSession?.status ?? null,
+        });
 
         return {
           ...item,
           latestSessionId: latestSession?.id,
           latestSessionStatus: latestSession?.status as any,
+          speechScore: speechScore?.score,
+          speechScoreStatus: speechScore?.status,
+          totalDurationSec: speechScore?.totalDurationSec,
+          speechDurationSec: speechScore?.speechDurationSec,
+          exploitabilityScore: exploitability.score,
+          exploitabilityStatus: exploitability.status as any,
+          exploitabilityReasons: exploitability.reasons,
+          analysisJobId: latestJob?.id,
+          analysisJobStatus: latestJob?.status as any,
+          analysisQueuedAt: latestJob?.queuedAt ?? undefined,
+          analysisStartedAt: latestJob?.startedAt ?? undefined,
         };
-      }),
-      total: filteredItems.length,
+      })
+      .filter(
+        (item) =>
+          input?.includeLowValue ||
+          !['LOW_VALUE', 'ALREADY_ANALYZED'].includes(
+            item.exploitabilityStatus,
+          ),
+      )
+      .sort((a, b) => {
+        const scoreDelta = b.exploitabilityScore - a.exploitabilityScore;
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
+        return (
+          (b.lastModified?.getTime() || 0) -
+          (a.lastModified?.getTime() || 0)
+        );
+      });
+
+    return {
+      items: enrichedItems.slice(offset, offset + limit),
+      total: enrichedItems.length,
       limit,
       offset,
     };
@@ -440,6 +529,10 @@ export class CoachingService {
             salesPlan: true,
           },
         },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
         stepEvaluations: {
           orderBy: { ordre: 'asc' },
         },
@@ -448,6 +541,71 @@ export class CoachingService {
     });
 
     return sessions.map((session) => this.mapSession(session));
+  }
+
+  async getAnalysisQueue(
+    currentUser: CurrentUser,
+  ): Promise<CoachingQueueStateDto> {
+    this.assertAdminOrDirecteur(currentUser);
+
+    const sessionWhere =
+      currentUser.role === 'admin'
+        ? {}
+        : {
+            OR: [
+              { directeurId: currentUser.id },
+              {
+                commercial: {
+                  directeurId: currentUser.id,
+                },
+              },
+            ],
+          };
+
+    const [jobs, grouped] = await Promise.all([
+      this.prisma.coachingAnalysisJob.findMany({
+        where: {
+          coachingSession: sessionWhere,
+        },
+        orderBy: [
+          { status: 'asc' },
+          { priority: 'desc' },
+          { queuedAt: 'asc' },
+        ],
+        take: 80,
+      }),
+      this.prisma.coachingAnalysisJob.groupBy({
+        by: ['status'],
+        where: {
+          coachingSession: sessionWhere,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+    ]);
+
+    const counts = new Map(
+      grouped.map((entry) => [entry.status, entry._count._all]),
+    );
+    const oldestQueued = jobs
+      .filter((job) => job.status === 'QUEUED')
+      .sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
+
+    return {
+      summary: {
+        queued: counts.get('QUEUED') ?? 0,
+        processing: counts.get('PROCESSING') ?? 0,
+        completed: counts.get('COMPLETED') ?? 0,
+        failed: counts.get('FAILED') ?? 0,
+        cancelled: counts.get('CANCELLED') ?? 0,
+        concurrency: this.queueConcurrency,
+        oldestQueuedAgeSeconds: oldestQueued
+          ? this.secondsSince(oldestQueued.queuedAt)
+          : undefined,
+      },
+      jobs: jobs.map((job) => this.mapAnalysisJob(job)),
+    };
   }
 
   async getCoachingSession(
@@ -467,6 +625,10 @@ export class CoachingService {
               orderBy: { ordre: 'asc' },
             },
           },
+        },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
         },
         stepEvaluations: {
           orderBy: { ordre: 'asc' },
@@ -551,6 +713,15 @@ export class CoachingService {
       version.id,
     );
     if (existingSession) {
+      if (['PENDING', 'FAILED'].includes(existingSession.status)) {
+        await this.enqueueAnalysisJob(existingSession.id, currentUser, 50);
+        const queuedExistingSession =
+          await this.findCoachingSessionByRecordingPlan(
+            input.s3KeyOriginal,
+            version.id,
+          );
+        return this.mapSession(queuedExistingSession ?? existingSession);
+      }
       return this.mapSession(existingSession);
     }
 
@@ -598,13 +769,31 @@ export class CoachingService {
       throw error;
     }
 
-    void this.processSession(session!.id).catch((error) => {
-      this.logger.error(
-        `Erreur non gérée dans le traitement coaching ${session!.id}: ${error?.message || error}`,
-      );
+    await this.enqueueAnalysisJob(session!.id, currentUser, 50);
+
+    const queuedSession = await this.prisma.coachingSession.findUnique({
+      where: { id: session!.id },
+      include: {
+        commercial: true,
+        salesPlanVersion: {
+          include: {
+            salesPlan: true,
+          },
+        },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
+        stepEvaluations: {
+          orderBy: { ordre: 'asc' },
+        },
+        conversationEvaluations: {
+          orderBy: { ordre: 'asc' },
+        },
+      },
     });
 
-    return this.mapSession(session!);
+    return this.mapSession(queuedSession ?? session!);
   }
 
   async relaunchCoachingAnalysis(
@@ -668,11 +857,7 @@ export class CoachingService {
       });
     });
 
-    void this.processSession(session.id).catch((error) => {
-      this.logger.error(
-        `Erreur relance session coaching ${session.id}: ${error?.message || error}`,
-      );
-    });
+    await this.enqueueAnalysisJob(session.id, currentUser, 80);
 
     const refreshed = await this.prisma.coachingSession.findUnique({
       where: { id: session.id },
@@ -682,6 +867,10 @@ export class CoachingService {
           include: {
             salesPlan: true,
           },
+        },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
         },
         stepEvaluations: true,
         conversationEvaluations: {
@@ -771,6 +960,10 @@ export class CoachingService {
             salesPlan: true,
           },
         },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
         stepEvaluations: {
           orderBy: { ordre: 'asc' },
         },
@@ -781,6 +974,127 @@ export class CoachingService {
     });
 
     return this.mapSession(updated);
+  }
+
+  async autoQueueLatestPublishedAnalysisForRecording(
+    s3KeyOriginal: string,
+  ): Promise<void> {
+    if (!this.isAutoCoachingEnabled()) {
+      return;
+    }
+
+    const publishedVersion = await this.prisma.salesPlanVersion.findFirst({
+      where: {
+        status: 'PUBLISHED',
+      },
+      orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
+      include: {
+        salesPlan: true,
+      },
+    });
+
+    if (!publishedVersion) {
+      this.logger.log(
+        `Auto-coaching ignoré pour ${s3KeyOriginal}: aucun plan publié.`,
+      );
+      return;
+    }
+
+    const roomName = this.extractRoomFromKey(s3KeyOriginal);
+    const commercialId = this.extractCommercialIdFromRoomName(roomName);
+
+    if (!commercialId) {
+      this.logger.log(
+        `Auto-coaching ignoré pour ${s3KeyOriginal}: commercial non identifiable.`,
+      );
+      return;
+    }
+
+    const commercial = await this.prisma.commercial.findUnique({
+      where: { id: commercialId },
+      select: {
+        id: true,
+        directeurId: true,
+      },
+    });
+
+    if (!commercial) {
+      this.logger.warn(
+        `Auto-coaching ignoré pour ${s3KeyOriginal}: commercial ${commercialId} introuvable.`,
+      );
+      return;
+    }
+
+    let session = await this.findCoachingSessionByRecordingPlan(
+      s3KeyOriginal,
+      publishedVersion.id,
+    );
+
+    if (!session) {
+      try {
+        session = await this.prisma.coachingSession.create({
+          data: {
+            salesPlanVersionId: publishedVersion.id,
+            s3KeyOriginal,
+            roomName: roomName ?? null,
+            commercialId: commercial.id,
+            directeurId: commercial.directeurId ?? null,
+            status: 'PENDING',
+            reviewStatus: 'NOT_REQUIRED',
+            createdByRole: 'system:auto',
+            createdByUserId: 0,
+          },
+          include: {
+            commercial: true,
+            salesPlanVersion: {
+              include: {
+                salesPlan: true,
+              },
+            },
+            analysisJobs: {
+              orderBy: { updatedAt: 'desc' },
+              take: 1,
+            },
+            stepEvaluations: {
+              orderBy: { ordre: 'asc' },
+            },
+            conversationEvaluations: {
+              orderBy: { ordre: 'asc' },
+            },
+          },
+        });
+      } catch (error) {
+        if (this.isUniqueConstraintError(error)) {
+          session = await this.findCoachingSessionByRecordingPlan(
+            s3KeyOriginal,
+            publishedVersion.id,
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (!session) {
+      return;
+    }
+
+    if (session.status === 'COMPLETED') {
+      this.logger.log(
+        `Auto-coaching ignoré pour ${s3KeyOriginal}: analyse déjà terminée.`,
+      );
+      return;
+    }
+
+    await this.enqueueAnalysisJob(
+      session.id,
+      { id: 0, role: 'system:auto' },
+      40,
+    );
+
+    this.logger.log(
+      `Auto-coaching en file pour ${s3KeyOriginal} sur le plan ${publishedVersion.id}.`,
+    );
   }
 
   private async findCoachingSessionByRecordingPlan(
@@ -961,7 +1275,331 @@ export class CoachingService {
     return Number.isFinite(commercialId) ? commercialId : null;
   }
 
-  private async processSession(sessionId: number): Promise<void> {
+  private resolveRecordingPeriod(
+    input?: CoachingRecordingCandidatesInput,
+  ): { from?: Date; to?: Date } {
+    const now = new Date();
+    const period = input?.period ?? 'LAST_7_DAYS';
+
+    if (period === 'ALL') {
+      return {};
+    }
+
+    if (period === 'CUSTOM') {
+      return {
+        from: input?.from,
+        to: input?.to,
+      };
+    }
+
+    if (period === 'TODAY') {
+      const from = new Date(now);
+      from.setHours(0, 0, 0, 0);
+      return { from, to: now };
+    }
+
+    const days = period === 'LAST_30_DAYS' ? 30 : 7;
+    const from = new Date(now);
+    from.setDate(from.getDate() - days);
+    return { from, to: now };
+  }
+
+  private scoreRecordingExploitability(input: {
+    item: {
+      commercialId?: number;
+      lastModified?: Date;
+      size?: number;
+    };
+    speechScore?: {
+      score?: number;
+      totalDurationSec?: number;
+      speechDurationSec?: number;
+      status: string;
+    };
+    latestSessionStatus?: string | null;
+  }): {
+    score: number;
+    status: 'PRIORITY' | 'GOOD' | 'LOW_VALUE' | 'ALREADY_ANALYZED' | 'REVIEW';
+    reasons: string[];
+  } {
+    const reasons: string[] = [];
+    let score = 0;
+
+    if (input.latestSessionStatus === 'COMPLETED') {
+      return {
+        score: 35,
+        status: 'ALREADY_ANALYZED',
+        reasons: ['Analyse coaching déjà terminée'],
+      };
+    }
+
+    if (
+      input.latestSessionStatus === 'FAILED' ||
+      input.latestSessionStatus === 'NEEDS_REVIEW'
+    ) {
+      score += 45;
+      reasons.push('Analyse précédente à revoir');
+    }
+
+    if (
+      input.latestSessionStatus === 'PENDING' ||
+      input.latestSessionStatus === 'PROCESSING'
+    ) {
+      score += 50;
+      reasons.push('Analyse déjà en file ou en cours');
+    }
+
+    if (input.item.commercialId) {
+      score += 15;
+      reasons.push('Commercial identifié');
+    } else {
+      reasons.push('Commercial non identifié');
+    }
+
+    const speech = input.speechScore;
+    if (speech?.status === 'ready' && typeof speech.score === 'number') {
+      score += Math.min(45, Math.max(0, speech.score) * 0.45);
+      reasons.push(`Parole détectée ${speech.score}%`);
+    } else if (speech?.status === 'analyzing') {
+      score += 18;
+      reasons.push('Score parole en cours');
+    } else {
+      score += 10;
+      reasons.push('Score parole absent');
+    }
+
+    const duration = speech?.totalDurationSec;
+    if (typeof duration === 'number' && Number.isFinite(duration)) {
+      if (duration < 60) {
+        score -= 25;
+        reasons.push('Durée trop courte');
+      } else if (duration > 7200) {
+        score -= 15;
+        reasons.push('Durée très longue');
+      } else if (duration >= 180 && duration <= 5400) {
+        score += 20;
+        reasons.push('Durée exploitable');
+      } else {
+        score += 10;
+        reasons.push('Durée acceptable');
+      }
+    } else if ((input.item.size ?? 0) > 1024 * 1024) {
+      score += 8;
+      reasons.push('Fichier audio non vide');
+    }
+
+    if (input.item.lastModified) {
+      const ageDays =
+        (Date.now() - input.item.lastModified.getTime()) / 86_400_000;
+      if (ageDays <= 7) {
+        score += 10;
+        reasons.push('Enregistrement récent');
+      }
+    }
+
+    const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
+
+    if (
+      input.latestSessionStatus === 'FAILED' ||
+      input.latestSessionStatus === 'NEEDS_REVIEW' ||
+      input.latestSessionStatus === 'PENDING' ||
+      input.latestSessionStatus === 'PROCESSING'
+    ) {
+      return {
+        score: normalizedScore,
+        status: 'REVIEW',
+        reasons,
+      };
+    }
+
+    if (normalizedScore >= 70) {
+      return { score: normalizedScore, status: 'PRIORITY', reasons };
+    }
+    if (normalizedScore >= 50) {
+      return { score: normalizedScore, status: 'GOOD', reasons };
+    }
+    return { score: normalizedScore, status: 'LOW_VALUE', reasons };
+  }
+
+  private async enqueueAnalysisJob(
+    sessionId: number,
+    currentUser: CurrentUser,
+    priority: number,
+  ): Promise<void> {
+    await this.prisma.coachingAnalysisJob.upsert({
+      where: { coachingSessionId: sessionId },
+      create: {
+        coachingSessionId: sessionId,
+        priority,
+        status: 'QUEUED',
+        currentStep: 'En attente dans la file',
+        createdByRole: currentUser.role,
+        createdByUserId: currentUser.id,
+      },
+      update: {
+        priority,
+        status: 'QUEUED',
+        attempts: 0,
+        queuedAt: new Date(),
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        nextRunAt: null,
+        lastHeartbeatAt: null,
+        currentStep: 'En attente dans la file',
+        failureReason: null,
+      },
+    });
+
+    void this.pumpQueue();
+  }
+
+  private async recoverInterruptedQueueJobs(): Promise<void> {
+    await this.prisma.coachingAnalysisJob.updateMany({
+      where: { status: 'PROCESSING' },
+      data: {
+        status: 'QUEUED',
+        startedAt: null,
+        lastHeartbeatAt: null,
+        currentStep: 'Repris après redémarrage du serveur',
+      },
+    });
+  }
+
+  private async pumpQueue(): Promise<void> {
+    while (this.runningQueueJobs < this.queueConcurrency) {
+      const job = await this.claimNextQueueJob();
+      if (!job) {
+        return;
+      }
+
+      this.runningQueueJobs += 1;
+      void this.runQueueJob(job.id)
+        .catch((error) => {
+          this.logger.error(
+            `Job coaching ${job.id} interrompu: ${error?.message || error}`,
+          );
+        })
+        .finally(() => {
+          this.runningQueueJobs = Math.max(0, this.runningQueueJobs - 1);
+          void this.pumpQueue();
+        });
+    }
+  }
+
+  private async claimNextQueueJob() {
+    const now = new Date();
+    const job = await this.prisma.coachingAnalysisJob.findFirst({
+      where: {
+        status: 'QUEUED',
+        OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }],
+      },
+      orderBy: [{ priority: 'desc' }, { queuedAt: 'asc' }],
+    });
+
+    if (!job) {
+      return null;
+    }
+
+    return this.prisma.coachingAnalysisJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'PROCESSING',
+        attempts: { increment: 1 },
+        startedAt: now,
+        failedAt: null,
+        failureReason: null,
+        currentStep: 'Démarrage du pipeline',
+        lastHeartbeatAt: now,
+      },
+    });
+  }
+
+  private async runQueueJob(jobId: number): Promise<void> {
+    const job = await this.prisma.coachingAnalysisJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job) {
+      return;
+    }
+
+    const success = await this.processSession(job.coachingSessionId, job.id);
+    const refreshed = await this.prisma.coachingAnalysisJob.findUnique({
+      where: { id: job.id },
+    });
+    if (!refreshed) {
+      return;
+    }
+
+    if (success) {
+      await this.prisma.coachingAnalysisJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'COMPLETED',
+          currentStep: 'Analyse terminée',
+          completedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          failureReason: null,
+        },
+      });
+      return;
+    }
+
+    if (refreshed.attempts < refreshed.maxAttempts) {
+      const nextRunAt = new Date(Date.now() + refreshed.attempts * 120_000);
+      await this.prisma.coachingAnalysisJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'QUEUED',
+          currentStep: `Nouvelle tentative prévue (${refreshed.attempts}/${refreshed.maxAttempts})`,
+          nextRunAt,
+          failedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          failureReason: 'Le pipeline a échoué, une nouvelle tentative est planifiée.',
+        },
+      });
+      return;
+    }
+
+    const session = await this.prisma.coachingSession.findUnique({
+      where: { id: job.coachingSessionId },
+      select: { failureReason: true },
+    });
+
+    await this.prisma.coachingAnalysisJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'FAILED',
+        currentStep: 'Analyse échouée',
+        failedAt: new Date(),
+        lastHeartbeatAt: new Date(),
+        failureReason:
+          session?.failureReason ??
+          'Le pipeline a échoué après toutes les tentatives.',
+      },
+    });
+  }
+
+  private async updateAnalysisJobStep(
+    jobId: number | undefined,
+    currentStep: string,
+  ): Promise<void> {
+    if (!jobId) {
+      return;
+    }
+    await this.prisma.coachingAnalysisJob.update({
+      where: { id: jobId },
+      data: {
+        currentStep,
+        lastHeartbeatAt: new Date(),
+      },
+    });
+  }
+
+  private async processSession(
+    sessionId: number,
+    jobId?: number,
+  ): Promise<boolean> {
     const session = await this.prisma.coachingSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -978,7 +1616,7 @@ export class CoachingService {
     });
 
     if (!session) {
-      return;
+      return false;
     }
 
     await this.prisma.coachingSession.update({
@@ -997,6 +1635,7 @@ export class CoachingService {
     try {
       fs.mkdirSync(tmpDir, { recursive: true });
 
+      await this.updateAnalysisJobStep(jobId, 'Téléchargement de l’audio');
       const downloaded = await this.downloadRecording(
         session.s3KeyOriginal,
         localFile,
@@ -1005,6 +1644,7 @@ export class CoachingService {
         throw new Error("Téléchargement de l'enregistrement impossible");
       }
 
+      await this.updateAnalysisJobStep(jobId, 'Transcription Whisper');
       let transcript: CoachingTranscriptPayload | null =
         await this.transcriptionService.transcribeFile(localFile).then(
           (result) =>
@@ -1013,10 +1653,14 @@ export class CoachingService {
                   ...result,
                   source: 'WHISPER_FULL_RECORDING' as const,
                 }
-              : null,
+                : null,
         );
 
       if (!transcript || transcript.segments.length === 0) {
+        await this.updateAnalysisJobStep(
+          jobId,
+          'Fallback sur les transcriptions segmentées',
+        );
         transcript = await this.getTranscriptFromExistingSegments(
           session.s3KeyOriginal,
         );
@@ -1057,12 +1701,15 @@ export class CoachingService {
       const conversationBlocks = this.splitTranscriptIntoConversations(
         transcript.segments,
       );
+      await this.updateAnalysisJobStep(jobId, 'Réécriture lisible du transcript');
       const readableTranscriptText =
         await this.rewriteTranscriptForReadability(transcriptText);
+      await this.updateAnalysisJobStep(jobId, 'Évaluation globale IA');
       const evaluation = await this.evaluateTranscript(
         session.salesPlanVersion,
         transcriptText,
       );
+      await this.updateAnalysisJobStep(jobId, 'Évaluation des conversations');
       const conversationEvaluations =
         await this.evaluateConversationBlocks(
           session.salesPlanVersion,
@@ -1081,6 +1728,7 @@ export class CoachingService {
             : `${identificationSource}+FALLBACK`;
       }
 
+      await this.updateAnalysisJobStep(jobId, 'Finalisation du rapport');
       await this.prisma.$transaction(async (tx) => {
         await tx.coachingStepEvaluation.deleteMany({
           where: { coachingSessionId: session.id },
@@ -1177,6 +1825,7 @@ export class CoachingService {
           });
         }
       });
+      return true;
     } catch (error) {
       this.logger.error(
         `Traitement coaching ${sessionId} échoué: ${error?.message || error}`,
@@ -1194,6 +1843,8 @@ export class CoachingService {
           processedAt: new Date(),
         },
       });
+      await this.updateAnalysisJobStep(jobId, 'Erreur pipeline');
+      return false;
     } finally {
       this.cleanupDir(tmpDir);
     }
@@ -1847,6 +2498,34 @@ export class CoachingService {
     return raw;
   }
 
+  private resolveQueueConcurrency(): number {
+    const raw = Number(process.env.COACHING_ANALYSIS_CONCURRENCY);
+    if (!Number.isFinite(raw)) {
+      return 1;
+    }
+    return Math.max(1, Math.min(5, Math.floor(raw)));
+  }
+
+  private resolveQueuePollMs(): number {
+    const raw = Number(process.env.COACHING_QUEUE_POLL_MS);
+    if (!Number.isFinite(raw)) {
+      return 5_000;
+    }
+    return Math.max(2_000, Math.min(60_000, Math.floor(raw)));
+  }
+
+  private isAutoCoachingEnabled(): boolean {
+    const raw = process.env.COACHING_AUTO_ANALYZE_ENABLED;
+    if (!raw) {
+      return true;
+    }
+    return !['0', 'false', 'no', 'off'].includes(raw.toLowerCase());
+  }
+
+  private secondsSince(value: Date): number {
+    return Math.max(0, Math.round((Date.now() - value.getTime()) / 1000));
+  }
+
   private resolveMaxConversations(): number {
     const raw = Number(process.env.COACHING_MAX_CONVERSATIONS);
     if (!Number.isFinite(raw) || raw < 1) {
@@ -2238,6 +2917,10 @@ export class CoachingService {
   }
 
   private mapSession(session: any, audioUrl?: string): CoachingSessionDto {
+    const analysisJob = session.analysisJobs?.[0]
+      ? this.mapAnalysisJob(session.analysisJobs[0])
+      : undefined;
+
     return {
       id: session.id,
       s3KeyOriginal: session.s3KeyOriginal,
@@ -2277,6 +2960,8 @@ export class CoachingService {
       processedAt: session.processedAt ?? undefined,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      analysisJob,
+      pipelineSteps: this.buildPipelineSteps(session, analysisJob),
       stepEvaluations:
         session.stepEvaluations?.map((step: any) => ({
           id: step.id,
@@ -2316,6 +3001,122 @@ export class CoachingService {
           updatedAt: conversation.updatedAt,
         })) ?? [],
     };
+  }
+
+  private mapAnalysisJob(job: any): CoachingAnalysisJobDto {
+    return {
+      id: job.id,
+      coachingSessionId: job.coachingSessionId,
+      status: job.status,
+      priority: job.priority,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      currentStep: job.currentStep ?? undefined,
+      failureReason: job.failureReason ?? undefined,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt ?? undefined,
+      completedAt: job.completedAt ?? undefined,
+      failedAt: job.failedAt ?? undefined,
+      nextRunAt: job.nextRunAt ?? undefined,
+      lastHeartbeatAt: job.lastHeartbeatAt ?? undefined,
+      waitSeconds:
+        job.status === 'QUEUED'
+          ? this.secondsSince(job.queuedAt)
+          : job.startedAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (job.startedAt.getTime() - job.queuedAt.getTime()) / 1000,
+                ),
+              )
+            : undefined,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    };
+  }
+
+  private buildPipelineSteps(
+    session: any,
+    job?: CoachingAnalysisJobDto,
+  ): Array<{
+    key: string;
+    label: string;
+    status: string;
+    timestamp?: Date;
+    detail?: string;
+  }> {
+    const failed = session.status === 'FAILED' || job?.status === 'FAILED';
+    const processing = session.status === 'PROCESSING';
+    const completed =
+      session.status === 'COMPLETED' || session.status === 'NEEDS_REVIEW';
+
+    return [
+      {
+        key: 'queued',
+        label: 'File d’attente',
+        status: job
+          ? this.pipelineStatus(Boolean(job.startedAt), false, false)
+          : 'PENDING',
+        timestamp: job?.queuedAt,
+        detail: job?.currentStep,
+      },
+      {
+        key: 'processing',
+        label: 'Traitement audio',
+        status: this.pipelineStatus(
+          Boolean(session.transcriptText),
+          processing,
+          failed && !session.transcriptText,
+        ),
+        timestamp: job?.startedAt,
+      },
+      {
+        key: 'readable_transcript',
+        label: 'Transcript lisible',
+        status: this.pipelineStatus(
+          Boolean(session.readableTranscriptText),
+          processing && Boolean(session.transcriptText),
+          failed && Boolean(session.transcriptText),
+        ),
+      },
+      {
+        key: 'evaluation',
+        label: 'Évaluation IA',
+        status: this.pipelineStatus(
+          Boolean(session.overallScore || session.summary),
+          processing && Boolean(session.readableTranscriptText),
+          failed && Boolean(session.readableTranscriptText),
+        ),
+      },
+      {
+        key: 'completed',
+        label: 'Rapport disponible',
+        status: this.pipelineStatus(
+          completed,
+          processing && Boolean(session.overallScore || session.summary),
+          failed,
+        ),
+        timestamp: session.processedAt ?? job?.completedAt ?? job?.failedAt,
+        detail: session.failureReason ?? session.reviewReason ?? undefined,
+      },
+    ];
+  }
+
+  private pipelineStatus(
+    done: boolean,
+    processing: boolean,
+    failed: boolean,
+  ): string {
+    if (failed) {
+      return 'FAILED';
+    }
+    if (done) {
+      return 'COMPLETED';
+    }
+    if (processing) {
+      return 'PROCESSING';
+    }
+    return 'PENDING';
   }
 
   private cleanupDir(dirPath: string): void {

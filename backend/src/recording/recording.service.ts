@@ -1,8 +1,10 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
@@ -38,6 +40,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { TranscriptionService } from '../transcription/transcription.service';
 import { SpeechAnalysisService } from '../transcription/speech-analysis.service';
+import { CoachingService } from '../coaching/coaching.service';
 
 type RoomTarget = {
   type: 'COMMERCIAL' | 'MANAGER';
@@ -88,6 +91,8 @@ export class RecordingService {
     private prisma: PrismaService,
     private transcription: TranscriptionService,
     private speechAnalysis: SpeechAnalysisService,
+    @Inject(forwardRef(() => CoachingService))
+    private coachingService: CoachingService,
   ) {}
 
   private getStartOfToday(): Date {
@@ -601,6 +606,14 @@ export class RecordingService {
     }
 
     const url = await this.signedUrlOrUndefined(s3Key);
+
+    void this.coachingService
+      .autoQueueLatestPublishedAnalysisForRecording(s3Key)
+      .catch((error) => {
+        this.logger.warn(
+          `Auto-queue coaching ignorée pour ${s3Key}: ${error?.message || error}`,
+        );
+      });
 
     return {
       key: s3Key,

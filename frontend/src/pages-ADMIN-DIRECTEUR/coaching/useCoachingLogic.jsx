@@ -84,13 +84,15 @@ export function useCoachingLogic() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [plans, setPlans] = useState([])
+  const [prioritizedRecordings, setPrioritizedRecordings] = useState([])
   const [recordings, setRecordings] = useState([])
   const [recordingsTotal, setRecordingsTotal] = useState(0)
   const [recordingsPage, setRecordingsPage] = useState(1)
   const [recordingsSearch, setRecordingsSearch] = useState('')
+  const [dashboardPeriod, setDashboardPeriod] = useState('LAST_7_DAYS')
   const [sessions, setSessions] = useState([])
+  const [queueState, setQueueState] = useState(null)
   const [selectedSession, setSelectedSession] = useState(null)
-  const [activeTab, setActiveTab] = useState('analyses')
   const [reviewNotes, setReviewNotes] = useState('')
   const [reviewCommercialId, setReviewCommercialId] = useState('')
   const [planForm, setPlanForm] = useState(createEmptyPlanForm)
@@ -100,25 +102,42 @@ export function useCoachingLogic() {
     setError(null)
     try {
       const offset = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
-      const [nextPlans, nextRecordings, nextSessions] = await Promise.all([
+      const [
+        nextPlans,
+        nextPrioritizedRecordings,
+        nextRecordings,
+        nextSessions,
+        nextQueueState,
+      ] = await Promise.all([
         coachingApi.getSalesPlans(),
+        coachingApi.getRecordingCandidates({
+          limit: 10,
+          offset: 0,
+          period: dashboardPeriod,
+          includeLowValue: false,
+        }),
         coachingApi.getRecordingCandidates({
           limit: RECORDINGS_PAGE_SIZE,
           offset,
           search: recordingsSearch || null,
+          period: 'ALL',
+          includeLowValue: true,
         }),
         coachingApi.getSessions(),
+        coachingApi.getAnalysisQueue(),
       ])
       setPlans(nextPlans)
+      setPrioritizedRecordings(nextPrioritizedRecordings.items)
       setRecordings(nextRecordings.items)
       setRecordingsTotal(nextRecordings.total)
       setSessions(nextSessions)
+      setQueueState(nextQueueState)
     } catch (err) {
       setError(err)
     } finally {
       setLoading(false)
     }
-  }, [recordingsPage, recordingsSearch])
+  }, [dashboardPeriod, recordingsPage, recordingsSearch])
 
   const loadSession = useCallback(async id => {
     if (!id) {
@@ -238,7 +257,6 @@ export function useCoachingLogic() {
       ...DEV_SALES_PLAN_TEMPLATE,
       steps: DEV_SALES_PLAN_TEMPLATE.steps.map(step => ({ ...step })),
     })
-    setActiveTab('plans')
   }, [])
 
   const createPlan = useCallback(async () => {
@@ -258,7 +276,6 @@ export function useCoachingLogic() {
       })
       setPlanForm(createEmptyPlanForm())
       await loadAll()
-      setActiveTab('plans')
     } catch (err) {
       setError(err)
     } finally {
@@ -279,7 +296,6 @@ export function useCoachingLogic() {
         })
         await loadAll()
         navigate(`/coaching/sessions/${session.id}`)
-        setActiveTab('analyses')
       } catch (err) {
         setError(err)
       } finally {
@@ -292,7 +308,6 @@ export function useCoachingLogic() {
   const openSession = useCallback(
     id => {
       navigate(`/coaching/sessions/${id}`)
-      setActiveTab('analyses')
     },
     [navigate]
   )
@@ -345,6 +360,7 @@ export function useCoachingLogic() {
     submitting,
     error,
     plans,
+    prioritizedRecordings,
     recordings,
     recordingsTotal,
     recordingsPage,
@@ -353,16 +369,17 @@ export function useCoachingLogic() {
     recordingsEndIndex,
     recordingsSearch,
     setRecordingsSearch: updateRecordingsSearch,
+    dashboardPeriod,
+    setDashboardPeriod,
     goToNextRecordingsPage: () =>
       setRecordingsPage(current => Math.min(recordingsTotalPages, current + 1)),
     goToPreviousRecordingsPage: () => setRecordingsPage(current => Math.max(1, current - 1)),
     hasNextRecordingsPage: recordingsPage < recordingsTotalPages,
     hasPreviousRecordingsPage: recordingsPage > 1,
     sessions,
+    queueState,
     selectedSession,
     isSessionDetail: Boolean(sessionId),
-    activeTab,
-    setActiveTab,
     planForm,
     setPlanForm,
     updateStep,

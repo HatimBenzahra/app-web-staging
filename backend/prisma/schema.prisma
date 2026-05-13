@@ -229,6 +229,14 @@ enum CoachingConversationStatus {
   FAILED
 }
 
+enum CoachingAnalysisJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 model SalesPlan {
   id              Int             @id @default(autoincrement())
   nom             String
@@ -326,6 +334,7 @@ model CoachingSession {
   directeur        Directeur?               @relation(fields: [directeurId], references: [id])
   stepEvaluations  CoachingStepEvaluation[]
   conversationEvaluations CoachingConversationEvaluation[]
+  analysisJobs     CoachingAnalysisJob[]
 
   @@index([salesPlanVersionId])
   @@index([commercialId])
@@ -334,6 +343,33 @@ model CoachingSession {
   @@index([reviewStatus])
   @@index([s3KeyOriginal])
   @@unique([s3KeyOriginal, salesPlanVersionId])
+}
+
+model CoachingAnalysisJob {
+  id                Int                       @id @default(autoincrement())
+  coachingSessionId Int                       @unique
+  status            CoachingAnalysisJobStatus @default(QUEUED)
+  priority          Int                       @default(50)
+  attempts          Int                       @default(0)
+  maxAttempts       Int                       @default(2)
+  queuedAt          DateTime                  @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  nextRunAt         DateTime?
+  lastHeartbeatAt   DateTime?
+  currentStep       String?
+  failureReason     String?
+  createdByRole     String
+  createdByUserId   Int
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  coachingSession CoachingSession @relation(fields: [coachingSessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, queuedAt])
+  @@index([coachingSessionId])
+  @@index([nextRunAt])
 }
 
 model CoachingConversationEvaluation {

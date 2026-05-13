@@ -98,7 +98,18 @@ const toolsItems = [
       { title: 'Enregistrements', url: '/ecoutes/enregistrement' },
     ],
   },
-  { title: 'Coaching IA', url: '/coaching', icon: Bot, entity: 'coaching' },
+  {
+    title: 'Coaching IA',
+    url: '/coaching',
+    icon: Bot,
+    entity: 'coaching',
+    subitems: [
+      { title: 'Dashboard', url: '/coaching/dashboard' },
+      { title: 'Enregistrements', url: '/coaching/recordings' },
+      { title: 'Analyses', url: '/coaching/sessions' },
+      { title: 'Plans', url: '/coaching/plans' },
+    ],
+  },
   {
     title: 'Gamification',
     url: '/gamification',

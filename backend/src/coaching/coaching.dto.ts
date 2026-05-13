@@ -10,6 +10,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsDate,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -64,6 +65,30 @@ export enum CoachingReviewActionDto {
   REJECT = 'REJECT',
 }
 
+export enum CoachingAnalysisJobStatusDto {
+  QUEUED = 'QUEUED',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum CoachingRecordingPeriodDto {
+  TODAY = 'TODAY',
+  LAST_7_DAYS = 'LAST_7_DAYS',
+  LAST_30_DAYS = 'LAST_30_DAYS',
+  CUSTOM = 'CUSTOM',
+  ALL = 'ALL',
+}
+
+export enum CoachingRecordingExploitabilityStatusDto {
+  PRIORITY = 'PRIORITY',
+  GOOD = 'GOOD',
+  LOW_VALUE = 'LOW_VALUE',
+  ALREADY_ANALYZED = 'ALREADY_ANALYZED',
+  REVIEW = 'REVIEW',
+}
+
 registerEnumType(SalesPlanStatusDto, { name: 'SalesPlanStatusDto' });
 registerEnumType(SalesPlanVersionStatusDto, {
   name: 'SalesPlanVersionStatusDto',
@@ -82,6 +107,15 @@ registerEnumType(CoachingConversationStatusDto, {
 });
 registerEnumType(CoachingReviewActionDto, {
   name: 'CoachingReviewActionDto',
+});
+registerEnumType(CoachingAnalysisJobStatusDto, {
+  name: 'CoachingAnalysisJobStatusDto',
+});
+registerEnumType(CoachingRecordingPeriodDto, {
+  name: 'CoachingRecordingPeriodDto',
+});
+registerEnumType(CoachingRecordingExploitabilityStatusDto, {
+  name: 'CoachingRecordingExploitabilityStatusDto',
 });
 
 @InputType()
@@ -229,6 +263,30 @@ export class CoachingRecordingCandidatesInput {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @Field(() => CoachingRecordingPeriodDto, {
+    nullable: true,
+    defaultValue: CoachingRecordingPeriodDto.LAST_7_DAYS,
+  })
+  @IsOptional()
+  period?: CoachingRecordingPeriodDto;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsDate()
+  @Type(() => Date)
+  from?: Date;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsDate()
+  @Type(() => Date)
+  to?: Date;
+
+  @Field({ nullable: true, defaultValue: false })
+  @IsOptional()
+  @IsBoolean()
+  includeLowValue?: boolean;
 }
 
 @ObjectType()
@@ -328,6 +386,39 @@ export class CoachingRecordingCandidateDto {
 
   @Field(() => CoachingSessionStatusDto, { nullable: true })
   latestSessionStatus?: CoachingSessionStatusDto;
+
+  @Field(() => Int, { nullable: true })
+  speechScore?: number;
+
+  @Field({ nullable: true })
+  speechScoreStatus?: string;
+
+  @Field(() => Float, { nullable: true })
+  totalDurationSec?: number;
+
+  @Field(() => Float, { nullable: true })
+  speechDurationSec?: number;
+
+  @Field(() => Float)
+  exploitabilityScore: number;
+
+  @Field(() => CoachingRecordingExploitabilityStatusDto)
+  exploitabilityStatus: CoachingRecordingExploitabilityStatusDto;
+
+  @Field(() => [String])
+  exploitabilityReasons: string[];
+
+  @Field(() => Int, { nullable: true })
+  analysisJobId?: number;
+
+  @Field(() => CoachingAnalysisJobStatusDto, { nullable: true })
+  analysisJobStatus?: CoachingAnalysisJobStatusDto;
+
+  @Field({ nullable: true })
+  analysisQueuedAt?: Date;
+
+  @Field({ nullable: true })
+  analysisStartedAt?: Date;
 }
 
 @ObjectType()
@@ -439,6 +530,111 @@ export class CoachingConversationEvaluationDto {
 }
 
 @ObjectType()
+export class CoachingAnalysisJobDto {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  coachingSessionId: number;
+
+  @Field(() => CoachingAnalysisJobStatusDto)
+  status: CoachingAnalysisJobStatusDto;
+
+  @Field(() => Int)
+  priority: number;
+
+  @Field(() => Int)
+  attempts: number;
+
+  @Field(() => Int)
+  maxAttempts: number;
+
+  @Field({ nullable: true })
+  currentStep?: string;
+
+  @Field({ nullable: true })
+  failureReason?: string;
+
+  @Field()
+  queuedAt: Date;
+
+  @Field({ nullable: true })
+  startedAt?: Date;
+
+  @Field({ nullable: true })
+  completedAt?: Date;
+
+  @Field({ nullable: true })
+  failedAt?: Date;
+
+  @Field({ nullable: true })
+  nextRunAt?: Date;
+
+  @Field({ nullable: true })
+  lastHeartbeatAt?: Date;
+
+  @Field(() => Float, { nullable: true })
+  waitSeconds?: number;
+
+  @Field()
+  createdAt: Date;
+
+  @Field()
+  updatedAt: Date;
+}
+
+@ObjectType()
+export class CoachingAnalysisPipelineStepDto {
+  @Field()
+  key: string;
+
+  @Field()
+  label: string;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  timestamp?: Date;
+
+  @Field({ nullable: true })
+  detail?: string;
+}
+
+@ObjectType()
+export class CoachingQueueSummaryDto {
+  @Field(() => Int)
+  queued: number;
+
+  @Field(() => Int)
+  processing: number;
+
+  @Field(() => Int)
+  completed: number;
+
+  @Field(() => Int)
+  failed: number;
+
+  @Field(() => Int)
+  cancelled: number;
+
+  @Field(() => Int)
+  concurrency: number;
+
+  @Field(() => Float, { nullable: true })
+  oldestQueuedAgeSeconds?: number;
+}
+
+@ObjectType()
+export class CoachingQueueStateDto {
+  @Field(() => CoachingQueueSummaryDto)
+  summary: CoachingQueueSummaryDto;
+
+  @Field(() => [CoachingAnalysisJobDto])
+  jobs: CoachingAnalysisJobDto[];
+}
+
+@ObjectType()
 export class CoachingSessionDto {
   @Field(() => Int)
   id: number;
@@ -547,6 +743,12 @@ export class CoachingSessionDto {
 
   @Field()
   updatedAt: Date;
+
+  @Field(() => CoachingAnalysisJobDto, { nullable: true })
+  analysisJob?: CoachingAnalysisJobDto;
+
+  @Field(() => [CoachingAnalysisPipelineStepDto])
+  pipelineSteps: CoachingAnalysisPipelineStepDto[];
 
   @Field(() => [CoachingStepEvaluationDto])
   stepEvaluations: CoachingStepEvaluationDto[];
