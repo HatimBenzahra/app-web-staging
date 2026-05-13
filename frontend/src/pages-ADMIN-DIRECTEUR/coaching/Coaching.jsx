@@ -446,8 +446,8 @@ function RecordingsView({ logic }) {
             Stock accessible, recherche rapide, pagination et mise en file à la demande.
           </CardDescription>
         </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="w-full md:max-w-md">
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr]">
+          <div>
             <Label htmlFor="recordings-search">Recherche</Label>
             <Input
               id="recordings-search"
@@ -457,9 +457,65 @@ function RecordingsView({ logic }) {
               className="mt-2"
             />
           </div>
-          <div className="text-sm text-muted-foreground">
-            {logic.recordingsTotal} enregistrements trouvés
+          <div>
+            <Label>Commercial</Label>
+            <Select
+              value={logic.recordingsCommercialId}
+              onValueChange={logic.setRecordingsCommercialId}
+            >
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les commerciaux</SelectItem>
+                {logic.commercialOptions.map(commercial => (
+                  <SelectItem key={commercial.id} value={String(commercial.id)}>
+                    {commercial.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          <div>
+            <Label>Analyse</Label>
+            <Select
+              value={logic.recordingsAnalysisStatus}
+              onValueChange={logic.setRecordingsAnalysisStatus}
+            >
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous statuts</SelectItem>
+                <SelectItem value="QUEUED">En file</SelectItem>
+                <SelectItem value="PROCESSING">En cours</SelectItem>
+                <SelectItem value="COMPLETED">Terminés</SelectItem>
+                <SelectItem value="FAILED">Échecs</SelectItem>
+                <SelectItem value="NEEDS_REVIEW">À vérifier</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Parole</Label>
+            <Select
+              value={logic.recordingsSpeechLevel}
+              onValueChange={logic.setRecordingsSpeechLevel}
+            >
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous niveaux</SelectItem>
+                <SelectItem value="HIGH">Forte parole</SelectItem>
+                <SelectItem value="MEDIUM">Parole moyenne</SelectItem>
+                <SelectItem value="LOW">Faible parole</SelectItem>
+                <SelectItem value="PENDING">En calcul</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {logic.recordingsTotal} enregistrements trouvés
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -498,6 +554,15 @@ function RecordingsView({ logic }) {
                       {EXPLOITABILITY_LABELS[recording.exploitabilityStatus] ||
                         recording.exploitabilityStatus}
                     </Badge>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {recording.analysisJobStatus
+                        ? QUEUE_LABELS[recording.analysisJobStatus] || recording.analysisJobStatus
+                        : recording.latestSessionStatus === 'COMPLETED'
+                          ? 'Déjà analysé'
+                          : ['PRIORITY', 'GOOD'].includes(recording.exploitabilityStatus)
+                            ? 'Éligible auto'
+                            : 'Analyse manuelle'}
+                    </div>
                   </TableCell>
                   <TableCell>{formatSize(recording.size)}</TableCell>
                   <TableCell>
@@ -866,6 +931,13 @@ function PlansView({ logic }) {
 
 function SessionDetailView({ logic }) {
   const session = logic.selectedSession
+  const audioRef = React.useRef(null)
+
+  const playExcerpt = (startTime) => {
+    if (!audioRef.current || startTime === null || startTime === undefined) return
+    audioRef.current.currentTime = Math.max(0, Number(startTime) || 0)
+    void audioRef.current.play()
+  }
 
   if (!session) {
     return (
@@ -942,6 +1014,65 @@ function SessionDetailView({ logic }) {
                 <ScorePill label="Écoute / parole" value={session.listeningRatioScore} />
                 <ScorePill label="Closing" value={session.closingScore} />
               </div>
+
+              {(session.keyMoments || []).length > 0 ? (
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        À écouter en priorité
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Les passages qui expliquent le mieux l’analyse.
+                      </p>
+                    </div>
+                    <Badge variant="secondary">{session.keyMoments.length} moments</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {session.keyMoments.slice(0, 4).map(moment => (
+                      <div
+                        key={moment.id}
+                        className="rounded-md border border-border/70 bg-background px-3 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">{moment.type}</Badge>
+                              {moment.importance ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Impact {moment.importance}/100
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 font-medium">{moment.title}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {formatSeconds(moment.startTime)} → {formatSeconds(moment.endTime)}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            disabled={!session.audioUrl || moment.startTime === null || moment.startTime === undefined}
+                            onClick={() => playExcerpt(moment.startTime)}
+                            title="Écouter l’extrait"
+                          >
+                            <PlayCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {moment.summary ? (
+                          <p className="mt-3 text-sm text-muted-foreground">{moment.summary}</p>
+                        ) : null}
+                        {moment.verbatim ? (
+                          <div className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-xs leading-5">
+                            {moment.verbatim}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
                 <div>
@@ -1079,10 +1210,25 @@ function SessionDetailView({ logic }) {
                       {step.ordre}. {step.titre}
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        disabled={!session.audioUrl || step.startTime === null || step.startTime === undefined}
+                        onClick={() => playExcerpt(step.startTime)}
+                        title="Écouter le verbatim"
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                      </Button>
                       <Badge variant="outline">{step.coverageStatus}</Badge>
                       <Badge variant="outline">{step.score ?? 'n/a'}</Badge>
                     </div>
                   </div>
+                  {step.startTime !== null && step.startTime !== undefined ? (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Extrait {formatSeconds(step.startTime)} → {formatSeconds(step.endTime)}
+                    </div>
+                  ) : null}
                   {step.verbatim ? (
                     <div className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
                       {step.verbatim}
@@ -1183,7 +1329,7 @@ function SessionDetailView({ logic }) {
               <InfoLine label="Segments Whisper" value={session.whisperSegmentsCount ?? 'n/a'} />
               <InfoLine label="Durée transcript" value={session.transcriptDurationSec ?? 'n/a'} />
               {session.audioUrl ? (
-                <audio controls className="mt-4 w-full" src={session.audioUrl} />
+                <audio ref={audioRef} controls className="mt-4 w-full" src={session.audioUrl} />
               ) : null}
             </CardContent>
           </Card>

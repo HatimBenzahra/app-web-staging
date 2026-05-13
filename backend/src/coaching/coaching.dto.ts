@@ -264,6 +264,21 @@ export class CoachingRecordingCandidatesInput {
   @IsString()
   search?: string;
 
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  commercialId?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  analysisStatus?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  speechLevel?: string;
+
   @Field(() => CoachingRecordingPeriodDto, {
     nullable: true,
     defaultValue: CoachingRecordingPeriodDto.LAST_7_DAYS,
@@ -453,6 +468,12 @@ export class CoachingStepEvaluationDto {
   @Field(() => Int, { nullable: true })
   score?: number;
 
+  @Field(() => Float, { nullable: true })
+  startTime?: number;
+
+  @Field(() => Float, { nullable: true })
+  endTime?: number;
+
   @Field({ nullable: true })
   verbatim?: string;
 
@@ -461,6 +482,39 @@ export class CoachingStepEvaluationDto {
 
   @Field({ nullable: true })
   recommendation?: string;
+}
+
+@ObjectType()
+export class CoachingKeyMomentDto {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  type: string;
+
+  @Field()
+  title: string;
+
+  @Field({ nullable: true })
+  summary?: string;
+
+  @Field(() => Float, { nullable: true })
+  startTime?: number;
+
+  @Field(() => Float, { nullable: true })
+  endTime?: number;
+
+  @Field({ nullable: true })
+  verbatim?: string;
+
+  @Field(() => Int, { nullable: true })
+  importance?: number;
+
+  @Field()
+  createdAt: Date;
+
+  @Field()
+  updatedAt: Date;
 }
 
 @ObjectType()
@@ -752,6 +806,9 @@ export class CoachingSessionDto {
 
   @Field(() => [CoachingStepEvaluationDto])
   stepEvaluations: CoachingStepEvaluationDto[];
+
+  @Field(() => [CoachingKeyMomentDto])
+  keyMoments: CoachingKeyMomentDto[];
 
   @Field(() => [CoachingConversationEvaluationDto])
   conversationEvaluations: CoachingConversationEvaluationDto[];

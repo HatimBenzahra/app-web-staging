@@ -334,6 +334,7 @@ model CoachingSession {
   directeur        Directeur?               @relation(fields: [directeurId], references: [id])
   stepEvaluations  CoachingStepEvaluation[]
   conversationEvaluations CoachingConversationEvaluation[]
+  keyMoments       CoachingKeyMoment[]
   analysisJobs     CoachingAnalysisJob[]
 
   @@index([salesPlanVersionId])
@@ -412,6 +413,8 @@ model CoachingStepEvaluation {
   titre             String
   coverageStatus    CoachingStepCoverageStatus
   score             Int?
+  startTime         Float?
+  endTime           Float?
   verbatim          String?
   feedback          String?
   recommendation    String?
@@ -423,6 +426,26 @@ model CoachingStepEvaluation {
 
   @@index([coachingSessionId])
   @@index([salesPlanStepId])
+}
+
+model CoachingKeyMoment {
+  id                Int      @id @default(autoincrement())
+  coachingSessionId Int
+  type              String
+  title             String
+  summary           String?
+  startTime         Float?
+  endTime           Float?
+  verbatim          String?
+  importance        Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  coachingSession CoachingSession @relation(fields: [coachingSessionId], references: [id], onDelete: Cascade)
+
+  @@index([coachingSessionId])
+  @@index([type])
+  @@index([importance])
 }
 
 model ZoneEnCours {

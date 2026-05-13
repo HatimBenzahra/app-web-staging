@@ -188,9 +188,23 @@ const GET_COACHING_SESSIONS = `
         titre
         coverageStatus
         score
+        startTime
+        endTime
         verbatim
         feedback
         recommendation
+      }
+      keyMoments {
+        id
+        type
+        title
+        summary
+        startTime
+        endTime
+        verbatim
+        importance
+        createdAt
+        updatedAt
       }
       conversationEvaluations {
         id
@@ -287,9 +301,23 @@ const GET_COACHING_SESSION = `
         titre
         coverageStatus
         score
+        startTime
+        endTime
         verbatim
         feedback
         recommendation
+      }
+      keyMoments {
+        id
+        type
+        title
+        summary
+        startTime
+        endTime
+        verbatim
+        importance
+        createdAt
+        updatedAt
       }
       conversationEvaluations {
         id

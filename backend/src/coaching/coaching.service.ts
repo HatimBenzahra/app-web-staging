@@ -42,9 +42,21 @@ type StepEvaluationPayload = {
   titre: string;
   coverageStatus: 'COVERED' | 'PARTIAL' | 'MISSING';
   score?: number | null;
+  startTime?: number | null;
+  endTime?: number | null;
   verbatim?: string | null;
   feedback?: string | null;
   recommendation?: string | null;
+};
+
+type KeyMomentPayload = {
+  type: string;
+  title: string;
+  summary?: string | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  verbatim?: string | null;
+  importance?: number | null;
 };
 
 type SessionEvaluationPayload = {
@@ -58,6 +70,7 @@ type SessionEvaluationPayload = {
   strengths: string[];
   improvements: string[];
   recommendations: string[];
+  keyMoments: KeyMomentPayload[];
   stepEvaluations: StepEvaluationPayload[];
   rawResponse?: string | null;
   usedFallback?: boolean;
@@ -97,6 +110,7 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
   private readonly queuePollMs = this.resolveQueuePollMs();
   private queueTimer?: NodeJS.Timeout;
   private runningQueueJobs = 0;
+  private readonly autoQueueRetryTimers = new Map<string, NodeJS.Timeout>();
 
   private readonly s3 = new S3Client({
     region: this.region,
@@ -124,6 +138,10 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     if (this.queueTimer) {
       clearInterval(this.queueTimer);
     }
+    for (const timer of this.autoQueueRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.autoQueueRetryTimers.clear();
   }
 
   async getSalesPlans(currentUser: CurrentUser): Promise<SalesPlanDto[]> {
@@ -345,6 +363,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     const limit = this.clampPositiveInt(input?.limit, 20, 100);
     const offset = this.clampNonNegativeInt(input?.offset, 0);
     const search = this.cleanOptionalText(input?.search)?.toLowerCase() ?? '';
+    const commercialFilter = input?.commercialId;
+    const analysisStatusFilter = this.cleanOptionalText(input?.analysisStatus);
+    const speechLevelFilter = this.cleanOptionalText(input?.speechLevel);
     const periodRange = this.resolveRecordingPeriod(input);
 
     const commercials = await this.getAccessibleCommercials(currentUser);
@@ -484,6 +505,36 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
             item.exploitabilityStatus,
           ),
       )
+      .filter((item) => {
+        if (commercialFilter && item.commercialId !== commercialFilter) {
+          return false;
+        }
+        if (
+          analysisStatusFilter &&
+          analysisStatusFilter !== 'ALL' &&
+          item.latestSessionStatus !== analysisStatusFilter &&
+          item.analysisJobStatus !== analysisStatusFilter
+        ) {
+          return false;
+        }
+        if (!speechLevelFilter || speechLevelFilter === 'ALL') {
+          return true;
+        }
+        const score = item.speechScore;
+        if (speechLevelFilter === 'HIGH') {
+          return typeof score === 'number' && score >= 65;
+        }
+        if (speechLevelFilter === 'MEDIUM') {
+          return typeof score === 'number' && score >= 45 && score < 65;
+        }
+        if (speechLevelFilter === 'LOW') {
+          return typeof score === 'number' && score < 45;
+        }
+        if (speechLevelFilter === 'PENDING') {
+          return item.speechScoreStatus !== 'ready';
+        }
+        return true;
+      })
       .sort((a, b) => {
         const scoreDelta = b.exploitabilityScore - a.exploitabilityScore;
         if (scoreDelta !== 0) {
@@ -535,6 +586,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         },
         stepEvaluations: {
           orderBy: { ordre: 'asc' },
+        },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -635,6 +689,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         },
         conversationEvaluations: {
           orderBy: { ordre: 'asc' },
+        },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
         },
       },
     });
@@ -748,11 +805,18 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
               salesPlan: true,
             },
           },
+          analysisJobs: {
+            orderBy: { updatedAt: 'desc' },
+            take: 1,
+          },
           stepEvaluations: {
             orderBy: { ordre: 'asc' },
           },
           conversationEvaluations: {
             orderBy: { ordre: 'asc' },
+          },
+          keyMoments: {
+            orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
           },
         },
       });
@@ -790,6 +854,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         conversationEvaluations: {
           orderBy: { ordre: 'asc' },
         },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
+        },
       },
     });
 
@@ -824,6 +891,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         where: { coachingSessionId: session.id },
       });
       await tx.coachingConversationEvaluation.deleteMany({
+        where: { coachingSessionId: session.id },
+      });
+      await tx.coachingKeyMoment.deleteMany({
         where: { coachingSessionId: session.id },
       });
 
@@ -875,6 +945,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         stepEvaluations: true,
         conversationEvaluations: {
           orderBy: { ordre: 'asc' },
+        },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
         },
       },
     });
@@ -970,6 +1043,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         conversationEvaluations: {
           orderBy: { ordre: 'asc' },
         },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
+        },
       },
     });
 
@@ -979,7 +1055,48 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
   async autoQueueLatestPublishedAnalysisForRecording(
     s3KeyOriginal: string,
   ): Promise<void> {
+    return this.autoQueueLatestPublishedAnalysisForRecordingAttempt(
+      s3KeyOriginal,
+      0,
+    );
+  }
+
+  private async autoQueueLatestPublishedAnalysisForRecordingAttempt(
+    s3KeyOriginal: string,
+    attempt: number,
+  ): Promise<void> {
     if (!this.isAutoCoachingEnabled()) {
+      return;
+    }
+
+    const speechScore = this.recordingService.getSpeechScores([
+      s3KeyOriginal,
+    ])[0];
+
+    if (speechScore?.status !== 'ready') {
+      if (attempt < this.resolveAutoQueueSpeechMaxAttempts()) {
+        this.scheduleAutoQueueRetry(s3KeyOriginal, attempt + 1);
+      } else {
+        this.logger.log(
+          `Auto-coaching différé puis ignoré pour ${s3KeyOriginal}: score parole indisponible.`,
+        );
+      }
+      return;
+    }
+
+    const exploitability = this.scoreRecordingExploitability({
+      item: {
+        lastModified: new Date(),
+        size: undefined,
+      },
+      speechScore,
+      latestSessionStatus: null,
+    });
+
+    if (!this.isAutoAnalysisEligible(exploitability.status)) {
+      this.logger.log(
+        `Auto-coaching ignoré pour ${s3KeyOriginal}: ${exploitability.reasons.join(' | ')}`,
+      );
       return;
     }
 
@@ -1061,6 +1178,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
             conversationEvaluations: {
               orderBy: { ordre: 'asc' },
             },
+            keyMoments: {
+              orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
+            },
           },
         });
       } catch (error) {
@@ -1089,12 +1209,33 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     await this.enqueueAnalysisJob(
       session.id,
       { id: 0, role: 'system:auto' },
-      40,
+      exploitability.status === 'PRIORITY' ? 55 : 40,
     );
 
     this.logger.log(
       `Auto-coaching en file pour ${s3KeyOriginal} sur le plan ${publishedVersion.id}.`,
     );
+  }
+
+  private scheduleAutoQueueRetry(s3KeyOriginal: string, attempt: number): void {
+    const existing = this.autoQueueRetryTimers.get(s3KeyOriginal);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timer = setTimeout(() => {
+      this.autoQueueRetryTimers.delete(s3KeyOriginal);
+      void this.autoQueueLatestPublishedAnalysisForRecordingAttempt(
+        s3KeyOriginal,
+        attempt,
+      ).catch((error) => {
+        this.logger.warn(
+          `Auto-coaching retry ignoré pour ${s3KeyOriginal}: ${error?.message || error}`,
+        );
+      });
+    }, this.resolveAutoQueueSpeechRetryMs());
+
+    this.autoQueueRetryTimers.set(s3KeyOriginal, timer);
   }
 
   private async findCoachingSessionByRecordingPlan(
@@ -1115,11 +1256,18 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
             salesPlan: true,
           },
         },
+        analysisJobs: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
         stepEvaluations: {
           orderBy: { ordre: 'asc' },
         },
         conversationEvaluations: {
           orderBy: { ordre: 'asc' },
+        },
+        keyMoments: {
+          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
         },
       },
     });
@@ -1323,7 +1471,6 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     reasons: string[];
   } {
     const reasons: string[] = [];
-    let score = 0;
 
     if (input.latestSessionStatus === 'COMPLETED') {
       return {
@@ -1333,11 +1480,56 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    const speech = input.speechScore;
+    let speechScore = 0;
+    let speechReady = false;
+
+    if (speech?.status === 'ready' && typeof speech.score === 'number') {
+      speechReady = true;
+      speechScore = Math.max(0, Math.min(100, Math.round(speech.score)));
+      reasons.push(`Parole détectée ${speechScore}%`);
+
+      if (typeof speech.speechDurationSec === 'number') {
+        reasons.push(
+          `Durée de parole ${this.formatDurationReason(speech.speechDurationSec)}`,
+        );
+      }
+    } else if (speech?.status === 'analyzing') {
+      return {
+        score: 45,
+        status: 'REVIEW',
+        reasons: ['Score parole en cours'],
+      };
+    } else {
+      return {
+        score: 30,
+        status: 'LOW_VALUE',
+        reasons: ['Score parole absent'],
+      };
+    }
+
+    const speechDuration = speech?.speechDurationSec ?? 0;
+    const totalDuration = speech?.totalDurationSec ?? 0;
+    const hasEnoughSpeechDuration = speechDuration >= 180;
+    const hasUsableSpeechDuration = speechDuration >= 90;
+
+    let score = Math.round(speechScore * 0.85);
+    score += hasEnoughSpeechDuration ? 15 : hasUsableSpeechDuration ? 8 : 0;
+
+    if (!hasUsableSpeechDuration) {
+      reasons.push('Parole insuffisante pour une analyse fiable');
+    }
+
+    if (totalDuration > 0 && totalDuration < 60) {
+      score = Math.min(score, 35);
+      reasons.push('Audio trop court');
+    }
+
     if (
       input.latestSessionStatus === 'FAILED' ||
       input.latestSessionStatus === 'NEEDS_REVIEW'
     ) {
-      score += 45;
+      score = Math.max(score, 65);
       reasons.push('Analyse précédente à revoir');
     }
 
@@ -1345,56 +1537,14 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       input.latestSessionStatus === 'PENDING' ||
       input.latestSessionStatus === 'PROCESSING'
     ) {
-      score += 50;
+      score = Math.max(score, 60);
       reasons.push('Analyse déjà en file ou en cours');
     }
 
     if (input.item.commercialId) {
-      score += 15;
       reasons.push('Commercial identifié');
     } else {
       reasons.push('Commercial non identifié');
-    }
-
-    const speech = input.speechScore;
-    if (speech?.status === 'ready' && typeof speech.score === 'number') {
-      score += Math.min(45, Math.max(0, speech.score) * 0.45);
-      reasons.push(`Parole détectée ${speech.score}%`);
-    } else if (speech?.status === 'analyzing') {
-      score += 18;
-      reasons.push('Score parole en cours');
-    } else {
-      score += 10;
-      reasons.push('Score parole absent');
-    }
-
-    const duration = speech?.totalDurationSec;
-    if (typeof duration === 'number' && Number.isFinite(duration)) {
-      if (duration < 60) {
-        score -= 25;
-        reasons.push('Durée trop courte');
-      } else if (duration > 7200) {
-        score -= 15;
-        reasons.push('Durée très longue');
-      } else if (duration >= 180 && duration <= 5400) {
-        score += 20;
-        reasons.push('Durée exploitable');
-      } else {
-        score += 10;
-        reasons.push('Durée acceptable');
-      }
-    } else if ((input.item.size ?? 0) > 1024 * 1024) {
-      score += 8;
-      reasons.push('Fichier audio non vide');
-    }
-
-    if (input.item.lastModified) {
-      const ageDays =
-        (Date.now() - input.item.lastModified.getTime()) / 86_400_000;
-      if (ageDays <= 7) {
-        score += 10;
-        reasons.push('Enregistrement récent');
-      }
     }
 
     const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
@@ -1412,13 +1562,32 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    if (normalizedScore >= 70) {
+    if (speechReady && speechScore >= 65 && hasEnoughSpeechDuration) {
       return { score: normalizedScore, status: 'PRIORITY', reasons };
     }
-    if (normalizedScore >= 50) {
+    if (speechReady && speechScore >= 45 && hasUsableSpeechDuration) {
       return { score: normalizedScore, status: 'GOOD', reasons };
     }
     return { score: normalizedScore, status: 'LOW_VALUE', reasons };
+  }
+
+  private isAutoAnalysisEligible(
+    status: 'PRIORITY' | 'GOOD' | 'LOW_VALUE' | 'ALREADY_ANALYZED' | 'REVIEW',
+  ): boolean {
+    return status === 'PRIORITY' || status === 'GOOD';
+  }
+
+  private formatDurationReason(seconds: number): string {
+    if (!Number.isFinite(seconds)) {
+      return 'n/a';
+    }
+    const rounded = Math.max(0, Math.round(seconds));
+    const minutes = Math.floor(rounded / 60);
+    const rest = rounded % 60;
+    if (minutes <= 0) {
+      return `${rest}s`;
+    }
+    return `${minutes}m${String(rest).padStart(2, '0')}s`;
   }
 
   private async enqueueAnalysisJob(
@@ -1736,6 +1905,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         await tx.coachingConversationEvaluation.deleteMany({
           where: { coachingSessionId: session.id },
         });
+        await tx.coachingKeyMoment.deleteMany({
+          where: { coachingSessionId: session.id },
+        });
 
         await tx.coachingSession.update({
           where: { id: session.id },
@@ -1784,10 +1956,27 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
               titre: step.titre,
               coverageStatus: step.coverageStatus,
               score: step.score ?? null,
+              startTime: step.startTime ?? null,
+              endTime: step.endTime ?? null,
               verbatim: this.cleanOptionalText(step.verbatim) ?? null,
               feedback: this.cleanOptionalText(step.feedback) ?? null,
               recommendation:
                 this.cleanOptionalText(step.recommendation) ?? null,
+            })),
+          });
+        }
+
+        if (evaluation.keyMoments.length > 0) {
+          await tx.coachingKeyMoment.createMany({
+            data: evaluation.keyMoments.map((moment) => ({
+              coachingSessionId: session.id,
+              type: moment.type,
+              title: moment.title,
+              summary: this.cleanOptionalText(moment.summary) ?? null,
+              startTime: moment.startTime ?? null,
+              endTime: moment.endTime ?? null,
+              verbatim: this.cleanOptionalText(moment.verbatim) ?? null,
+              importance: moment.importance ?? null,
             })),
           });
         }
@@ -2454,6 +2643,15 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         strengths: this.normalizeTextArray(parsed.strengths),
         improvements: this.normalizeTextArray(parsed.improvements),
         recommendations: this.normalizeTextArray(parsed.recommendations),
+        keyMoments: Array.isArray(parsed.keyMoments)
+          ? parsed.keyMoments
+              .map((moment: any) => this.normalizeKeyMoment(moment))
+              .filter(
+                (moment: KeyMomentPayload | null): moment is KeyMomentPayload =>
+                  Boolean(moment),
+              )
+              .slice(0, 8)
+          : [],
         rawResponse: content,
         stepEvaluations: Array.isArray(parsed.stepEvaluations)
           ? parsed.stepEvaluations.map((step: any, index: number) => ({
@@ -2468,6 +2666,8 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
                 step?.coverageStatus,
               ),
               score: this.normalizeNullableScore(step?.score),
+              startTime: this.normalizeNullableNumber(step?.startTime),
+              endTime: this.normalizeNullableNumber(step?.endTime),
               verbatim: this.normalizeText(step?.verbatim),
               feedback: this.normalizeText(step?.feedback),
               recommendation: this.normalizeText(step?.recommendation),
@@ -2512,6 +2712,22 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       return 5_000;
     }
     return Math.max(2_000, Math.min(60_000, Math.floor(raw)));
+  }
+
+  private resolveAutoQueueSpeechRetryMs(): number {
+    const raw = Number(process.env.COACHING_AUTO_SPEECH_RETRY_MS);
+    if (!Number.isFinite(raw)) {
+      return 60_000;
+    }
+    return Math.max(10_000, Math.min(10 * 60_000, Math.floor(raw)));
+  }
+
+  private resolveAutoQueueSpeechMaxAttempts(): number {
+    const raw = Number(process.env.COACHING_AUTO_SPEECH_MAX_ATTEMPTS);
+    if (!Number.isFinite(raw)) {
+      return 8;
+    }
+    return Math.max(1, Math.min(30, Math.floor(raw)));
   }
 
   private isAutoCoachingEnabled(): boolean {
@@ -2601,12 +2817,25 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       '  "strengths": string[],',
       '  "improvements": string[],',
       '  "recommendations": string[],',
+      '  "keyMoments": [',
+      '    {',
+      '      "type": "OBJECTION" | "ERREUR" | "BON_ARGUMENT" | "PROMESSE" | "SIGNAL_ACHAT" | "A_REVOIR",',
+      '      "title": string,',
+      '      "summary": string,',
+      '      "startTime": number | null,',
+      '      "endTime": number | null,',
+      '      "verbatim": string,',
+      '      "importance": number',
+      '    }',
+      '  ],',
       '  "stepEvaluations": [',
       '    {',
       '      "ordre": number,',
       '      "titre": string,',
       '      "coverageStatus": "COVERED" | "PARTIAL" | "MISSING",',
       '      "score": number,',
+      '      "startTime": number | null,',
+      '      "endTime": number | null,',
       '      "verbatim": string,',
       '      "feedback": string,',
       '      "recommendation": string',
@@ -2701,12 +2930,17 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       }
 
       const excerpt = this.extractBestVerbatim(transcriptText, hits[0]);
+      const excerptRange = excerpt
+        ? this.resolveExcerptTimeRange(transcriptText, excerpt)
+        : null;
 
       return {
         ordre: step.ordre,
         titre: step.titre,
         coverageStatus,
         score,
+        startTime: excerptRange?.start ?? null,
+        endTime: excerptRange?.end ?? null,
         verbatim: excerpt,
         feedback:
           coverageStatus === 'COVERED'
@@ -2773,6 +3007,7 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         'Faire relire le rapport si le scoring paraît trop mécanique.',
         'Comparer le transcript avec la trame commerciale réelle avant validation finale.',
       ],
+      keyMoments: this.buildFallbackKeyMoments(transcriptText),
       stepEvaluations,
       rawResponse: null,
       usedFallback: true,
@@ -2812,6 +3047,18 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         coverageStatus:
           existing?.coverageStatus || fallbackStep?.coverageStatus || 'MISSING',
         score: existing?.score ?? fallbackStep?.score ?? null,
+        startTime:
+          existing?.startTime ??
+          fallbackStep?.startTime ??
+          this.resolveExcerptTimeRange(transcriptText, existing?.verbatim)
+            ?.start ??
+          null,
+        endTime:
+          existing?.endTime ??
+          fallbackStep?.endTime ??
+          this.resolveExcerptTimeRange(transcriptText, existing?.verbatim)
+            ?.end ??
+          null,
         verbatim: existing?.verbatim ?? fallbackStep?.verbatim ?? null,
         feedback: existing?.feedback ?? fallbackStep?.feedback ?? null,
         recommendation:
@@ -2856,6 +3103,12 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         evaluation.recommendations.length > 0
           ? evaluation.recommendations
           : fallback.recommendations,
+      keyMoments:
+        evaluation.keyMoments.length > 0
+          ? evaluation.keyMoments.map((moment) =>
+              this.completeKeyMomentTiming(transcriptText, moment),
+            )
+          : fallback.keyMoments,
       stepEvaluations,
     };
   }
@@ -2916,6 +3169,166 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     return this.normalizeScore(value);
   }
 
+  private normalizeNullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0) {
+      return null;
+    }
+    return Math.round(num * 10) / 10;
+  }
+
+  private normalizeKeyMoment(value: any): KeyMomentPayload | null {
+    const title = this.normalizeText(value?.title);
+    if (!title) {
+      return null;
+    }
+
+    return {
+      type:
+        this.normalizeText(value?.type)
+          ?.toUpperCase()
+          .replace(/[^A-Z0-9_]/g, '_')
+          .slice(0, 40) || 'A_REVOIR',
+      title,
+      summary: this.normalizeText(value?.summary),
+      startTime: this.normalizeNullableNumber(value?.startTime),
+      endTime: this.normalizeNullableNumber(value?.endTime),
+      verbatim: this.normalizeText(value?.verbatim),
+      importance: this.normalizeNullableScore(value?.importance),
+    };
+  }
+
+  private completeKeyMomentTiming(
+    transcriptText: string,
+    moment: KeyMomentPayload,
+  ): KeyMomentPayload {
+    if (moment.startTime !== null && moment.startTime !== undefined) {
+      return moment;
+    }
+
+    const range = this.resolveExcerptTimeRange(
+      transcriptText,
+      moment.verbatim || moment.summary || moment.title,
+    );
+
+    return {
+      ...moment,
+      startTime: range?.start ?? null,
+      endTime: range?.end ?? null,
+    };
+  }
+
+  private resolveExcerptTimeRange(
+    transcriptText: string,
+    excerpt?: string | null,
+  ): { start: number; end: number } | null {
+    if (!excerpt) {
+      return null;
+    }
+
+    const normalizedExcerpt = this.normalizeSearchText(excerpt);
+    if (!normalizedExcerpt) {
+      return null;
+    }
+
+    const segments = this.parseTimestampedTranscript(transcriptText);
+    for (const segment of segments) {
+      const normalizedSegment = this.normalizeSearchText(segment.text);
+      if (
+        normalizedSegment.includes(normalizedExcerpt) ||
+        normalizedExcerpt.includes(normalizedSegment)
+      ) {
+        return { start: segment.start, end: segment.end };
+      }
+    }
+
+    const strongestWords = normalizedExcerpt
+      .split(' ')
+      .filter((word) => word.length >= 4)
+      .slice(0, 8);
+
+    if (strongestWords.length === 0) {
+      return null;
+    }
+
+    let bestMatch: { start: number; end: number; hits: number } | null = null;
+    for (const segment of segments) {
+      const normalizedSegment = this.normalizeSearchText(segment.text);
+      const hits = strongestWords.filter((word) =>
+        normalizedSegment.includes(word),
+      ).length;
+      if (hits > (bestMatch?.hits ?? 0)) {
+        bestMatch = { start: segment.start, end: segment.end, hits };
+      }
+    }
+
+    if (!bestMatch || bestMatch.hits < Math.min(2, strongestWords.length)) {
+      return null;
+    }
+
+    return { start: bestMatch.start, end: bestMatch.end };
+  }
+
+  private normalizeSearchText(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private buildFallbackKeyMoments(transcriptText: string): KeyMomentPayload[] {
+    const moments: KeyMomentPayload[] = [];
+    const patterns: Array<{ type: string; title: string; keywords: string[] }> = [
+      {
+        type: 'OBJECTION',
+        title: 'Objection ou hesitation client',
+        keywords: ['pas intéressé', 'pas interesse', 'trop cher', 'réfléchir', 'refus'],
+      },
+      {
+        type: 'SIGNAL_ACHAT',
+        title: 'Signal d interet',
+        keywords: ['combien', 'rendez-vous', 'contrat', 'signature', 'installer'],
+      },
+      {
+        type: 'PROMESSE',
+        title: 'Promesse ou engagement',
+        keywords: ['je vous rappelle', 'on repasse', 'je vous envoie', 'demain'],
+      },
+    ];
+
+    const lowerTranscript = transcriptText.toLowerCase();
+    for (const pattern of patterns) {
+      const keyword = pattern.keywords.find((entry) =>
+        lowerTranscript.includes(entry.toLowerCase()),
+      );
+      const match = keyword
+        ? this.extractBestVerbatim(transcriptText, keyword)
+        : null;
+      if (!match) {
+        continue;
+      }
+
+      const range = this.resolveExcerptTimeRange(transcriptText, match);
+      moments.push({
+        type: pattern.type,
+        title: pattern.title,
+        summary: 'Moment détecté automatiquement à partir du transcript.',
+        startTime: range?.start ?? null,
+        endTime: range?.end ?? null,
+        verbatim: match,
+        importance: 65,
+      });
+    }
+
+    return moments.slice(0, 4);
+  }
+
   private mapSession(session: any, audioUrl?: string): CoachingSessionDto {
     const analysisJob = session.analysisJobs?.[0]
       ? this.mapAnalysisJob(session.analysisJobs[0])
@@ -2969,9 +3382,24 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
           titre: step.titre,
           coverageStatus: step.coverageStatus,
           score: step.score ?? undefined,
+          startTime: step.startTime ?? undefined,
+          endTime: step.endTime ?? undefined,
           verbatim: step.verbatim ?? undefined,
           feedback: step.feedback ?? undefined,
           recommendation: step.recommendation ?? undefined,
+        })) ?? [],
+      keyMoments:
+        session.keyMoments?.map((moment: any) => ({
+          id: moment.id,
+          type: moment.type,
+          title: moment.title,
+          summary: moment.summary ?? undefined,
+          startTime: moment.startTime ?? undefined,
+          endTime: moment.endTime ?? undefined,
+          verbatim: moment.verbatim ?? undefined,
+          importance: moment.importance ?? undefined,
+          createdAt: moment.createdAt,
+          updatedAt: moment.updatedAt,
         })) ?? [],
       conversationEvaluations:
         session.conversationEvaluations?.map((conversation: any) => ({

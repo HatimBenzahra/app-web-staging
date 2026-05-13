@@ -89,6 +89,9 @@ export function useCoachingLogic() {
   const [recordingsTotal, setRecordingsTotal] = useState(0)
   const [recordingsPage, setRecordingsPage] = useState(1)
   const [recordingsSearch, setRecordingsSearch] = useState('')
+  const [recordingsCommercialId, setRecordingsCommercialId] = useState('ALL')
+  const [recordingsAnalysisStatus, setRecordingsAnalysisStatus] = useState('ALL')
+  const [recordingsSpeechLevel, setRecordingsSpeechLevel] = useState('ALL')
   const [dashboardPeriod, setDashboardPeriod] = useState('LAST_7_DAYS')
   const [sessions, setSessions] = useState([])
   const [queueState, setQueueState] = useState(null)
@@ -115,6 +118,18 @@ export function useCoachingLogic() {
             limit: RECORDINGS_PAGE_SIZE,
             offset,
             search: recordingsSearch || null,
+            commercialId:
+              recordingsCommercialId && recordingsCommercialId !== 'ALL'
+                ? Number(recordingsCommercialId)
+                : null,
+            analysisStatus:
+              recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
+                ? recordingsAnalysisStatus
+                : null,
+            speechLevel:
+              recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL'
+                ? recordingsSpeechLevel
+                : null,
             period: 'ALL',
             includeLowValue: true,
           }),
@@ -132,7 +147,14 @@ export function useCoachingLogic() {
     } finally {
       setLoading(false)
     }
-  }, [dashboardPeriod, recordingsPage, recordingsSearch])
+  }, [
+    dashboardPeriod,
+    recordingsAnalysisStatus,
+    recordingsCommercialId,
+    recordingsPage,
+    recordingsSearch,
+    recordingsSpeechLevel,
+  ])
 
   const loadSession = useCallback(async id => {
     if (!id) {
@@ -192,8 +214,16 @@ export function useCoachingLogic() {
         })
       }
     }
+    for (const session of sessions) {
+      if (session.commercialId && session.commercialNom) {
+        map.set(session.commercialId, {
+          id: session.commercialId,
+          label: session.commercialNom,
+        })
+      }
+    }
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-  }, [recordings])
+  }, [recordings, sessions])
 
   const recordingsTotalPages = Math.max(1, Math.ceil(recordingsTotal / RECORDINGS_PAGE_SIZE))
   const recordingsStartIndex = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
@@ -207,6 +237,21 @@ export function useCoachingLogic() {
 
   const updateRecordingsSearch = useCallback(value => {
     setRecordingsSearch(value)
+    setRecordingsPage(1)
+  }, [])
+
+  const updateRecordingsCommercialId = useCallback(value => {
+    setRecordingsCommercialId(value)
+    setRecordingsPage(1)
+  }, [])
+
+  const updateRecordingsAnalysisStatus = useCallback(value => {
+    setRecordingsAnalysisStatus(value)
+    setRecordingsPage(1)
+  }, [])
+
+  const updateRecordingsSpeechLevel = useCallback(value => {
+    setRecordingsSpeechLevel(value)
     setRecordingsPage(1)
   }, [])
 
@@ -364,6 +409,12 @@ export function useCoachingLogic() {
     recordingsEndIndex,
     recordingsSearch,
     setRecordingsSearch: updateRecordingsSearch,
+    recordingsCommercialId,
+    setRecordingsCommercialId: updateRecordingsCommercialId,
+    recordingsAnalysisStatus,
+    setRecordingsAnalysisStatus: updateRecordingsAnalysisStatus,
+    recordingsSpeechLevel,
+    setRecordingsSpeechLevel: updateRecordingsSpeechLevel,
     dashboardPeriod,
     setDashboardPeriod,
     goToNextRecordingsPage: () =>
