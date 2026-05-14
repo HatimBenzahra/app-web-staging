@@ -125,6 +125,7 @@ function AdminLayout() {
   }
 
   const breadcrumbs = buildBreadcrumbs()
+  const isCoachingRoute = location.pathname.startsWith('/coaching')
 
   return (
     <ErrorBoundary>
@@ -172,7 +173,12 @@ function AdminLayout() {
                 <ThemeToggle />
               </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-6 pt-6 overflow-x-hidden mx-auto w-11/12 max-w-[1400px] animate-fade-in-content">
+            <div
+              className={[
+                'flex flex-1 flex-col gap-4 p-4 pt-5 sm:p-6 sm:pt-6 overflow-x-hidden animate-fade-in-content',
+                isCoachingRoute ? 'mx-0 w-full max-w-none' : 'mx-auto w-11/12 max-w-[1400px]',
+              ].join(' ')}
+            >
               <Suspense fallback={null}>
                 <Routes>
                   <Route
