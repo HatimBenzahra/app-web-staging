@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"scp -i ~/.ssh/id_pidog /tmp/probe_come.py hatim@hatim.local:/tmp/probe_come.py && \\\\\\nssh -i ~/.ssh/id_pidog hatim@hatim.local 'cd ~/pidog-ai/control-panel && .venv/bin/python /tmp/probe_c...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"/tmp/probe_come.py\", line 2, in <module>\n    from app.come_controller import come_controller\nModuleNotFoundError: No module named 'app'",
+  "timestamp": "2026-05-13T23:46:13.647Z",
+  "retry_count": 2
+}

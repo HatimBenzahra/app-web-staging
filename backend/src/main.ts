@@ -2,7 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import * as fs from 'fs';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import { ClientRequest, IncomingMessage, ServerResponse } from 'http';
+import { Socket } from 'net';
+import {
+  createProxyMiddleware,
+  Options as ProxyOptions,
+} from 'http-proxy-middleware';
+import { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -36,6 +42,103 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Proxy HTTP vers le service Whisper interne pour but de tester en localhost.
+  const whisperLogger = new Logger('WhisperProxy');
+  const whisperTarget =
+    process.env.WHISPER_INTERNAL_URL || 'http://pro-win-staging-whisper:9010';
+  const whisperToken = process.env.WHISPER_PUBLIC_TOKEN; // optionnel: si défini, header requis
+
+  app.use('/transcribe', (req: Request, res: Response, next: NextFunction) => {
+    if (whisperToken) {
+      const provided = req.headers['x-transcribe-token'];
+      if (provided !== whisperToken) {
+        res.status(401).json({ error: 'unauthorized' });
+        return;
+      }
+    }
+    next();
+  });
+
+  const whisperProxyOptions: ProxyOptions = {
+    target: whisperTarget,
+    changeOrigin: true,
+    pathRewrite: (path: string) => {
+      const [pathname, query] = path.split('?', 2);
+      const trimmed = pathname === '/' || pathname === '' ? '' : pathname;
+      const upstream = `/transcribe${trimmed}`;
+      return query !== undefined ? `${upstream}?${query}` : upstream;
+    },
+    on: {
+      proxyReq: (_proxyReq: ClientRequest, req: IncomingMessage) => {
+        whisperLogger.log(`→ ${req.method ?? 'UNKNOWN'} ${req.url ?? ''}`);
+      },
+      error: (
+        err: Error,
+        _req: IncomingMessage,
+        res: ServerResponse | Socket,
+      ) => {
+        whisperLogger.error(`Proxy error: ${err.message}`);
+        if (res instanceof ServerResponse && !res.headersSent) {
+          res.statusCode = 502;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify({
+              error: 'whisper_unreachable',
+              detail: err.message,
+            }),
+          );
+        }
+      },
+    },
+  };
+
+  app.use('/transcribe', createProxyMiddleware(whisperProxyOptions));
+
+  // Proxy HTTP vers le service llm.
+  const llmLogger = new Logger('LlmProxy');
+  const llmTarget = process.env.LLM_INTERNAL_URL || 'http://vllm:8000';
+  const llmToken = process.env.LLM_PUBLIC_TOKEN; // optionnel: si défini, header requis
+
+  app.use('/llm', (req: Request, res: Response, next: NextFunction) => {
+    if (llmToken) {
+      const provided = req.headers['x-llm-token'];
+      if (provided !== llmToken) {
+        res.status(401).json({ error: 'unauthorized' });
+        return;
+      }
+    }
+    next();
+  });
+
+  const llmProxyOptions: ProxyOptions = {
+    target: llmTarget,
+    changeOrigin: true,
+    on: {
+      proxyReq: (_proxyReq: ClientRequest, req: IncomingMessage) => {
+        llmLogger.log(`→ ${req.method ?? 'UNKNOWN'} ${req.url ?? ''}`);
+      },
+      error: (
+        err: Error,
+        _req: IncomingMessage,
+        res: ServerResponse | Socket,
+      ) => {
+        llmLogger.error(`Proxy error: ${err.message}`);
+        if (res instanceof ServerResponse && !res.headersSent) {
+          res.statusCode = 502;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify({
+              error: 'llm_unreachable',
+              detail: err.message,
+            }),
+          );
+        }
+      },
+    },
+  };
+
+  app.use('/llm', createProxyMiddleware(llmProxyOptions));
+
   // Proxy WebSocket pour LiveKit
   // Permet de convertir WSS (Front) -> WS (LiveKit)
   const proxyLogger = new Logger('LiveKitProxy');
@@ -51,9 +154,11 @@ async function bootstrap() {
       },
       // @ts-ignore - Type mismatch in library but valid option
       onProxyReqWs: (_proxyReq: any, req: any, _socket: any) => {
-         proxyLogger.log(`🔌 WebSocket connection request: ${req.url}`);
-         proxyLogger.log(`🎯 Target: ${process.env.LK_HOST || 'http://localhost:7880'}`);
-         proxyLogger.debug(`📋 Headers: ${JSON.stringify(req.headers)}`);
+        proxyLogger.log(`🔌 WebSocket connection request: ${req.url}`);
+        proxyLogger.log(
+          `🎯 Target: ${process.env.LK_HOST || 'http://localhost:7880'}`,
+        );
+        proxyLogger.debug(`📋 Headers: ${JSON.stringify(req.headers)}`);
       },
       onOpen: (_proxySocket: any) => {
         proxyLogger.log('✅ WebSocket connection opened to LiveKit');
@@ -64,7 +169,7 @@ async function bootstrap() {
       onError: (err: any, _req: any, _res: any) => {
         proxyLogger.error(`❌ Proxy Error: ${err.message}`);
         proxyLogger.error(`❌ Error stack: ${err.stack}`);
-      }
+      },
     }),
   );
 
