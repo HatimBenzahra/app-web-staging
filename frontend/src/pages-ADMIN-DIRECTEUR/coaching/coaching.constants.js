@@ -10,7 +10,7 @@ export const STATUS_LABELS = {
 
 export const REVIEW_LABELS = {
   NOT_REQUIRED: 'Auto-validé',
-  PENDING: 'Review requise',
+  PENDING: 'Validation requise',
   VALIDATED: 'Validé',
   REJECTED: 'Rejeté',
 }
@@ -48,7 +48,7 @@ export const COACHING_SECTIONS = [
   {
     key: 'dashboard',
     label: 'Dashboard',
-    description: 'Priorisation, queue et alertes de revue.',
+    description: 'Priorisation, analyses et alertes de revue.',
     href: '/coaching/dashboard',
     icon: LayoutDashboard,
   },

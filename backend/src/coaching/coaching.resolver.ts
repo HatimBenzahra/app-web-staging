@@ -4,8 +4,11 @@ import { CoachingService } from './coaching.service';
 import {
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
+  CoachingAnalysisQueueInput,
   CoachingQueueStateDto,
   CoachingSessionDto,
+  CoachingSessionsInput,
+  CoachingSessionsPageDto,
   CreateSalesPlanInput,
   CreateSalesPlanVersionInput,
   LaunchCoachingAnalysisInput,
@@ -64,20 +67,22 @@ export class CoachingResolver {
     return this.coachingService.getRecordingCandidates(input, currentUser);
   }
 
-  @Query(() => [CoachingSessionDto])
+  @Query(() => CoachingSessionsPageDto)
   @Roles('admin', 'directeur')
   coachingSessions(
+    @Args('input', { nullable: true }) input: CoachingSessionsInput,
     @CurrentUser() currentUser: any,
-  ): Promise<CoachingSessionDto[]> {
-    return this.coachingService.getCoachingSessions(currentUser);
+  ): Promise<CoachingSessionsPageDto> {
+    return this.coachingService.getCoachingSessions(input, currentUser);
   }
 
   @Query(() => CoachingQueueStateDto)
   @Roles('admin', 'directeur')
   coachingAnalysisQueue(
+    @Args('input', { nullable: true }) input: CoachingAnalysisQueueInput,
     @CurrentUser() currentUser: any,
   ): Promise<CoachingQueueStateDto> {
-    return this.coachingService.getAnalysisQueue(currentUser);
+    return this.coachingService.getAnalysisQueue(input, currentUser);
   }
 
   @Query(() => CoachingSessionDto)

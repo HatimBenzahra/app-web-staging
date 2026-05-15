@@ -4,14 +4,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import AudioPlayer from '@/components/AudioPlayer'
 import {
@@ -32,6 +32,7 @@ import {
   Mic,
   PauseCircle,
   PlayCircle,
+  RefreshCw,
   Search,
   ShieldCheck,
   UploadCloud,
@@ -43,14 +44,23 @@ import {
   STATUS_LABELS,
 } from '../coaching.constants'
 import {
+  badgeToneClass,
   buildSessionExcerpts,
   formatDate,
   formatDuration,
   formatSeconds,
+  formatScoreValue,
   formatWait,
-  statusVariant,
+  numberOrZero,
 } from '../coaching.utils'
-import { CompactScore, FieldBlock, InfoLine, InlineEmptyState, SignalBlock } from './CoachingShared'
+import {
+  CompactScore,
+  FieldBlock,
+  InfoLine,
+  InlineEmptyState,
+  SignalBlock,
+  ToneBadge,
+} from './CoachingShared'
 
 export default function SessionReviewView({ logic }) {
   const session = logic.selectedSession
@@ -64,6 +74,7 @@ export default function SessionReviewView({ logic }) {
   const [transcriptMode, setTranscriptMode] = React.useState('readable')
   const [transcriptSearch, setTranscriptSearch] = React.useState('')
   const [technicalOpen, setTechnicalOpen] = React.useState(false)
+  const [stepsDialogOpen, setStepsDialogOpen] = React.useState(false)
 
   const excerpts = React.useMemo(() => buildSessionExcerpts(session), [session])
   const activeExcerpt = excerpts.find(excerpt => excerpt.id === activeExcerptId) || excerpts[0]
@@ -190,46 +201,75 @@ export default function SessionReviewView({ logic }) {
     )
   }
 
+  const treatment = getSessionDetailTreatment(session)
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-3">
-          <Button type="button" variant="outline" asChild>
-            <Link to="/coaching/sessions">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Retour aux analyses
-            </Link>
-          </Button>
-          <div>
+      <div className="rounded-lg border border-primary/20 bg-primary/5 px-5 py-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-semibold tracking-tight">Analyse #{session.id}</h2>
-              <Badge variant={statusVariant(session.status)}>
-                {STATUS_LABELS[session.status] || session.status}
-              </Badge>
-              <Badge variant="outline">
-                {REVIEW_LABELS[session.reviewStatus] || session.reviewStatus}
-              </Badge>
+              <Button type="button" variant="outline" asChild>
+                <Link to="/coaching/sessions">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Retour aux analyses
+                </Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={logic.refreshAll}
+                disabled={logic.submitting}
+              >
+                <RefreshCw
+                  className={['mr-2 h-4 w-4', logic.submitting ? 'animate-spin' : ''].join(' ')}
+                />
+                Actualiser
+              </Button>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {session.commercialNom || 'Commercial inconnu'} ·{' '}
-              {session.salesPlanNom || 'Plan non trouvé'} ·{' '}
-              {formatDate(session.processedAt || session.launchedAt)}
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-semibold tracking-tight">Analyse #{session.id}</h2>
+                <ToneBadge status={session.status}>
+                  {STATUS_LABELS[session.status] || session.status}
+                </ToneBadge>
+                <ToneBadge status={session.reviewStatus}>
+                  {REVIEW_LABELS[session.reviewStatus] || session.reviewStatus}
+                </ToneBadge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {session.commercialNom || 'Commercial inconnu'} ·{' '}
+                {session.salesPlanNom || 'Plan non trouvé'} ·{' '}
+                {formatDate(session.processedAt || session.launchedAt)}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:min-w-[520px]">
-          <CompactScore label="Global" value={session.overallScore} strong />
-          <CompactScore label="Plan" value={session.planCoverageScore} />
-          <CompactScore label="Exécution" value={session.executionQualityScore} />
-          <CompactScore label="Closing" value={session.closingScore} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:min-w-[520px]">
+            <CompactScore label="Global" value={session.overallScore} strong tone="primary" />
+            <CompactScore label="Plan" value={session.planCoverageScore} tone="accent" />
+            <CompactScore label="Exécution" value={session.executionQualityScore} tone="success" />
+            <CompactScore label="Closing" value={session.closingScore} tone="warning" />
+          </div>
         </div>
       </div>
 
       {session.reviewReason ? (
-        <Alert>
+        <Alert className="border-chart-5/30 bg-chart-5/10">
           <Bot className="h-4 w-4" />
           <AlertTitle>Validation humaine requise</AlertTitle>
           <AlertDescription>{session.reviewReason}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {treatment.active ? (
+        <Alert className="border-accent/35 bg-accent/10">
+          {treatment.kind === 'queued' ? (
+            <Clock className="h-4 w-4" />
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          )}
+          <AlertTitle>{treatment.title}</AlertTitle>
+          <AlertDescription>{treatment.description}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -241,284 +281,204 @@ export default function SessionReviewView({ logic }) {
         </Alert>
       ) : null}
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="space-y-6">
-          <Card className="border-border/70">
-            <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Headphones className="h-4 w-4" />
-                  Preuves terrain
-                </div>
-                <CardTitle className="text-xl">Écouter, lire, décider</CardTitle>
-                <CardDescription>
-                  Les passages exploités par l’analyse sont regroupés avec leur verbatim et leur
-                  position dans l’enregistrement.
-                </CardDescription>
+      <div className="space-y-6">
+        <Card className="border-accent/25 bg-accent/5">
+          <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                <Headphones className="h-4 w-4" />
+                Preuves terrain
               </div>
-              <Badge variant="secondary">{excerpts.length} extraits exploitables</Badge>
-            </CardHeader>
-            <CardContent className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.65fr)]">
-              <div className="space-y-4">
-                {session.audioUrl ? (
-                  <AudioPlayer
-                    src={session.audioUrl}
-                    title={`Enregistrement · ${session.commercialNom || 'Commercial inconnu'}`}
-                    onWavesurferReady={handleWavesurferReady}
-                  />
+              <CardTitle className="text-xl">Écouter, lire, décider</CardTitle>
+              <CardDescription>
+                Les passages exploités par l’analyse sont regroupés avec leur verbatim et leur
+                position dans l’enregistrement.
+              </CardDescription>
+            </div>
+            <ToneBadge status="conversation">{excerpts.length} extraits exploitables</ToneBadge>
+          </CardHeader>
+          <CardContent className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.52fr)]">
+            <div className="space-y-4">
+              {session.audioUrl ? (
+                <AudioPlayer
+                  src={session.audioUrl}
+                  title={`Enregistrement · ${session.commercialNom || 'Commercial inconnu'}`}
+                  onWavesurferReady={handleWavesurferReady}
+                />
+              ) : (
+                <InlineEmptyState
+                  text="Aucun lien audio signé disponible pour cette session."
+                  compact
+                />
+              )}
+
+              <div
+                className={[
+                  'rounded-lg border px-4 py-4 transition-colors',
+                  activeExcerptPlaying
+                    ? 'border-primary/40 bg-primary/8'
+                    : 'border-border/70 bg-muted/20',
+                ].join(' ')}
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ToneBadge status={activeExcerpt?.source || 'neutral'}>
+                        {activeExcerpt?.kindLabel || 'Extrait'}
+                      </ToneBadge>
+                      {activeExcerptPlaying ? (
+                        <ToneBadge status="PROCESSING">En écoute</ToneBadge>
+                      ) : null}
+                      <span className="text-xs text-muted-foreground">
+                        {formatSeconds(activeExcerpt?.startTime)} →{' '}
+                        {formatSeconds(activeExcerpt?.endTime)}
+                      </span>
+                    </div>
+                    <h3 className="mt-2 text-lg font-semibold">
+                      {activeExcerpt?.title || 'Aucun extrait sélectionné'}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={activeExcerptPlaying ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggleExcerptPlayback(activeExcerpt)}
+                      disabled={
+                        !session.audioUrl ||
+                        !activeExcerpt ||
+                        activeExcerpt.startTime === null ||
+                        activeExcerpt.startTime === undefined
+                      }
+                    >
+                      {activeExcerptPlaying ? (
+                        <PauseCircle className="mr-2 h-4 w-4" />
+                      ) : (
+                        <PlayCircle className="mr-2 h-4 w-4" />
+                      )}
+                      {activeExcerptPlaying ? 'Pause' : 'Écouter'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={copyExcerpt}
+                      disabled={!activeExcerpt?.verbatim}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copier
+                    </Button>
+                  </div>
+                </div>
+                {activeExcerpt?.summary ? (
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    {activeExcerpt.summary}
+                  </p>
+                ) : null}
+                {activeExcerpt?.startTime !== null &&
+                activeExcerpt?.startTime !== undefined &&
+                activeExcerpt?.endTime !== null &&
+                activeExcerpt?.endTime !== undefined ? (
+                  <div className="mt-4">
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Position dans l’extrait</span>
+                      <span className="tabular-nums">{Math.round(activeExcerptProgress)}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${activeExcerptProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {activeExcerpt?.verbatim ? (
+                  <div className="mt-4 max-h-56 overflow-y-auto rounded-lg bg-background px-4 py-3 text-sm leading-6">
+                    {activeExcerpt.verbatim}
+                  </div>
                 ) : (
                   <InlineEmptyState
-                    text="Aucun lien audio signé disponible pour cette session."
+                    text="Aucun verbatim précis disponible pour cet extrait."
                     compact
                   />
                 )}
+              </div>
 
-                <div
-                  className={[
-                    'rounded-lg border px-4 py-4 transition-colors',
-                    activeExcerptPlaying
-                      ? 'border-primary/40 bg-primary/8'
-                      : 'border-border/70 bg-muted/20',
-                  ].join(' ')}
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{activeExcerpt?.kindLabel || 'Extrait'}</Badge>
-                        {activeExcerptPlaying ? <Badge>En écoute</Badge> : null}
-                        <span className="text-xs text-muted-foreground">
-                          {formatSeconds(activeExcerpt?.startTime)} →{' '}
-                          {formatSeconds(activeExcerpt?.endTime)}
-                        </span>
-                      </div>
-                      <h3 className="mt-2 text-lg font-semibold">
-                        {activeExcerpt?.title || 'Aucun extrait sélectionné'}
-                      </h3>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant={activeExcerptPlaying ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => toggleExcerptPlayback(activeExcerpt)}
-                        disabled={
-                          !session.audioUrl ||
-                          !activeExcerpt ||
-                          activeExcerpt.startTime === null ||
-                          activeExcerpt.startTime === undefined
-                        }
-                      >
-                        {activeExcerptPlaying ? (
-                          <PauseCircle className="mr-2 h-4 w-4" />
-                        ) : (
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                        )}
-                        {activeExcerptPlaying ? 'Pause' : 'Écouter'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={copyExcerpt}
-                        disabled={!activeExcerpt?.verbatim}
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copier
-                      </Button>
-                    </div>
-                  </div>
-                  {activeExcerpt?.summary ? (
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {activeExcerpt.summary}
-                    </p>
-                  ) : null}
-                  {activeExcerpt?.startTime !== null &&
-                  activeExcerpt?.startTime !== undefined &&
-                  activeExcerpt?.endTime !== null &&
-                  activeExcerpt?.endTime !== undefined ? (
-                    <div className="mt-4">
-                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Position dans l’extrait</span>
-                        <span className="tabular-nums">{Math.round(activeExcerptProgress)}%</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-background">
-                        <div
-                          className="h-full rounded-full bg-primary transition-all"
-                          style={{ width: `${activeExcerptProgress}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  {activeExcerpt?.verbatim ? (
-                    <div className="mt-4 max-h-56 overflow-y-auto rounded-lg bg-background px-4 py-3 text-sm leading-6">
-                      {activeExcerpt.verbatim}
-                    </div>
-                  ) : (
-                    <InlineEmptyState
-                      text="Aucun verbatim précis disponible pour cet extrait."
-                      compact
-                    />
-                  )}
+              <div className="grid gap-3 md:grid-cols-3">
+                <SignalBlock
+                  title="Forces"
+                  items={(session.strengths || []).slice(0, 3)}
+                  empty="Aucune force nette"
+                  tone="success"
+                />
+                <SignalBlock
+                  title="À corriger"
+                  items={(session.improvements || []).slice(0, 3)}
+                  empty="Aucun axe remonté"
+                  tone="warning"
+                />
+                <SignalBlock
+                  title="Actions"
+                  items={(session.recommendations || []).slice(0, 3)}
+                  empty="Aucune action générée"
+                  tone="primary"
+                />
+              </div>
+            </div>
+
+            <EvidenceList
+              excerpts={excerpts}
+              activeExcerptId={activeExcerptId}
+              playingExcerptId={playingExcerptId}
+              isAudioPlaying={isAudioPlaying}
+              onSelect={setActiveExcerptId}
+              onPlay={toggleExcerptPlayback}
+              audioAvailable={Boolean(session.audioUrl)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-primary/25 bg-primary/5">
+          <CardHeader>
+            <CardTitle>Décision directeur</CardTitle>
+            <CardDescription>
+              Synthèse, correction éventuelle et validation après écoute des preuves.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="rounded-lg border border-primary/15 bg-primary/5 px-4 py-4">
+              <div className="text-sm font-medium">Synthèse IA</div>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {session.summary || 'Synthèse indisponible pour le moment.'}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <CompactScore
+                  label="Objections"
+                  value={session.objectionHandlingScore}
+                  tone="warning"
+                />
+                <CompactScore
+                  label="Écoute / parole"
+                  value={session.listeningRatioScore}
+                  tone="accent"
+                />
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-background/80 px-4 py-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Contexte de l'appel
                 </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  <SignalBlock
-                    title="Forces"
-                    items={(session.strengths || []).slice(0, 3)}
-                    empty="Aucune force nette"
-                  />
-                  <SignalBlock
-                    title="À corriger"
-                    items={(session.improvements || []).slice(0, 3)}
-                    empty="Aucun axe remonté"
-                  />
-                  <SignalBlock
-                    title="Actions"
-                    items={(session.recommendations || []).slice(0, 3)}
-                    empty="Aucune action générée"
-                  />
+                <div className="mt-3 space-y-3 text-sm">
+                  <InfoLine label="Commercial" value={session.commercialNom || 'Non renseigné'} />
+                  <InfoLine label="Plan" value={session.salesPlanNom || 'Non renseigné'} />
                 </div>
               </div>
+            </div>
 
-              <EvidenceList
-                excerpts={excerpts}
-                activeExcerptId={activeExcerptId}
-                playingExcerptId={playingExcerptId}
-                isAudioPlaying={isAudioPlaying}
-                onSelect={setActiveExcerptId}
-                onPlay={toggleExcerptPlayback}
-                audioAvailable={Boolean(session.audioUrl)}
-              />
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/70">
-            <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <CardTitle>Lecture détaillée</CardTitle>
-                <CardDescription>
-                  Les détails restent accessibles sans saturer la première vue directeur.
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  ['moments', 'Moments'],
-                  ['steps', 'Étapes'],
-                  ['conversations', 'Conversations'],
-                  ['transcript', 'Transcript complet'],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={detailTab === value ? 'default' : 'outline'}
-                    onClick={() => setDetailTab(value)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {detailTab === 'moments' ? (
-                <DetailMoments
-                  moments={session.keyMoments || []}
-                  onPlay={moment =>
-                    toggleExcerptPlayback(
-                      excerpts.find(item => item.source === 'moment' && item.sourceId === moment.id)
-                    )
-                  }
-                  audioAvailable={Boolean(session.audioUrl)}
-                  activeExcerptId={activeExcerptId}
-                  playingExcerptId={playingExcerptId}
-                  isAudioPlaying={isAudioPlaying}
-                />
-              ) : null}
-              {detailTab === 'steps' ? (
-                <DetailSteps
-                  steps={session.stepEvaluations || []}
-                  onPlay={step =>
-                    toggleExcerptPlayback(
-                      excerpts.find(item => item.source === 'step' && item.sourceId === step.id)
-                    )
-                  }
-                  audioAvailable={Boolean(session.audioUrl)}
-                  activeExcerptId={activeExcerptId}
-                  playingExcerptId={playingExcerptId}
-                  isAudioPlaying={isAudioPlaying}
-                />
-              ) : null}
-              {detailTab === 'conversations' ? (
-                <DetailConversations
-                  conversations={session.conversationEvaluations || []}
-                  onPlay={conversation =>
-                    toggleExcerptPlayback(
-                      excerpts.find(
-                        item => item.source === 'conversation' && item.sourceId === conversation.id
-                      )
-                    )
-                  }
-                  audioAvailable={Boolean(session.audioUrl)}
-                  activeExcerptId={activeExcerptId}
-                  playingExcerptId={playingExcerptId}
-                  isAudioPlaying={isAudioPlaying}
-                />
-              ) : null}
-              {detailTab === 'transcript' ? (
-                <TranscriptReader
-                  transcriptValue={transcriptValue}
-                  transcriptMode={transcriptMode}
-                  setTranscriptMode={setTranscriptMode}
-                  transcriptSearch={transcriptSearch}
-                  setTranscriptSearch={setTranscriptSearch}
-                  copyTranscript={copyTranscript}
-                  hasReadable={Boolean(readableTranscript)}
-                  hasRaw={Boolean(rawTranscript)}
-                />
-              ) : null}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6 2xl:sticky 2xl:top-20 2xl:self-start">
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle>Décision directeur</CardTitle>
-              <CardDescription>
-                Valider, corriger ou relancer après écoute des preuves.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg bg-muted/30 px-4 py-3">
-                <div className="text-sm font-medium">Synthèse IA</div>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                  {session.summary || 'Synthèse indisponible pour le moment.'}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CompactScore label="Objections" value={session.objectionHandlingScore} />
-                <CompactScore label="Écoute / parole" value={session.listeningRatioScore} />
-              </div>
-
-              <FieldBlock label="Commercial identifié">
-                <Select
-                  value={logic.reviewCommercialId}
-                  onValueChange={logic.setReviewCommercialId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Conserver l’identification actuelle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {logic.commercialOptions.map(option => (
-                      <SelectItem key={option.id} value={String(option.id)}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldBlock>
-
+            <div className="xl:col-span-2">
               <FieldBlock label="Note de revue">
                 <Textarea
                   value={logic.reviewNotes}
@@ -527,139 +487,282 @@ export default function SessionReviewView({ logic }) {
                   className="min-h-[110px]"
                 />
               </FieldBlock>
+            </div>
 
-              <div className="grid gap-2">
-                <Button
-                  type="button"
-                  onClick={() => logic.reviewSession('APPROVE')}
-                  disabled={logic.submitting}
-                >
-                  <ShieldCheck className="mr-2 h-4 w-4" />
-                  Valider le rapport
-                </Button>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => logic.reviewSession('REJECT')}
-                    disabled={logic.submitting}
-                  >
-                    <AlertTriangle className="mr-2 h-4 w-4" />
-                    Rejeter
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => logic.relaunchSession(session.id)}
-                    disabled={logic.submitting}
-                  >
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    Relancer
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/70">
-            <CardHeader className="gap-3">
-              <button
+            <div className="grid gap-2 sm:grid-cols-3 xl:col-span-2">
+              <Button
                 type="button"
-                className="flex items-center justify-between gap-3 text-left"
-                onClick={() => setTechnicalOpen(value => !value)}
+                onClick={() => logic.reviewSession('APPROVE')}
+                disabled={logic.submitting}
               >
-                <span>
-                  <CardTitle>Technique</CardTitle>
-                  <CardDescription className="mt-1">
-                    Pipeline, job et métadonnées de diagnostic.
-                  </CardDescription>
-                </span>
-                {technicalOpen ? (
-                  <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                )}
-              </button>
-            </CardHeader>
-            {technicalOpen ? (
-              <CardContent className="space-y-5">
-                <div className="space-y-3 text-sm">
-                  <InfoLine label="S3 key" value={session.s3KeyOriginal} breakAll />
-                  <InfoLine label="Lancée le" value={formatDate(session.launchedAt)} />
-                  <InfoLine label="Traitée le" value={formatDate(session.processedAt)} />
-                  <InfoLine label="Confiance" value={session.confidenceScore ?? 'n/a'} />
-                  <InfoLine
-                    label="Source identification"
-                    value={session.identificationSource || 'n/a'}
-                  />
-                  <InfoLine
-                    label="Segments Whisper"
-                    value={session.whisperSegmentsCount ?? 'n/a'}
-                  />
-                  <InfoLine
-                    label="Durée transcript"
-                    value={formatDuration(session.transcriptDurationSec)}
-                  />
-                </div>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Valider le rapport
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => logic.reviewSession('REJECT')}
+                disabled={logic.submitting}
+              >
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Rejeter
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => logic.relaunchSession(session.id)}
+                disabled={logic.submitting}
+              >
+                <UploadCloud className="mr-2 h-4 w-4" />
+                Relancer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-                {(session.pipelineSteps || []).map(step => (
-                  <div
-                    key={step.key}
-                    className="flex items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-3"
-                  >
-                    <div className="mt-0.5">
-                      {step.status === 'PROCESSING' ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      ) : step.status === 'COMPLETED' ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : step.status === 'FAILED' ? (
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">{step.label}</span>
-                        <Badge variant={step.status === 'FAILED' ? 'destructive' : 'outline'}>
-                          {step.status}
-                        </Badge>
-                      </div>
-                      {step.detail || step.timestamp ? (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {step.detail || formatDate(step.timestamp)}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-
-                {session.analysisJob ? (
-                  <div className="rounded-lg bg-muted/35 px-4 py-3">
-                    <div className="flex items-center gap-2 font-medium">
-                      <Activity className="h-4 w-4" />
-                      Job #{session.analysisJob.id}
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                      <span>
-                        Statut:{' '}
-                        {QUEUE_LABELS[session.analysisJob.status] || session.analysisJob.status}
-                      </span>
-                      <span>
-                        Tentatives: {session.analysisJob.attempts}/{session.analysisJob.maxAttempts}
-                      </span>
-                      <span>Attente: {formatWait(session.analysisJob.waitSeconds)}</span>
-                      <span>Heartbeat: {formatDate(session.analysisJob.lastHeartbeatAt)}</span>
-                    </div>
-                  </div>
-                ) : null}
-              </CardContent>
+        <Card className="border-border/70 bg-card">
+          <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Lecture détaillée</CardTitle>
+              <CardDescription>
+                Moments clés, conversations et étapes restent accessibles sans saturer la vue.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['moments', 'Moments'],
+                ['conversations', 'Conversations'],
+              ].map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={detailTab === value ? 'default' : 'outline'}
+                  onClick={() => setDetailTab(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setStepsDialogOpen(true)}
+              >
+                <ListChecks className="mr-2 h-4 w-4" />
+                Voir les étapes
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {detailTab === 'moments' ? (
+              <DetailMoments
+                moments={session.keyMoments || []}
+                onPlay={moment =>
+                  toggleExcerptPlayback(
+                    excerpts.find(item => item.source === 'moment' && item.sourceId === moment.id)
+                  )
+                }
+                audioAvailable={Boolean(session.audioUrl)}
+                activeExcerptId={activeExcerptId}
+                playingExcerptId={playingExcerptId}
+                isAudioPlaying={isAudioPlaying}
+              />
             ) : null}
-          </Card>
-        </div>
+            {detailTab === 'conversations' ? (
+              <DetailConversations
+                conversations={session.conversationEvaluations || []}
+                onPlay={conversation =>
+                  toggleExcerptPlayback(
+                    excerpts.find(
+                      item => item.source === 'conversation' && item.sourceId === conversation.id
+                    )
+                  )
+                }
+                audioAvailable={Boolean(session.audioUrl)}
+                activeExcerptId={activeExcerptId}
+                playingExcerptId={playingExcerptId}
+                isAudioPlaying={isAudioPlaying}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="border-accent/25 bg-accent/5">
+          <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Transcription</CardTitle>
+              <CardDescription>
+                Lecture complète avec recherche, version lisible et copie.
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <TranscriptReader
+              transcriptValue={transcriptValue}
+              transcriptMode={transcriptMode}
+              setTranscriptMode={setTranscriptMode}
+              transcriptSearch={transcriptSearch}
+              setTranscriptSearch={setTranscriptSearch}
+              copyTranscript={copyTranscript}
+              hasReadable={Boolean(readableTranscript)}
+              hasRaw={Boolean(rawTranscript)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70">
+          <CardHeader className="gap-3">
+            <button
+              type="button"
+              className="flex items-center justify-between gap-3 text-left"
+              onClick={() => setTechnicalOpen(value => !value)}
+            >
+              <span>
+                <CardTitle>Détails de traitement</CardTitle>
+                <CardDescription className="mt-1">
+                  Suivi de l’analyse et informations de contrôle.
+                </CardDescription>
+              </span>
+              {technicalOpen ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+            </button>
+          </CardHeader>
+          {technicalOpen ? (
+            <CardContent className="space-y-5">
+              <div className="space-y-3 text-sm">
+                <InfoLine label="Fichier source" value={session.s3KeyOriginal} breakAll />
+                <InfoLine label="Lancée le" value={formatDate(session.launchedAt)} />
+                <InfoLine label="Traitée le" value={formatDate(session.processedAt)} />
+                <InfoLine label="Confiance" value={numberOrZero(session.confidenceScore)} />
+                <InfoLine
+                  label="Source d’identification"
+                  value={session.identificationSource || 'Non renseignée'}
+                />
+                <InfoLine
+                  label="Segments audio"
+                  value={numberOrZero(session.whisperSegmentsCount)}
+                />
+                <InfoLine
+                  label="Durée de transcription"
+                  value={formatDuration(numberOrZero(session.transcriptDurationSec))}
+                />
+              </div>
+
+              {(session.pipelineSteps || []).map(step => (
+                <div
+                  key={step.key}
+                  className="flex items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                >
+                  <div className="mt-0.5">
+                    {step.status === 'PROCESSING' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    ) : step.status === 'COMPLETED' ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    ) : step.status === 'FAILED' ? (
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">{step.label}</span>
+                      <ToneBadge status={step.status}>{step.status}</ToneBadge>
+                    </div>
+                    {step.detail || step.timestamp ? (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {step.detail || formatDate(step.timestamp)}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+
+              {session.analysisJob ? (
+                <div className="rounded-lg bg-muted/35 px-4 py-3">
+                  <div className="flex items-center gap-2 font-medium">
+                    <Activity className="h-4 w-4" />
+                    Job #{session.analysisJob.id}
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                    <span>
+                      Statut:{' '}
+                      {QUEUE_LABELS[session.analysisJob.status] || session.analysisJob.status}
+                    </span>
+                    <span>
+                      Tentatives: {session.analysisJob.attempts}/{session.analysisJob.maxAttempts}
+                    </span>
+                    <span>Attente: {formatWait(session.analysisJob.waitSeconds)}</span>
+                    <span>Heartbeat: {formatDate(session.analysisJob.lastHeartbeatAt)}</span>
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          ) : null}
+        </Card>
       </div>
+
+      <StepsDialog
+        open={stepsDialogOpen}
+        onOpenChange={setStepsDialogOpen}
+        steps={session.stepEvaluations || []}
+        onPlay={step =>
+          toggleExcerptPlayback(
+            excerpts.find(item => item.source === 'step' && item.sourceId === step.id)
+          )
+        }
+        audioAvailable={Boolean(session.audioUrl)}
+        activeExcerptId={activeExcerptId}
+        playingExcerptId={playingExcerptId}
+        isAudioPlaying={isAudioPlaying}
+      />
     </div>
   )
+}
+
+function getSessionDetailTreatment(session) {
+  const jobStatus = session.analysisJob?.status
+
+  if (session.status === 'COMPLETED' || session.status === 'NEEDS_REVIEW') {
+    return {
+      active: false,
+      kind: 'done',
+      title: '',
+      description: '',
+    }
+  }
+
+  if (jobStatus === 'QUEUED' || session.status === 'PENDING') {
+    return {
+      active: true,
+      kind: 'queued',
+      title: 'Analyse en attente',
+      description:
+        'La demande est bien lancée. Le rapport apparaîtra ici dès que le traitement commence.',
+    }
+  }
+
+  if (jobStatus === 'PROCESSING' || session.status === 'PROCESSING') {
+    return {
+      active: true,
+      kind: 'processing',
+      title: 'Analyse en cours',
+      description: session.analysisJob?.currentStep
+        ? `Étape en cours: ${session.analysisJob.currentStep}.`
+        : 'Le rapport est en train de se préparer. Les scores et les extraits vont arriver progressivement.',
+    }
+  }
+
+  return {
+    active: false,
+    kind: 'done',
+    title: '',
+    description: '',
+  }
 }
 
 function getExcerptProgress(excerpt, currentTime) {
@@ -707,14 +810,18 @@ function EvidenceList({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={playing ? 'default' : 'outline'}>
+                  <ToneBadge status={playing ? 'PROCESSING' : excerpt.status || excerpt.source}>
                     {playing ? 'En écoute' : excerpt.kindLabel}
-                  </Badge>
+                  </ToneBadge>
                   {playing && excerpt.kindLabel ? (
-                    <Badge variant="outline">{excerpt.kindLabel}</Badge>
+                    <ToneBadge status={excerpt.status || excerpt.source}>
+                      {excerpt.kindLabel}
+                    </ToneBadge>
                   ) : null}
                   {excerpt.score !== null && excerpt.score !== undefined ? (
-                    <Badge variant="secondary">{excerpt.score}/100</Badge>
+                    <Badge variant="outline" className={badgeToneClass('primary')}>
+                      {numberOrZero(excerpt.score)}/100
+                    </Badge>
                   ) : null}
                 </div>
                 <div className="mt-2 line-clamp-2 font-medium">{excerpt.title}</div>
@@ -790,7 +897,9 @@ function DetailMoments({
   )
 }
 
-function DetailSteps({
+function StepsDialog({
+  open,
+  onOpenChange,
   steps,
   onPlay,
   audioAvailable,
@@ -798,32 +907,111 @@ function DetailSteps({
   playingExcerptId,
   isAudioPlaying,
 }) {
-  if (steps.length === 0) {
-    return <InlineEmptyState text="Les étapes détaillées n’ont pas encore été produites." />
-  }
-
   return (
-    <div className="grid gap-3 xl:grid-cols-2">
-      {steps.map(step => {
-        const excerptId = `step-${step.id}`
-        return (
-          <DetailRow
-            key={step.id}
-            icon={ListChecks}
-            title={`${step.ordre}. ${step.titre}`}
-            meta={`${formatSeconds(step.startTime)} → ${formatSeconds(step.endTime)}`}
-            badge={`${step.coverageStatus} · ${step.score ?? 'n/a'}/100`}
-            body={step.feedback}
-            verbatim={step.verbatim}
-            footer={step.recommendation}
-            onPlay={() => onPlay(step)}
-            canPlay={audioAvailable && step.startTime !== null && step.startTime !== undefined}
-            active={activeExcerptId === excerptId}
-            playing={isAudioPlaying && playingExcerptId === excerptId}
-          />
-        )
-      })}
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[88vh] w-full max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+        <DialogHeader className="border-b border-border/70 px-6 py-5">
+          <DialogTitle>Étapes du plan</DialogTitle>
+          <DialogDescription>
+            Ce que le commercial a dit, le score associé et la recommandation IA.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="overflow-y-auto px-6 py-5">
+          {steps.length === 0 ? (
+            <InlineEmptyState text="Les étapes détaillées n’ont pas encore été produites." />
+          ) : (
+            <div className="space-y-3">
+              {steps.map(step => {
+                const excerptId = `step-${step.id}`
+                const playing = isAudioPlaying && playingExcerptId === excerptId
+                const active = activeExcerptId === excerptId
+                const canPlay =
+                  audioAvailable && step.startTime !== null && step.startTime !== undefined
+                return (
+                  <div
+                    key={step.id}
+                    className={[
+                      'rounded-lg border px-4 py-4 transition-all',
+                      playing
+                        ? 'border-primary/50 bg-primary/8 ring-2 ring-primary/15'
+                        : active
+                          ? 'border-primary/35 bg-primary/5'
+                          : 'border-border/70 bg-background',
+                    ].join(' ')}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                            {step.ordre}
+                          </span>
+                          <h3 className="font-semibold">{step.titre}</h3>
+                          {playing ? <ToneBadge status="PROCESSING">En écoute</ToneBadge> : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <ToneBadge status={step.coverageStatus || 'neutral'}>
+                            {step.coverageStatus || 'Non renseigné'}
+                          </ToneBadge>
+                          <Badge variant="outline" className={badgeToneClass('primary')}>
+                            {formatScoreValue(step.score)}
+                          </Badge>
+                          <span>
+                            {formatSeconds(step.startTime)} → {formatSeconds(step.endTime)}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={playing ? 'default' : 'outline'}
+                        onClick={() => onPlay(step)}
+                        disabled={!canPlay}
+                      >
+                        {playing ? (
+                          <PauseCircle className="mr-2 h-4 w-4" />
+                        ) : (
+                          <PlayCircle className="mr-2 h-4 w-4" />
+                        )}
+                        {playing ? 'Pause' : 'Écouter'}
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+                      <div className="rounded-md border border-border/60 bg-muted/25 px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Le commercial a dit
+                        </div>
+                        <p className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap text-sm leading-6">
+                          {step.verbatim || 'Aucun verbatim précis disponible pour cette étape.'}
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Feedback IA
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            {step.feedback || 'Feedback non renseigné.'}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Recommandation
+                          </div>
+                          <p className="mt-2 text-sm font-medium">
+                            {step.recommendation || 'Aucune recommandation générée.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -851,9 +1039,9 @@ function DetailConversations({
             icon={MessageSquare}
             title={conversation.title || `Conversation ${conversation.ordre}`}
             meta={`${formatSeconds(conversation.startTime)} → ${formatSeconds(conversation.endTime)}`}
-            badge={`${CONVERSATION_LABELS[conversation.status] || conversation.status} · Score ${
-              conversation.overallScore ?? 'n/a'
-            }`}
+            badge={`${CONVERSATION_LABELS[conversation.status] || conversation.status} · Score ${numberOrZero(
+              conversation.overallScore
+            )}`}
             body={conversation.summary || conversation.reviewReason}
             verbatim={conversation.readableTranscriptText || conversation.transcriptText}
             onPlay={() => onPlay(conversation)}
@@ -902,12 +1090,16 @@ function DetailRow({
               className: playing ? 'h-4 w-4 text-primary' : 'h-4 w-4 text-muted-foreground',
             })}
             <span className="font-medium">{title}</span>
-            {playing ? <Badge>En écoute</Badge> : null}
+            {playing ? <ToneBadge status="PROCESSING">En écoute</ToneBadge> : null}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">{meta}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {badge ? <Badge variant="outline">{badge}</Badge> : null}
+          {badge ? (
+            <Badge variant="outline" className={badgeToneClass('neutral')}>
+              {badge}
+            </Badge>
+          ) : null}
           <Button
             type="button"
             size="icon"
@@ -946,6 +1138,7 @@ function TranscriptReader({
   hasReadable,
   hasRaw,
 }) {
+  const allLines = transcriptValue ? transcriptValue.split('\n').filter(Boolean) : []
   const lines = transcriptValue
     ? transcriptValue
         .split('\n')
@@ -978,7 +1171,7 @@ function TranscriptReader({
             disabled={!hasRaw}
           >
             <Mic className="mr-2 h-4 w-4" />
-            Whisper brut
+            Originale
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={copyTranscript}>
             <Copy className="mr-2 h-4 w-4" />
@@ -990,10 +1183,13 @@ function TranscriptReader({
           <Input
             value={transcriptSearch}
             onChange={event => setTranscriptSearch(event.target.value)}
-            placeholder="Rechercher dans le transcript"
+            placeholder="Rechercher dans la transcription"
             className="pl-9"
           />
         </div>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {lines.length} passage(s) affiché(s) sur {allLines.length}
       </div>
 
       {!hasReadable && transcriptMode === 'readable' ? (
@@ -1001,16 +1197,16 @@ function TranscriptReader({
           <FileText className="h-4 w-4" />
           <AlertTitle>Version lisible indisponible</AlertTitle>
           <AlertDescription>
-            La page affiche le transcript Whisper brut en attendant la réécriture lisible.
+            La transcription originale est affichée en attendant une version plus lisible.
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <div className="max-h-[560px] overflow-y-auto rounded-lg border border-border/70 bg-background px-4 py-4">
+      <div className="max-h-[560px] overflow-y-auto rounded-lg border border-border/70 bg-background">
         {lines.length > 0 ? (
-          <div className="space-y-3 text-sm leading-7">
+          <div className="divide-y divide-border/60 text-sm leading-7">
             {lines.map((line, index) => (
-              <p key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap">
+              <p key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap px-4 py-3">
                 {line}
               </p>
             ))}

@@ -304,6 +304,57 @@ export class CoachingRecordingCandidatesInput {
   includeLowValue?: boolean;
 }
 
+@InputType()
+export class CoachingSessionsInput {
+  @Field(() => Int, { nullable: true, defaultValue: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @Field(() => Int, { nullable: true, defaultValue: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  offset?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @Field(() => CoachingReviewStatusDto, { nullable: true })
+  @IsOptional()
+  reviewStatus?: CoachingReviewStatusDto;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  scoreLevel?: string;
+}
+
+@InputType()
+export class CoachingAnalysisQueueInput {
+  @Field(() => Int, { nullable: true, defaultValue: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @Field(() => Int, { nullable: true, defaultValue: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 @ObjectType()
 export class SalesPlanStepDto {
   @Field(() => Int)
@@ -686,6 +737,15 @@ export class CoachingQueueStateDto {
 
   @Field(() => [CoachingAnalysisJobDto])
   jobs: CoachingAnalysisJobDto[];
+
+  @Field(() => Int)
+  total: number;
+
+  @Field(() => Int)
+  limit: number;
+
+  @Field(() => Int)
+  offset: number;
 }
 
 @ObjectType()
@@ -812,4 +872,19 @@ export class CoachingSessionDto {
 
   @Field(() => [CoachingConversationEvaluationDto])
   conversationEvaluations: CoachingConversationEvaluationDto[];
+}
+
+@ObjectType()
+export class CoachingSessionsPageDto {
+  @Field(() => [CoachingSessionDto])
+  items: CoachingSessionDto[];
+
+  @Field(() => Int)
+  total: number;
+
+  @Field(() => Int)
+  limit: number;
+
+  @Field(() => Int)
+  offset: number;
 }

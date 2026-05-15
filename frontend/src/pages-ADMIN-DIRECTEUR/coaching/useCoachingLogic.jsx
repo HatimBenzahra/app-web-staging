@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { coachingApi } from '@/services/api/coaching/coaching.service'
 
@@ -9,23 +9,17 @@ const EMPTY_STEP = {
   poids: 20,
 }
 
-const createEmptyPlanForm = () => ({
-  nom: '',
-  description: '',
-  versionLabel: 'Version 1',
-  promptInstructions: '',
-  steps: [{ ...EMPTY_STEP }],
-})
-
 const RECORDINGS_PAGE_SIZE = 20
+const SESSIONS_PAGE_SIZE = 20
+const QUEUE_PAGE_SIZE = 20
 
-const DEV_SALES_PLAN_TEMPLATE = {
-  nom: 'Plan dev · Vente immeuble fibre',
+const DEFAULT_SALES_PLAN_TEMPLATE = {
+  nom: 'Plan de vente · Prospection immeuble fibre',
   description:
-    'Plan de vente prérempli pour tester rapidement le MVP coaching IA en staging. Il simule un échange commercial de prospection immeuble avec découverte, argumentation, objections et closing.',
-  versionLabel: 'Version dev',
+    'Plan de vente pour évaluer un échange commercial de prospection immeuble, de la découverte du besoin jusqu’à la prochaine étape.',
+  versionLabel: 'Version 1',
   promptInstructions:
-    "Évalue l'appel comme un coach commercial Pro-Win. Sois concret, cite les signaux observables du transcript, distingue les étapes couvertes des étapes simplement survolées, et propose des actions d'amélioration courtes et opérationnelles.",
+    "Évalue l'appel comme un coach commercial Pro-Win. Sois concret, cite les signaux observables de l'échange, distingue les étapes bien couvertes des étapes simplement survolées, et propose des actions d'amélioration courtes et opérationnelles.",
   steps: [
     {
       titre: 'Ouverture et cadrage',
@@ -70,17 +64,20 @@ const DEV_SALES_PLAN_TEMPLATE = {
   ],
 }
 
-const canUseDevPrefill = () => {
-  if (import.meta.env.DEV) return true
-  if (typeof window === 'undefined') return false
-  return ['localhost', '127.0.0.1', 'staging.pro-win.app'].includes(window.location.hostname)
-}
+const createDefaultPlanForm = () => ({
+  ...DEFAULT_SALES_PLAN_TEMPLATE,
+  steps: DEFAULT_SALES_PLAN_TEMPLATE.steps.map(step => ({ ...step })),
+})
 
 export function useCoachingLogic() {
   const navigate = useNavigate()
   const { sessionId } = useParams()
+  const hasLoadedRef = useRef(false)
 
   const [loading, setLoading] = useState(true)
+  const [recordingsRefreshing, setRecordingsRefreshing] = useState(false)
+  const [sessionsRefreshing, setSessionsRefreshing] = useState(false)
+  const [launchingRecordingKeys, setLaunchingRecordingKeys] = useState(() => new Set())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [plans, setPlans] = useState([])
@@ -93,59 +90,82 @@ export function useCoachingLogic() {
   const [recordingsAnalysisStatus, setRecordingsAnalysisStatus] = useState('ALL')
   const [recordingsSpeechLevel, setRecordingsSpeechLevel] = useState('ALL')
   const [dashboardPeriod, setDashboardPeriod] = useState('LAST_7_DAYS')
+  const [dashboardSessions, setDashboardSessions] = useState([])
+  const [dashboardSessionsTotal, setDashboardSessionsTotal] = useState(0)
   const [sessions, setSessions] = useState([])
+  const [sessionsTotal, setSessionsTotal] = useState(0)
+  const [sessionsPage, setSessionsPage] = useState(1)
+  const [sessionsSearch, setSessionsSearch] = useState('')
+  const [sessionsStatus, setSessionsStatus] = useState('ALL')
+  const [sessionsReviewStatus, setSessionsReviewStatus] = useState('ALL')
+  const [sessionsScoreLevel, setSessionsScoreLevel] = useState('ALL')
   const [queueState, setQueueState] = useState(null)
+  const [queuePage, setQueuePage] = useState(1)
   const [selectedSession, setSelectedSession] = useState(null)
   const [reviewNotes, setReviewNotes] = useState('')
-  const [reviewCommercialId, setReviewCommercialId] = useState('')
-  const [planForm, setPlanForm] = useState(createEmptyPlanForm)
+  const [planForm, setPlanForm] = useState(createDefaultPlanForm)
 
   const loadAll = useCallback(async () => {
-    setLoading(true)
+    const alreadyLoaded = hasLoadedRef.current
+    setLoading(!alreadyLoaded)
+    setRecordingsRefreshing(alreadyLoaded)
     setError(null)
     try {
       const offset = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
-      const [nextPlans, nextPrioritizedRecordings, nextRecordings, nextSessions, nextQueueState] =
-        await Promise.all([
-          coachingApi.getSalesPlans(),
-          coachingApi.getRecordingCandidates({
-            limit: 10,
-            offset: 0,
-            period: dashboardPeriod,
-            includeLowValue: false,
-          }),
-          coachingApi.getRecordingCandidates({
-            limit: RECORDINGS_PAGE_SIZE,
-            offset,
-            search: recordingsSearch || null,
-            commercialId:
-              recordingsCommercialId && recordingsCommercialId !== 'ALL'
-                ? Number(recordingsCommercialId)
-                : null,
-            analysisStatus:
-              recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
-                ? recordingsAnalysisStatus
-                : null,
-            speechLevel:
-              recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL'
-                ? recordingsSpeechLevel
-                : null,
-            period: 'ALL',
-            includeLowValue: true,
-          }),
-          coachingApi.getSessions(),
-          coachingApi.getAnalysisQueue(),
-        ])
+      const queueOffset = (queuePage - 1) * QUEUE_PAGE_SIZE
+      const [
+        nextPlans,
+        nextPrioritizedRecordings,
+        nextRecordings,
+        nextDashboardSessions,
+        nextQueueState,
+      ] = await Promise.all([
+        coachingApi.getSalesPlans(),
+        coachingApi.getRecordingCandidates({
+          limit: 10,
+          offset: 0,
+          period: dashboardPeriod,
+          includeLowValue: false,
+        }),
+        coachingApi.getRecordingCandidates({
+          limit: RECORDINGS_PAGE_SIZE,
+          offset,
+          search: recordingsSearch || null,
+          commercialId:
+            recordingsCommercialId && recordingsCommercialId !== 'ALL'
+              ? Number(recordingsCommercialId)
+              : null,
+          analysisStatus:
+            recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
+              ? recordingsAnalysisStatus
+              : null,
+          speechLevel:
+            recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL' ? recordingsSpeechLevel : null,
+          period: 'ALL',
+          includeLowValue: true,
+        }),
+        coachingApi.getSessions({
+          limit: 20,
+          offset: 0,
+        }),
+        coachingApi.getAnalysisQueue({
+          limit: QUEUE_PAGE_SIZE,
+          offset: queueOffset,
+        }),
+      ])
       setPlans(nextPlans)
       setPrioritizedRecordings(nextPrioritizedRecordings.items)
       setRecordings(nextRecordings.items)
       setRecordingsTotal(nextRecordings.total)
-      setSessions(nextSessions)
+      setDashboardSessions(nextDashboardSessions.items)
+      setDashboardSessionsTotal(nextDashboardSessions.total)
       setQueueState(nextQueueState)
     } catch (err) {
       setError(err)
     } finally {
+      hasLoadedRef.current = true
       setLoading(false)
+      setRecordingsRefreshing(false)
     }
   }, [
     dashboardPeriod,
@@ -154,7 +174,34 @@ export function useCoachingLogic() {
     recordingsPage,
     recordingsSearch,
     recordingsSpeechLevel,
+    queuePage,
   ])
+
+  const loadSessions = useCallback(async () => {
+    setSessionsRefreshing(true)
+    setError(null)
+    try {
+      const sessionsOffset = (sessionsPage - 1) * SESSIONS_PAGE_SIZE
+      const nextSessions = await coachingApi.getSessions({
+        limit: SESSIONS_PAGE_SIZE,
+        offset: sessionsOffset,
+        search: sessionsSearch || null,
+        status: sessionsStatus !== 'ALL' ? sessionsStatus : null,
+        reviewStatus: sessionsReviewStatus !== 'ALL' ? sessionsReviewStatus : null,
+        scoreLevel: sessionsScoreLevel !== 'ALL' ? sessionsScoreLevel : null,
+      })
+      setSessions(nextSessions.items)
+      setSessionsTotal(nextSessions.total)
+    } catch (err) {
+      setError(err)
+    } finally {
+      setSessionsRefreshing(false)
+    }
+  }, [sessionsPage, sessionsReviewStatus, sessionsScoreLevel, sessionsSearch, sessionsStatus])
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadAll(), loadSessions()])
+  }, [loadAll, loadSessions])
 
   const loadSession = useCallback(async id => {
     if (!id) {
@@ -166,7 +213,6 @@ export function useCoachingLogic() {
       const session = await coachingApi.getSession(Number(id))
       setSelectedSession(session)
       setReviewNotes(session.reviewNotes || '')
-      setReviewCommercialId(session.commercialId ? String(session.commercialId) : '')
     } catch (err) {
       setError(err)
     }
@@ -175,6 +221,10 @@ export function useCoachingLogic() {
   useEffect(() => {
     void loadAll()
   }, [loadAll])
+
+  useEffect(() => {
+    void loadSessions()
+  }, [loadSessions])
 
   useEffect(() => {
     void loadSession(sessionId)
@@ -214,7 +264,7 @@ export function useCoachingLogic() {
         })
       }
     }
-    for (const session of sessions) {
+    for (const session of [...sessions, ...dashboardSessions]) {
       if (session.commercialId && session.commercialNom) {
         map.set(session.commercialId, {
           id: session.commercialId,
@@ -223,17 +273,36 @@ export function useCoachingLogic() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-  }, [recordings, sessions])
+  }, [dashboardSessions, recordings, sessions])
 
   const recordingsTotalPages = Math.max(1, Math.ceil(recordingsTotal / RECORDINGS_PAGE_SIZE))
   const recordingsStartIndex = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
   const recordingsEndIndex = recordingsStartIndex + recordings.length
+  const sessionsTotalPages = Math.max(1, Math.ceil(sessionsTotal / SESSIONS_PAGE_SIZE))
+  const sessionsStartIndex = (sessionsPage - 1) * SESSIONS_PAGE_SIZE
+  const sessionsEndIndex = sessionsStartIndex + sessions.length
+  const queueTotal = queueState?.total || 0
+  const queueTotalPages = Math.max(1, Math.ceil(queueTotal / QUEUE_PAGE_SIZE))
+  const queueStartIndex = (queuePage - 1) * QUEUE_PAGE_SIZE
+  const queueEndIndex = queueStartIndex + (queueState?.jobs?.length || 0)
 
   useEffect(() => {
     if (recordingsPage > recordingsTotalPages) {
       setRecordingsPage(recordingsTotalPages)
     }
   }, [recordingsPage, recordingsTotalPages])
+
+  useEffect(() => {
+    if (sessionsPage > sessionsTotalPages) {
+      setSessionsPage(sessionsTotalPages)
+    }
+  }, [sessionsPage, sessionsTotalPages])
+
+  useEffect(() => {
+    if (queuePage > queueTotalPages) {
+      setQueuePage(queueTotalPages)
+    }
+  }, [queuePage, queueTotalPages])
 
   const updateRecordingsSearch = useCallback(value => {
     setRecordingsSearch(value)
@@ -253,6 +322,34 @@ export function useCoachingLogic() {
   const updateRecordingsSpeechLevel = useCallback(value => {
     setRecordingsSpeechLevel(value)
     setRecordingsPage(1)
+  }, [])
+
+  const updateSessionsSearch = useCallback(value => {
+    setSessionsSearch(value)
+    setSessionsPage(1)
+  }, [])
+
+  const updateSessionsStatus = useCallback(value => {
+    setSessionsStatus(value)
+    setSessionsPage(1)
+  }, [])
+
+  const updateSessionsReviewStatus = useCallback(value => {
+    setSessionsReviewStatus(value)
+    setSessionsPage(1)
+  }, [])
+
+  const updateSessionsScoreLevel = useCallback(value => {
+    setSessionsScoreLevel(value)
+    setSessionsPage(1)
+  }, [])
+
+  const resetSessionsFilters = useCallback(() => {
+    setSessionsSearch('')
+    setSessionsStatus('ALL')
+    setSessionsReviewStatus('ALL')
+    setSessionsScoreLevel('ALL')
+    setSessionsPage(1)
   }, [])
 
   const updateStep = useCallback((index, field, value) => {
@@ -292,13 +389,6 @@ export function useCoachingLogic() {
     }))
   }, [])
 
-  const fillDevSalesPlan = useCallback(() => {
-    setPlanForm({
-      ...DEV_SALES_PLAN_TEMPLATE,
-      steps: DEV_SALES_PLAN_TEMPLATE.steps.map(step => ({ ...step })),
-    })
-  }, [])
-
   const createPlan = useCallback(async () => {
     setSubmitting(true)
     setError(null)
@@ -314,7 +404,7 @@ export function useCoachingLogic() {
         })),
         publishNow: true,
       })
-      setPlanForm(createEmptyPlanForm())
+      setPlanForm(createDefaultPlanForm())
       await loadAll()
     } catch (err) {
       setError(err)
@@ -324,25 +414,35 @@ export function useCoachingLogic() {
   }, [loadAll, planForm])
 
   const launchAnalysis = useCallback(
-    async s3KeyOriginal => {
-      if (!selectedPlanVersionId) return
+    async (s3KeyOriginal, options = {}) => {
+      if (!selectedPlanVersionId || !s3KeyOriginal) return null
 
-      setSubmitting(true)
+      setLaunchingRecordingKeys(current => new Set(current).add(s3KeyOriginal))
       setError(null)
       try {
         const session = await coachingApi.launchAnalysis({
           salesPlanVersionId: Number(selectedPlanVersionId),
           s3KeyOriginal,
         })
-        await loadAll()
-        navigate(`/coaching/sessions/${session.id}`)
+        if (!options.skipRefresh) {
+          await refreshAll()
+        }
+        if (options.openAfterLaunch) {
+          navigate(`/coaching/sessions/${session.id}`)
+        }
+        return session
       } catch (err) {
         setError(err)
+        return null
       } finally {
-        setSubmitting(false)
+        setLaunchingRecordingKeys(current => {
+          const next = new Set(current)
+          next.delete(s3KeyOriginal)
+          return next
+        })
       }
     },
-    [loadAll, navigate, selectedPlanVersionId]
+    [navigate, refreshAll, selectedPlanVersionId]
   )
 
   const openSession = useCallback(
@@ -358,7 +458,7 @@ export function useCoachingLogic() {
       setError(null)
       try {
         await coachingApi.relaunchAnalysis(id)
-        await loadAll()
+        await refreshAll()
         await loadSession(id)
       } catch (err) {
         setError(err)
@@ -366,7 +466,7 @@ export function useCoachingLogic() {
         setSubmitting(false)
       }
     },
-    [loadAll, loadSession]
+    [loadSession, refreshAll]
   )
 
   const reviewSession = useCallback(
@@ -380,9 +480,8 @@ export function useCoachingLogic() {
           sessionId: selectedSession.id,
           action,
           reviewNotes,
-          commercialId: reviewCommercialId ? Number(reviewCommercialId) : null,
         })
-        await loadAll()
+        await refreshAll()
         await loadSession(selectedSession.id)
       } catch (err) {
         setError(err)
@@ -390,13 +489,16 @@ export function useCoachingLogic() {
         setSubmitting(false)
       }
     },
-    [loadAll, loadSession, reviewCommercialId, reviewNotes, selectedSession]
+    [loadSession, refreshAll, reviewNotes, selectedSession]
   )
 
   const planHasNamedStep = planForm.steps.some(step => step.titre.trim())
 
   return {
     loading,
+    recordingsRefreshing,
+    sessionsRefreshing,
+    launchingRecordingKeys,
     submitting,
     error,
     plans,
@@ -422,8 +524,38 @@ export function useCoachingLogic() {
     goToPreviousRecordingsPage: () => setRecordingsPage(current => Math.max(1, current - 1)),
     hasNextRecordingsPage: recordingsPage < recordingsTotalPages,
     hasPreviousRecordingsPage: recordingsPage > 1,
+    dashboardSessions,
+    dashboardSessionsTotal,
     sessions,
+    sessionsTotal,
+    sessionsPage,
+    sessionsTotalPages,
+    sessionsStartIndex,
+    sessionsEndIndex,
+    sessionsSearch,
+    setSessionsSearch: updateSessionsSearch,
+    sessionsStatus,
+    setSessionsStatus: updateSessionsStatus,
+    sessionsReviewStatus,
+    setSessionsReviewStatus: updateSessionsReviewStatus,
+    sessionsScoreLevel,
+    setSessionsScoreLevel: updateSessionsScoreLevel,
+    resetSessionsFilters,
+    goToNextSessionsPage: () =>
+      setSessionsPage(current => Math.min(sessionsTotalPages, current + 1)),
+    goToPreviousSessionsPage: () => setSessionsPage(current => Math.max(1, current - 1)),
+    hasNextSessionsPage: sessionsPage < sessionsTotalPages,
+    hasPreviousSessionsPage: sessionsPage > 1,
     queueState,
+    queuePage,
+    queueTotalPages,
+    queueStartIndex,
+    queueEndIndex,
+    queueTotal,
+    goToNextQueuePage: () => setQueuePage(current => Math.min(queueTotalPages, current + 1)),
+    goToPreviousQueuePage: () => setQueuePage(current => Math.max(1, current - 1)),
+    hasNextQueuePage: queuePage < queueTotalPages,
+    hasPreviousQueuePage: queuePage > 1,
     selectedSession,
     isSessionDetail: Boolean(sessionId),
     planForm,
@@ -433,8 +565,6 @@ export function useCoachingLogic() {
     duplicateStep,
     removeStep,
     planHasNamedStep,
-    fillDevSalesPlan,
-    canUseDevPrefill: canUseDevPrefill(),
     createPlan,
     selectedPlanVersionId,
     setSelectedPlanVersionId,
@@ -445,9 +575,7 @@ export function useCoachingLogic() {
     reviewSession,
     reviewNotes,
     setReviewNotes,
-    reviewCommercialId,
-    setReviewCommercialId,
     commercialOptions,
-    refreshAll: loadAll,
+    refreshAll,
   }
 }

@@ -91,8 +91,8 @@ const GET_COACHING_RECORDING_CANDIDATES = `
 `
 
 const GET_COACHING_ANALYSIS_QUEUE = `
-  query CoachingAnalysisQueue {
-    coachingAnalysisQueue {
+  query CoachingAnalysisQueue($input: CoachingAnalysisQueueInput) {
+    coachingAnalysisQueue(input: $input) {
       summary {
         queued
         processing
@@ -121,101 +121,33 @@ const GET_COACHING_ANALYSIS_QUEUE = `
         createdAt
         updatedAt
       }
+      total
+      limit
+      offset
     }
   }
 `
 
 const GET_COACHING_SESSIONS = `
-  query CoachingSessions {
-    coachingSessions {
-      id
-      s3KeyOriginal
-      roomName
-      commercialId
-      commercialNom
-      directeurId
-      salesPlanVersionId
-      salesPlanNom
-      salesPlanVersionLabel
-      status
-      reviewStatus
-      confidenceScore
-      identificationSource
-      overallScore
-      planCoverageScore
-      executionQualityScore
-      objectionHandlingScore
-      listeningRatioScore
-      closingScore
-      summary
-      strengths
-      improvements
-      recommendations
-      llmModel
-      failureReason
-      reviewReason
-      reviewNotes
-      launchedAt
-      processedAt
-      createdAt
-      updatedAt
-      analysisJob {
+  query CoachingSessions($input: CoachingSessionsInput) {
+    coachingSessions(input: $input) {
+      total
+      limit
+      offset
+      items {
         id
+        s3KeyOriginal
+        roomName
+        commercialId
+        commercialNom
+        directeurId
+        salesPlanVersionId
+        salesPlanNom
+        salesPlanVersionLabel
         status
-        priority
-        attempts
-        maxAttempts
-        currentStep
-        failureReason
-        queuedAt
-        startedAt
-        completedAt
-        failedAt
-        nextRunAt
-        lastHeartbeatAt
-        waitSeconds
-      }
-      pipelineSteps {
-        key
-        label
-        status
-        timestamp
-        detail
-      }
-      stepEvaluations {
-        id
-        ordre
-        titre
-        coverageStatus
-        score
-        startTime
-        endTime
-        verbatim
-        feedback
-        recommendation
-      }
-      keyMoments {
-        id
-        type
-        title
-        summary
-        startTime
-        endTime
-        verbatim
-        importance
-        createdAt
-        updatedAt
-      }
-      conversationEvaluations {
-        id
-        ordre
-        title
-        startTime
-        endTime
-        transcriptText
-        readableTranscriptText
-        status
-        reviewReason
+        reviewStatus
+        confidenceScore
+        identificationSource
         overallScore
         planCoverageScore
         executionQualityScore
@@ -226,8 +158,30 @@ const GET_COACHING_SESSIONS = `
         strengths
         improvements
         recommendations
+        llmModel
+        failureReason
+        reviewReason
+        reviewNotes
+        launchedAt
+        processedAt
         createdAt
         updatedAt
+        analysisJob {
+          id
+          status
+          priority
+          attempts
+          maxAttempts
+          currentStep
+          failureReason
+          queuedAt
+          startedAt
+          completedAt
+          failedAt
+          nextRunAt
+          lastHeartbeatAt
+          waitSeconds
+        }
       }
     }
   }
@@ -400,13 +354,13 @@ export const coachingApi = {
     return response.coachingRecordingCandidates
   },
 
-  async getAnalysisQueue() {
-    const response = await gql(GET_COACHING_ANALYSIS_QUEUE)
+  async getAnalysisQueue(input) {
+    const response = await gql(GET_COACHING_ANALYSIS_QUEUE, { input })
     return response.coachingAnalysisQueue
   },
 
-  async getSessions() {
-    const response = await gql(GET_COACHING_SESSIONS)
+  async getSessions(input) {
+    const response = await gql(GET_COACHING_SESSIONS, { input })
     return response.coachingSessions
   },
 

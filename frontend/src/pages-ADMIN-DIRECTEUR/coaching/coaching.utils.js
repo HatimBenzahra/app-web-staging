@@ -13,6 +13,45 @@ export function normalizeTime(value) {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+export function numberOrZero(value) {
+  return value === null || value === undefined || value === '' ? 0 : value
+}
+
+export function formatScoreValue(value) {
+  return `${numberOrZero(value)}/100`
+}
+
+export function badgeToneClass(tone = 'neutral') {
+  const tones = {
+    primary: 'border-primary/30 bg-primary/10 text-primary',
+    accent: 'border-accent/35 bg-accent/15 text-accent-foreground',
+    success: 'border-chart-2/35 bg-chart-2/12 text-foreground',
+    warning: 'border-chart-5/35 bg-chart-5/12 text-foreground',
+    danger: 'border-destructive/35 bg-destructive/10 text-destructive',
+    neutral: 'border-border/70 bg-muted/35 text-foreground',
+  }
+  return tones[tone] || tones.neutral
+}
+
+export function statusTone(status) {
+  if (
+    ['COMPLETED', 'VALIDATED', 'NOT_REQUIRED', 'PUBLISHED', 'ACTIVE', 'ALREADY_ANALYZED'].includes(
+      status
+    )
+  ) {
+    return 'success'
+  }
+  if (['QUEUED', 'PENDING', 'PROCESSING', 'NEEDS_REVIEW', 'REVIEW', 'PARTIAL'].includes(status)) {
+    return 'warning'
+  }
+  if (['FAILED', 'REJECTED', 'CANCELLED'].includes(status)) {
+    return 'danger'
+  }
+  if (['PRIORITY', 'GOOD', 'READY', 'COVERED', 'moment'].includes(status)) return 'primary'
+  if (['conversation', 'step'].includes(status)) return 'accent'
+  return 'neutral'
+}
+
 export function buildSessionExcerpts(session) {
   if (!session) return []
 

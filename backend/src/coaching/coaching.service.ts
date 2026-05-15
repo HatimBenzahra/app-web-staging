@@ -15,9 +15,12 @@ import {
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
   CoachingAnalysisJobDto,
+  CoachingAnalysisQueueInput,
   CoachingQueueStateDto,
   CoachingReviewActionDto,
   CoachingSessionDto,
+  CoachingSessionsInput,
+  CoachingSessionsPageDto,
   CreateSalesPlanInput,
   CreateSalesPlanVersionInput,
   LaunchCoachingAnalysisInput,
@@ -370,52 +373,128 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getCoachingSessions(
+    input: CoachingSessionsInput | undefined,
     currentUser: CurrentUser,
-  ): Promise<CoachingSessionDto[]> {
+  ): Promise<CoachingSessionsPageDto> {
     this.assertAdminOrDirecteur(currentUser);
 
-    const sessions = await this.prisma.coachingSession.findMany({
-      where:
-        currentUser.role === 'admin'
-          ? {}
-          : {
-              OR: [
-                { directeurId: currentUser.id },
-                {
-                  commercial: {
-                    directeurId: currentUser.id,
-                  },
-                },
-              ],
+    const limit = Math.min(Math.max(input?.limit ?? 20, 1), 100);
+    const offset = Math.max(input?.offset ?? 0, 0);
+    const where = this.buildCoachingSessionsWhere(input, currentUser);
+
+    const [sessions, total] = await Promise.all([
+      this.prisma.coachingSession.findMany({
+        where,
+        include: {
+          commercial: true,
+          salesPlanVersion: {
+            include: {
+              salesPlan: true,
             },
-      include: {
-        commercial: true,
-        salesPlanVersion: {
-          include: {
-            salesPlan: true,
+          },
+          analysisJobs: {
+            orderBy: { updatedAt: 'desc' },
+            take: 1,
           },
         },
-        analysisJobs: {
-          orderBy: { updatedAt: 'desc' },
-          take: 1,
-        },
-        stepEvaluations: {
-          orderBy: { ordre: 'asc' },
-        },
-        keyMoments: {
-          orderBy: [{ importance: 'desc' }, { startTime: 'asc' }],
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.coachingSession.count({ where }),
+    ]);
 
-    return sessions.map((session) => this.mapSession(session));
+    return {
+      items: sessions.map((session) => this.mapSession(session)),
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  private buildCoachingSessionsWhere(
+    input: CoachingSessionsInput | undefined,
+    currentUser: CurrentUser,
+  ): Record<string, any> {
+    const andConditions: Record<string, any>[] = [];
+
+    if (currentUser.role !== 'admin') {
+      andConditions.push({
+        OR: [
+          { directeurId: currentUser.id },
+          {
+            commercial: {
+              directeurId: currentUser.id,
+            },
+          },
+        ],
+      });
+    }
+
+    const search = input?.search?.trim();
+    if (search) {
+      const numericSearch = Number(search.replace(/^#/, ''));
+      const searchConditions: Record<string, any>[] = [
+        { commercialNom: { contains: search, mode: 'insensitive' } },
+        { roomName: { contains: search, mode: 'insensitive' } },
+        { s3KeyOriginal: { contains: search, mode: 'insensitive' } },
+        {
+          salesPlanVersion: {
+            salesPlan: {
+              nom: { contains: search, mode: 'insensitive' },
+            },
+          },
+        },
+      ];
+
+      if (Number.isInteger(numericSearch) && numericSearch > 0) {
+        searchConditions.push({ id: numericSearch });
+      }
+
+      andConditions.push({ OR: searchConditions });
+    }
+
+    if (input?.status && input.status !== 'ALL') {
+      if (input.status === 'ACTIVE') {
+        andConditions.push({
+          status: { in: ['PENDING', 'PROCESSING'] },
+        });
+      } else {
+        andConditions.push({ status: input.status });
+      }
+    }
+
+    if (input?.reviewStatus) {
+      andConditions.push({ reviewStatus: input.reviewStatus });
+    }
+
+    if (input?.scoreLevel && input.scoreLevel !== 'ALL') {
+      if (input.scoreLevel === 'HIGH') {
+        andConditions.push({ overallScore: { gte: 80 } });
+      } else if (input.scoreLevel === 'MEDIUM') {
+        andConditions.push({
+          overallScore: {
+            gte: 50,
+            lt: 80,
+          },
+        });
+      } else if (input.scoreLevel === 'LOW') {
+        andConditions.push({
+          OR: [{ overallScore: { lt: 50 } }, { overallScore: null }],
+        });
+      }
+    }
+
+    return andConditions.length > 0 ? { AND: andConditions } : {};
   }
 
   async getAnalysisQueue(
+    input: CoachingAnalysisQueueInput | undefined,
     currentUser: CurrentUser,
   ): Promise<CoachingQueueStateDto> {
     this.assertAdminOrDirecteur(currentUser);
+    const limit = Math.min(Math.max(input?.limit ?? 20, 1), 100);
+    const offset = Math.max(input?.offset ?? 0, 0);
 
     const sessionWhere =
       currentUser.role === 'admin'
@@ -431,17 +510,14 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
             ],
           };
 
-    const [jobs, grouped] = await Promise.all([
+    const [jobs, grouped, total] = await Promise.all([
       this.prisma.coachingAnalysisJob.findMany({
         where: {
           coachingSession: sessionWhere,
         },
-        orderBy: [
-          { status: 'asc' },
-          { priority: 'desc' },
-          { queuedAt: 'asc' },
-        ],
-        take: 80,
+        orderBy: [{ status: 'asc' }, { priority: 'desc' }, { queuedAt: 'asc' }],
+        take: limit,
+        skip: offset,
       }),
       this.prisma.coachingAnalysisJob.groupBy({
         by: ['status'],
@@ -450,6 +526,11 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         },
         _count: {
           _all: true,
+        },
+      }),
+      this.prisma.coachingAnalysisJob.count({
+        where: {
+          coachingSession: sessionWhere,
         },
       }),
     ]);
@@ -474,6 +555,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
           : undefined,
       },
       jobs: jobs.map((job) => this.mapAnalysisJob(job)),
+      total,
+      limit,
+      offset,
     };
   }
 
@@ -1228,7 +1312,28 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
 
   private async recoverInterruptedQueueJobs(): Promise<void> {
     await this.prisma.coachingAnalysisJob.updateMany({
-      where: { status: 'PROCESSING' },
+      where: {
+        status: { in: ['QUEUED', 'PROCESSING'] },
+        coachingSession: {
+          status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+        },
+      },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        lastHeartbeatAt: new Date(),
+        currentStep: 'Analyse déjà finalisée',
+        failureReason: null,
+      },
+    });
+
+    await this.prisma.coachingAnalysisJob.updateMany({
+      where: {
+        status: 'PROCESSING',
+        coachingSession: {
+          status: { notIn: ['COMPLETED', 'NEEDS_REVIEW'] },
+        },
+      },
       data: {
         status: 'QUEUED',
         startedAt: null,
@@ -1327,7 +1432,8 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
           nextRunAt,
           failedAt: new Date(),
           lastHeartbeatAt: new Date(),
-          failureReason: 'Le pipeline a échoué, une nouvelle tentative est planifiée.',
+          failureReason:
+            'Le pipeline a échoué, une nouvelle tentative est planifiée.',
         },
       });
       return;
@@ -1418,15 +1524,16 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
 
       await this.updateAnalysisJobStep(jobId, 'Transcription Whisper');
       let transcript: CoachingTranscriptPayload | null =
-        await this.transcriptionService.transcribeFile(localFile).then(
-          (result) =>
+        await this.transcriptionService
+          .transcribeFile(localFile)
+          .then((result) =>
             result
               ? {
                   ...result,
                   source: 'WHISPER_FULL_RECORDING' as const,
                 }
-                : null,
-        );
+              : null,
+          );
 
       if (!transcript || transcript.segments.length === 0) {
         await this.updateAnalysisJobStep(
@@ -1473,7 +1580,10 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       const conversationBlocks = this.splitTranscriptIntoConversations(
         transcript.segments,
       );
-      await this.updateAnalysisJobStep(jobId, 'Réécriture lisible du transcript');
+      await this.updateAnalysisJobStep(
+        jobId,
+        'Réécriture lisible du transcript',
+      );
       const readableTranscriptText =
         await this.rewriteTranscriptForReadability(transcriptText);
       await this.updateAnalysisJobStep(jobId, 'Évaluation globale IA');
@@ -1482,11 +1592,10 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         transcriptText,
       );
       await this.updateAnalysisJobStep(jobId, 'Évaluation des conversations');
-      const conversationEvaluations =
-        await this.evaluateConversationBlocks(
-          session.salesPlanVersion,
-          conversationBlocks,
-        );
+      const conversationEvaluations = await this.evaluateConversationBlocks(
+        session.salesPlanVersion,
+        conversationBlocks,
+      );
 
       if (evaluation.usedFallback && status !== 'NEEDS_REVIEW') {
         status = 'NEEDS_REVIEW';
@@ -1602,8 +1711,7 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
                   : null),
               overallScore: evaluation?.overallScore ?? null,
               planCoverageScore: evaluation?.planCoverageScore ?? null,
-              executionQualityScore:
-                evaluation?.executionQualityScore ?? null,
+              executionQualityScore: evaluation?.executionQualityScore ?? null,
               objectionHandlingScore:
                 evaluation?.objectionHandlingScore ?? null,
               listeningRatioScore: evaluation?.listeningRatioScore ?? null,
@@ -1811,21 +1919,20 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     blocks: Array<Array<{ start: number; end: number; text: string }>>,
     minTextLength: number,
   ): Array<Array<{ start: number; end: number; text: string }>> {
-    return blocks.reduce<Array<Array<{ start: number; end: number; text: string }>>>(
-      (merged, block) => {
-        const textLength = block.map((segment) => segment.text).join(' ').length;
-        const previous = merged[merged.length - 1];
+    return blocks.reduce<
+      Array<Array<{ start: number; end: number; text: string }>>
+    >((merged, block) => {
+      const textLength = block.map((segment) => segment.text).join(' ').length;
+      const previous = merged[merged.length - 1];
 
-        if (textLength < minTextLength && previous) {
-          previous.push(...block);
-        } else {
-          merged.push([...block]);
-        }
+      if (textLength < minTextLength && previous) {
+        previous.push(...block);
+      } else {
+        merged.push([...block]);
+      }
 
-        return merged;
-      },
-      [],
-    );
+      return merged;
+    }, []);
   }
 
   private isConversationBlockUsable(
@@ -1878,10 +1985,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         results.push({
           block: {
             ...block,
-            readableTranscriptText:
-              await this.rewriteTranscriptForReadability(
-                block.transcriptText,
-              ),
+            readableTranscriptText: await this.rewriteTranscriptForReadability(
+              block.transcriptText,
+            ),
           },
           evaluation: null,
         });
@@ -2067,7 +2173,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     return cleaned;
   }
 
-  private prepareTranscriptForReadabilityPrompt(transcriptText: string): string {
+  private prepareTranscriptForReadabilityPrompt(
+    transcriptText: string,
+  ): string {
     const segments = this.parseTimestampedTranscript(transcriptText);
     if (segments.length === 0) {
       return this.cleanTranscriptNoiseForPrompt(transcriptText);
@@ -2086,7 +2194,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       }
 
       const previous = grouped[grouped.length - 1];
-      const gap = previous ? segment.start - previous.end : Number.POSITIVE_INFINITY;
+      const gap = previous
+        ? segment.start - previous.end
+        : Number.POSITIVE_INFINITY;
       const previousLooksOpen = previous
         ? !/[.!?]$/.test(previous.text.trim())
         : false;
@@ -2177,7 +2287,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
     const payload = {
       model: this.vllmModel,
       temperature: 0.2,
-      max_tokens: this.resolveEvaluationMaxTokens(salesPlanVersion.steps.length),
+      max_tokens: this.resolveEvaluationMaxTokens(
+        salesPlanVersion.steps.length,
+      ),
       messages: [
         {
           role: 'system',
@@ -2399,9 +2511,9 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
         ? `Consignes additionnelles: ${salesPlanVersion.promptInstructions}`
         : null,
       `Nombre exact d'étapes à évaluer: ${salesPlanVersion.steps.length}`,
-      "Règles importantes:",
+      'Règles importantes:',
       "- Le plan est entièrement dynamique: n'utilise aucune section prédéfinie comme ouverture/découverte/closing si elle n'existe pas dans le plan.",
-      "- Retourne une entrée stepEvaluations pour chaque étape listée ci-dessous, dans le même ordre et avec le même numéro ordre.",
+      '- Retourne une entrée stepEvaluations pour chaque étape listée ci-dessous, dans le même ordre et avec le même numéro ordre.',
       "- Si une étape n'est pas observable dans le transcript, garde son titre exact et marque-la MISSING avec une recommandation concrète.",
       "- Ne fusionne pas deux étapes et n'ajoute jamais d'étape absente du plan fourni.",
       'Étapes libres du plan à évaluer:',
@@ -2887,23 +2999,41 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
 
   private buildFallbackKeyMoments(transcriptText: string): KeyMomentPayload[] {
     const moments: KeyMomentPayload[] = [];
-    const patterns: Array<{ type: string; title: string; keywords: string[] }> = [
-      {
-        type: 'OBJECTION',
-        title: 'Objection ou hesitation client',
-        keywords: ['pas intéressé', 'pas interesse', 'trop cher', 'réfléchir', 'refus'],
-      },
-      {
-        type: 'SIGNAL_ACHAT',
-        title: 'Signal d interet',
-        keywords: ['combien', 'rendez-vous', 'contrat', 'signature', 'installer'],
-      },
-      {
-        type: 'PROMESSE',
-        title: 'Promesse ou engagement',
-        keywords: ['je vous rappelle', 'on repasse', 'je vous envoie', 'demain'],
-      },
-    ];
+    const patterns: Array<{ type: string; title: string; keywords: string[] }> =
+      [
+        {
+          type: 'OBJECTION',
+          title: 'Objection ou hesitation client',
+          keywords: [
+            'pas intéressé',
+            'pas interesse',
+            'trop cher',
+            'réfléchir',
+            'refus',
+          ],
+        },
+        {
+          type: 'SIGNAL_ACHAT',
+          title: 'Signal d interet',
+          keywords: [
+            'combien',
+            'rendez-vous',
+            'contrat',
+            'signature',
+            'installer',
+          ],
+        },
+        {
+          type: 'PROMESSE',
+          title: 'Promesse ou engagement',
+          keywords: [
+            'je vous rappelle',
+            'on repasse',
+            'je vous envoie',
+            'demain',
+          ],
+        },
+      ];
 
     const lowerTranscript = transcriptText.toLowerCase();
     for (const pattern of patterns) {

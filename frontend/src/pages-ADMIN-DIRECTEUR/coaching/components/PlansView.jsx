@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Sparkles, Target } from 'lucide-react'
+import { Copy, Loader2, Plus, Target, Trash2 } from 'lucide-react'
 import { FieldBlock, InlineEmptyState } from './CoachingShared'
 
 export default function PlansView({ logic }) {
@@ -12,67 +12,66 @@ export default function PlansView({ logic }) {
     <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
       <Card className="border-border/70">
         <CardHeader className="gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <CardTitle>Créer un plan de vente</CardTitle>
-              <CardDescription>
-                Chaque étape saisie devient un critère évalué dans le rapport coaching.
-              </CardDescription>
-            </div>
-            {logic.canUseDevPrefill ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={logic.fillDevSalesPlan}
-                disabled={logic.submitting}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Préremplir dev
-              </Button>
-            ) : null}
+          <div className="space-y-1">
+            <CardTitle>Créer un plan de vente</CardTitle>
+            <CardDescription>
+              Le formulaire est déjà rempli avec une trame métier. Vous pouvez l’ajuster avant de
+              publier.
+            </CardDescription>
           </div>
-          {logic.canUseDevPrefill ? (
-            <div className="text-xs text-muted-foreground">
-              Le préremplissage sert uniquement au staging et au test rapide du flow.
-            </div>
-          ) : null}
         </CardHeader>
         <CardContent className="space-y-5">
-          <FieldBlock label="Nom du plan">
-            <Input
-              value={logic.planForm.nom}
-              onChange={event =>
-                logic.setPlanForm(current => ({ ...current, nom: event.target.value }))
-              }
-              placeholder="Plan vente terrain énergie, fibre, closing manager..."
-            />
-          </FieldBlock>
+          <div className="space-y-4 rounded-lg border border-border/70 bg-muted/15 p-4">
+            <div>
+              <div className="text-sm font-semibold">Informations</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Nom, objectif et contexte métier du plan.
+              </p>
+            </div>
+            <FieldBlock label="Nom du plan">
+              <Input
+                value={logic.planForm.nom}
+                onChange={event =>
+                  logic.setPlanForm(current => ({ ...current, nom: event.target.value }))
+                }
+                placeholder="Plan vente terrain énergie, fibre, closing manager..."
+                className="bg-background"
+              />
+            </FieldBlock>
 
-          <FieldBlock label="Description">
-            <Textarea
-              value={logic.planForm.description}
-              onChange={event =>
-                logic.setPlanForm(current => ({ ...current, description: event.target.value }))
-              }
-              placeholder="Objectif du plan, cible, contexte, variantes utiles"
-              className="min-h-[84px]"
-            />
-          </FieldBlock>
+            <FieldBlock label="Description">
+              <Textarea
+                value={logic.planForm.description}
+                onChange={event =>
+                  logic.setPlanForm(current => ({ ...current, description: event.target.value }))
+                }
+                placeholder="Objectif du plan, cible, contexte, variantes utiles"
+                className="min-h-[84px] bg-background"
+              />
+            </FieldBlock>
+          </div>
 
-          <FieldBlock label="Consigne LLM">
-            <Textarea
-              value={logic.planForm.promptInstructions}
-              onChange={event =>
-                logic.setPlanForm(current => ({
-                  ...current,
-                  promptInstructions: event.target.value,
-                }))
-              }
-              placeholder="Précisions d’évaluation métier, ton attendu, règles internes..."
-              className="min-h-[96px]"
-            />
-          </FieldBlock>
+          <div className="space-y-4 rounded-lg border border-border/70 bg-muted/15 p-4">
+            <div>
+              <div className="text-sm font-semibold">Consignes IA</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Critères d’évaluation, ton attendu et règles internes.
+              </p>
+            </div>
+            <FieldBlock label="Consignes d’évaluation">
+              <Textarea
+                value={logic.planForm.promptInstructions}
+                onChange={event =>
+                  logic.setPlanForm(current => ({
+                    ...current,
+                    promptInstructions: event.target.value,
+                  }))
+                }
+                placeholder="Précisions d’évaluation métier, ton attendu, règles internes..."
+                className="min-h-[96px] bg-background"
+              />
+            </FieldBlock>
+          </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-4">
@@ -83,21 +82,34 @@ export default function PlansView({ logic }) {
                 </p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={logic.addStep}>
+                <Plus className="mr-2 h-4 w-4" />
                 Ajouter une étape
               </Button>
             </div>
 
             {logic.planForm.steps.map((step, index) => (
-              <div
-                key={index}
-                className="rounded-lg border border-border/70 bg-background px-4 py-4"
-              >
+              <div key={index} className="rounded-lg border border-border/70 bg-muted/15 px-4 py-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <div className="text-sm font-semibold">Étape {index + 1}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Titre, poids, description et signaux attendus.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-[1fr_120px]">
                   <FieldBlock label={`Titre étape ${index + 1}`}>
                     <Input
                       value={step.titre}
                       onChange={event => logic.updateStep(index, 'titre', event.target.value)}
                       placeholder="Validation du décideur, pitch tarif, preuve sociale..."
+                      className="bg-background"
                     />
                   </FieldBlock>
                   <FieldBlock label="Poids">
@@ -107,6 +119,7 @@ export default function PlansView({ logic }) {
                       max="100"
                       value={step.poids}
                       onChange={event => logic.updateStep(index, 'poids', event.target.value)}
+                      className="bg-background"
                     />
                   </FieldBlock>
                 </div>
@@ -117,7 +130,7 @@ export default function PlansView({ logic }) {
                       value={step.description}
                       onChange={event => logic.updateStep(index, 'description', event.target.value)}
                       placeholder="Ce que le commercial doit réussir dans cette étape."
-                      className="min-h-[72px]"
+                      className="min-h-[72px] bg-background"
                     />
                   </FieldBlock>
                 </div>
@@ -130,7 +143,7 @@ export default function PlansView({ logic }) {
                         logic.updateStep(index, 'expectedSignals', event.target.value)
                       }
                       placeholder="Mots clés, preuves, objections, comportements observables"
-                      className="min-h-[72px]"
+                      className="min-h-[72px] bg-background"
                     />
                   </FieldBlock>
                 </div>
@@ -142,6 +155,7 @@ export default function PlansView({ logic }) {
                     size="sm"
                     onClick={() => logic.duplicateStep(index)}
                   >
+                    <Copy className="mr-2 h-4 w-4" />
                     Dupliquer
                   </Button>
                   {logic.planForm.steps.length > 1 ? (
@@ -151,6 +165,7 @@ export default function PlansView({ logic }) {
                       size="sm"
                       onClick={() => logic.removeStep(index)}
                     >
+                      <Trash2 className="mr-2 h-4 w-4" />
                       Retirer
                     </Button>
                   ) : null}
@@ -195,18 +210,25 @@ export default function PlansView({ logic }) {
                     <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
                   ) : null}
                 </div>
-                <Badge variant="outline">{plan.status}</Badge>
+                <Badge variant="outline" className={statusClassName(plan.status)}>
+                  {plan.status}
+                </Badge>
               </div>
 
               <div className="mt-4 space-y-3">
                 {plan.versions.map(version => (
-                  <div key={version.id} className="rounded-lg bg-muted/35 px-4 py-3">
+                  <div
+                    key={version.id}
+                    className="rounded-lg border border-border/60 bg-muted/25 px-4 py-3"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="font-medium">
                         {version.label || `Version ${version.versionNumber}`}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline">{version.status}</Badge>
+                        <Badge variant="outline" className={statusClassName(version.status)}>
+                          {version.status}
+                        </Badge>
                         <span className="text-xs text-muted-foreground">
                           {version.steps.length} étapes
                         </span>
@@ -248,4 +270,15 @@ export default function PlansView({ logic }) {
       </Card>
     </div>
   )
+}
+
+function statusClassName(status = '') {
+  const normalized = String(status).toUpperCase()
+  if (['PUBLISHED', 'ACTIVE', 'ACTIF', 'PUBLIE', 'PUBLIÉ'].includes(normalized)) {
+    return 'border-chart-2/30 bg-chart-2/10 text-foreground'
+  }
+  if (['DRAFT', 'BROUILLON'].includes(normalized)) {
+    return 'border-chart-5/30 bg-chart-5/10 text-foreground'
+  }
+  return 'border-primary/25 bg-primary/5 text-foreground'
 }
