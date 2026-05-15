@@ -144,38 +144,35 @@ export function useCoachingLogic() {
     try {
       const offset = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
       const queueOffset = (queuePage - 1) * QUEUE_PAGE_SIZE
-      const [nextPrioritizedRecordings, nextRecordings, nextQueueState] =
-        await Promise.all([
-          coachingApi.getRecordingCandidates({
-            limit: 10,
-            offset: 0,
-            period: dashboardPeriod,
-            includeLowValue: false,
-          }),
-          coachingApi.getRecordingCandidates({
-            limit: RECORDINGS_PAGE_SIZE,
-            offset,
-            search: debouncedRecordingsSearch || null,
-            commercialId:
-              recordingsCommercialId && recordingsCommercialId !== 'ALL'
-                ? Number(recordingsCommercialId)
-                : null,
-            analysisStatus:
-              recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
-                ? recordingsAnalysisStatus
-                : null,
-            speechLevel:
-              recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL'
-                ? recordingsSpeechLevel
-                : null,
-            period: 'ALL',
-            includeLowValue: true,
-          }),
-          coachingApi.getAnalysisQueue({
-            limit: QUEUE_PAGE_SIZE,
-            offset: queueOffset,
-          }),
-        ])
+      const [nextPrioritizedRecordings, nextRecordings, nextQueueState] = await Promise.all([
+        coachingApi.getRecordingCandidates({
+          limit: 10,
+          offset: 0,
+          period: dashboardPeriod,
+          includeLowValue: false,
+        }),
+        coachingApi.getRecordingCandidates({
+          limit: RECORDINGS_PAGE_SIZE,
+          offset,
+          search: debouncedRecordingsSearch || null,
+          commercialId:
+            recordingsCommercialId && recordingsCommercialId !== 'ALL'
+              ? Number(recordingsCommercialId)
+              : null,
+          analysisStatus:
+            recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
+              ? recordingsAnalysisStatus
+              : null,
+          speechLevel:
+            recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL' ? recordingsSpeechLevel : null,
+          period: 'ALL',
+          includeLowValue: true,
+        }),
+        coachingApi.getAnalysisQueue({
+          limit: QUEUE_PAGE_SIZE,
+          offset: queueOffset,
+        }),
+      ])
       if (requestId !== recordingsRequestRef.current) return
       setPrioritizedRecordings(nextPrioritizedRecordings.items)
       setRecordings(nextRecordings.items)

@@ -372,4 +372,3 @@ function DashboardRecordingActions({ recording, logic }) {
     </div>
   )
 }
-

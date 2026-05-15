@@ -513,4 +513,3 @@ function RecordingActions({ recording, logic }) {
     </div>
   )
 }
-
