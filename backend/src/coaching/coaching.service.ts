@@ -1784,17 +1784,19 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       const conversationBlocks = this.splitTranscriptIntoConversations(
         transcript.segments,
       );
-      await this.updateAnalysisJobStep(
-        jobId,
-        'Réécriture lisible du transcript',
-      );
-      const readableTranscriptText =
-        await this.rewriteTranscriptForReadability(transcriptText);
       await this.updateAnalysisJobStep(jobId, 'Évaluation des conversations');
       const conversationEvaluations = await this.evaluateConversationBlocks(
         session.salesPlanVersion,
         conversationBlocks,
         jobId,
+      );
+      // Construction du readableTranscriptText global à partir des
+      // réécritures par conversation : chaque conversation est rewritée
+      // individuellement avec budget LLM suffisant, donc la concaténation
+      // évite la troncature liée à un rewrite global d'un transcript trop long.
+      const readableTranscriptText = this.buildReadableTranscriptFromConversations(
+        conversationEvaluations,
+        transcriptText,
       );
       await this.updateAnalysisJobStep(jobId, 'Agrégation de l’évaluation globale');
       const aggregated = this.aggregateConversationEvaluations(
@@ -2411,6 +2413,44 @@ export class CoachingService implements OnModuleInit, OnModuleDestroy {
       rawResponse: `Agrégation de ${valid.length} conversation(s)`,
       usedFallback: false,
     };
+  }
+
+  private buildReadableTranscriptFromConversations(
+    conversationResults: Array<{
+      block: CoachingConversationBlock;
+      evaluation: SessionEvaluationPayload | null;
+    }>,
+    fallbackTranscript: string,
+  ): string {
+    const sorted = [...conversationResults].sort(
+      (a, b) => a.block.ordre - b.block.ordre,
+    );
+
+    const sections: string[] = [];
+    for (const r of sorted) {
+      const text = (r.block.readableTranscriptText ?? r.block.transcriptText ?? '').trim();
+      if (!text) continue;
+      const start =
+        typeof r.block.startTime === 'number'
+          ? this.formatTimestamp(r.block.startTime)
+          : null;
+      const end =
+        typeof r.block.endTime === 'number'
+          ? this.formatTimestamp(r.block.endTime)
+          : null;
+      const header =
+        start && end
+          ? `--- Conversation ${r.block.ordre} [${start}-${end}] ---`
+          : `--- Conversation ${r.block.ordre} ---`;
+      sections.push(`${header}\n${text}`);
+    }
+
+    if (sections.length === 0) {
+      // Aucune conversation exploitable : fallback sur le brut.
+      return fallbackTranscript;
+    }
+
+    return sections.join('\n\n');
   }
 
   private formatTimestamp(seconds: number): string {
