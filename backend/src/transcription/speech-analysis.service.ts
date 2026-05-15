@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   S3Client,
   GetObjectCommand,
@@ -22,7 +22,7 @@ export interface SpeechScore {
 }
 
 @Injectable()
-export class SpeechAnalysisService implements OnModuleDestroy {
+export class SpeechAnalysisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SpeechAnalysisService.name);
   private readonly prisma: PrismaService;
 
@@ -54,6 +54,64 @@ export class SpeechAnalysisService implements OnModuleDestroy {
 
   private readonly noiseThresholdDb = -40;
   private readonly minSilenceSec = 0.5;
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const rows = await this.prisma.recordingSegment.findMany({
+        where: { speechScore: { not: null } },
+        select: {
+          s3KeyOriginal: true,
+          s3KeySegment: true,
+          speechScore: true,
+          durationSec: true,
+        },
+      });
+
+      const aggregates = new Map<
+        string,
+        { scoreSum: number; durSum: number; count: number }
+      >();
+
+      for (const row of rows) {
+        if (row.speechScore == null) continue;
+        const candidateKeys = [row.s3KeySegment, row.s3KeyOriginal].filter(
+          (value): value is string => Boolean(value),
+        );
+        for (const key of candidateKeys) {
+          const entry = aggregates.get(key) ?? {
+            scoreSum: 0,
+            durSum: 0,
+            count: 0,
+          };
+          entry.scoreSum += row.speechScore;
+          entry.durSum += row.durationSec ?? 0;
+          entry.count += 1;
+          aggregates.set(key, entry);
+        }
+      }
+
+      let hydrated = 0;
+      for (const [key, entry] of aggregates) {
+        const score = Math.round(entry.scoreSum / Math.max(1, entry.count));
+        const totalDurationSec = entry.durSum > 0 ? entry.durSum : 0;
+        const speechDurationSec =
+          totalDurationSec > 0 ? (score / 100) * totalDurationSec : 0;
+        this.cache.set(key, {
+          score: Math.max(0, Math.min(100, score)),
+          totalDurationSec,
+          speechDurationSec,
+        });
+        hydrated += 1;
+      }
+
+      this.logger.log(
+        `Cache parole hydraté depuis la DB: ${hydrated} entrées (${rows.length} segments scrutés)`,
+      );
+    } catch (error: unknown) {
+      const message = (error as { message?: string })?.message ?? String(error);
+      this.logger.warn(`Hydratation du cache parole échouée: ${message}`);
+    }
+  }
 
   onModuleDestroy(): void {
     this.cache.clear();

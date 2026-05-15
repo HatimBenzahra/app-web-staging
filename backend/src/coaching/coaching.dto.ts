@@ -15,7 +15,9 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -168,6 +170,16 @@ export class CreateSalesPlanInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(2000, {
+    message: 'promptInstructions ne peut dépasser 2000 caractères',
+  })
+  @Matches(
+    /^(?!.*(ignore\s+(previous|all)\s+(instructions|prompts)|disregard\s+previous|forget\s+previous|system\s*:)).*$/is,
+    {
+      message:
+        'promptInstructions contient des motifs interdits (tentative d\'injection)',
+    },
+  )
   promptInstructions?: string;
 
   @Field(() => [SalesPlanStepInput])
@@ -197,6 +209,16 @@ export class CreateSalesPlanVersionInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(2000, {
+    message: 'promptInstructions ne peut dépasser 2000 caractères',
+  })
+  @Matches(
+    /^(?!.*(ignore\s+(previous|all)\s+(instructions|prompts)|disregard\s+previous|forget\s+previous|system\s*:)).*$/is,
+    {
+      message:
+        'promptInstructions contient des motifs interdits (tentative d\'injection)',
+    },
+  )
   promptInstructions?: string;
 
   @Field(() => [SalesPlanStepInput])

@@ -63,7 +63,7 @@ export default function Coaching() {
           </div>
 
           {logic.error ? (
-            <Alert variant="destructive">
+            <Alert variant="destructive" role="alert" aria-live="polite">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Le module coaching a rencontré une erreur</AlertTitle>
               <AlertDescription>
@@ -75,7 +75,12 @@ export default function Coaching() {
       ) : null}
 
       {currentSection === 'session-detail' && logic.error ? (
-        <Alert variant="destructive" className="mx-auto w-full max-w-[1500px]">
+        <Alert
+          variant="destructive"
+          role="alert"
+          aria-live="polite"
+          className="mx-auto w-full max-w-[1500px]"
+        >
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Le module coaching a rencontré une erreur</AlertTitle>
           <AlertDescription>

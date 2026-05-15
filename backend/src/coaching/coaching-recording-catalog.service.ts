@@ -12,15 +12,64 @@ type CurrentUser = {
   role: string;
 };
 
+type RecordingsListCacheEntry = {
+  result: Awaited<ReturnType<RecordingService['listAllRecordings']>>;
+  expiresAt: number;
+};
+
 @Injectable()
 export class CoachingRecordingCatalogService {
   private readonly prefix = process.env.S3_PREFIX || 'recordings/';
+  private readonly recordingsListCacheTtlMs = 60_000;
+  private readonly recordingsListCache = new Map<string, RecordingsListCacheEntry>();
+  private readonly recordingsListInflight = new Map<
+    string,
+    Promise<Awaited<ReturnType<RecordingService['listAllRecordings']>>>
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => RecordingService))
     private readonly recordingService: RecordingService,
   ) {}
+
+  private async getRecordingsListCached(
+    roomNames: string[],
+    currentUser: CurrentUser,
+  ): Promise<Awaited<ReturnType<RecordingService['listAllRecordings']>>> {
+    const cacheKey = `${currentUser.role}:${currentUser.id}:${[...roomNames].sort().join(',')}`;
+    const now = Date.now();
+
+    const cached = this.recordingsListCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.result;
+    }
+
+    const inflight = this.recordingsListInflight.get(cacheKey);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this.recordingService
+      .listAllRecordings(roomNames, currentUser)
+      .then((result) => {
+        this.recordingsListCache.set(cacheKey, {
+          result,
+          expiresAt: Date.now() + this.recordingsListCacheTtlMs,
+        });
+        return result;
+      })
+      .finally(() => {
+        this.recordingsListInflight.delete(cacheKey);
+      });
+
+    this.recordingsListInflight.set(cacheKey, promise);
+    return promise;
+  }
+
+  invalidateRecordingsListCache(): void {
+    this.recordingsListCache.clear();
+  }
 
   async getRecordingCandidates(
     input: CoachingRecordingCandidatesInput | undefined,
@@ -49,7 +98,7 @@ export class CoachingRecordingCatalogService {
       (commercial) => `room:commercial:${commercial.id}`,
     );
 
-    const recordings = await this.recordingService.listAllRecordings(
+    const recordings = await this.getRecordingsListCached(
       roomNames,
       currentUser,
     );

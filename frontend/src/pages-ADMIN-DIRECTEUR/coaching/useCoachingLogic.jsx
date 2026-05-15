@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { coachingApi } from '@/services/api/coaching/coaching.service'
+import { useDebouncedValue } from '@/hooks/utils/useDebouncedValue'
 
 const EMPTY_STEP = {
   titre: '',
@@ -105,77 +106,102 @@ export function useCoachingLogic() {
   const [reviewNotes, setReviewNotes] = useState('')
   const [planForm, setPlanForm] = useState(createDefaultPlanForm)
 
-  const loadAll = useCallback(async () => {
-    const alreadyLoaded = hasLoadedRef.current
-    setLoading(!alreadyLoaded)
-    setRecordingsRefreshing(alreadyLoaded)
+  const debouncedRecordingsSearch = useDebouncedValue(recordingsSearch, 300)
+  const recordingsRequestRef = useRef(0)
+  const coreRequestRef = useRef(0)
+
+  const loadCore = useCallback(async () => {
+    const requestId = ++coreRequestRef.current
+    if (!hasLoadedRef.current) {
+      setLoading(true)
+    }
     setError(null)
+    try {
+      const [nextPlans, nextDashboardSessions] = await Promise.all([
+        coachingApi.getSalesPlans(),
+        coachingApi.getSessions({ limit: 20, offset: 0 }),
+      ])
+      if (requestId !== coreRequestRef.current) return
+      setPlans(nextPlans)
+      setDashboardSessions(nextDashboardSessions.items)
+      setDashboardSessionsTotal(nextDashboardSessions.total)
+    } catch (err) {
+      if (requestId !== coreRequestRef.current) return
+      setError(err)
+    } finally {
+      if (requestId === coreRequestRef.current) {
+        hasLoadedRef.current = true
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  const loadRecordingsBlock = useCallback(async () => {
+    const requestId = ++recordingsRequestRef.current
+    if (hasLoadedRef.current) {
+      setRecordingsRefreshing(true)
+    }
     try {
       const offset = (recordingsPage - 1) * RECORDINGS_PAGE_SIZE
       const queueOffset = (queuePage - 1) * QUEUE_PAGE_SIZE
-      const [
-        nextPlans,
-        nextPrioritizedRecordings,
-        nextRecordings,
-        nextDashboardSessions,
-        nextQueueState,
-      ] = await Promise.all([
-        coachingApi.getSalesPlans(),
-        coachingApi.getRecordingCandidates({
-          limit: 10,
-          offset: 0,
-          period: dashboardPeriod,
-          includeLowValue: false,
-        }),
-        coachingApi.getRecordingCandidates({
-          limit: RECORDINGS_PAGE_SIZE,
-          offset,
-          search: recordingsSearch || null,
-          commercialId:
-            recordingsCommercialId && recordingsCommercialId !== 'ALL'
-              ? Number(recordingsCommercialId)
-              : null,
-          analysisStatus:
-            recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
-              ? recordingsAnalysisStatus
-              : null,
-          speechLevel:
-            recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL' ? recordingsSpeechLevel : null,
-          period: 'ALL',
-          includeLowValue: true,
-        }),
-        coachingApi.getSessions({
-          limit: 20,
-          offset: 0,
-        }),
-        coachingApi.getAnalysisQueue({
-          limit: QUEUE_PAGE_SIZE,
-          offset: queueOffset,
-        }),
-      ])
-      setPlans(nextPlans)
+      const [nextPrioritizedRecordings, nextRecordings, nextQueueState] =
+        await Promise.all([
+          coachingApi.getRecordingCandidates({
+            limit: 10,
+            offset: 0,
+            period: dashboardPeriod,
+            includeLowValue: false,
+          }),
+          coachingApi.getRecordingCandidates({
+            limit: RECORDINGS_PAGE_SIZE,
+            offset,
+            search: debouncedRecordingsSearch || null,
+            commercialId:
+              recordingsCommercialId && recordingsCommercialId !== 'ALL'
+                ? Number(recordingsCommercialId)
+                : null,
+            analysisStatus:
+              recordingsAnalysisStatus && recordingsAnalysisStatus !== 'ALL'
+                ? recordingsAnalysisStatus
+                : null,
+            speechLevel:
+              recordingsSpeechLevel && recordingsSpeechLevel !== 'ALL'
+                ? recordingsSpeechLevel
+                : null,
+            period: 'ALL',
+            includeLowValue: true,
+          }),
+          coachingApi.getAnalysisQueue({
+            limit: QUEUE_PAGE_SIZE,
+            offset: queueOffset,
+          }),
+        ])
+      if (requestId !== recordingsRequestRef.current) return
       setPrioritizedRecordings(nextPrioritizedRecordings.items)
       setRecordings(nextRecordings.items)
       setRecordingsTotal(nextRecordings.total)
-      setDashboardSessions(nextDashboardSessions.items)
-      setDashboardSessionsTotal(nextDashboardSessions.total)
       setQueueState(nextQueueState)
     } catch (err) {
+      if (requestId !== recordingsRequestRef.current) return
       setError(err)
     } finally {
-      hasLoadedRef.current = true
-      setLoading(false)
-      setRecordingsRefreshing(false)
+      if (requestId === recordingsRequestRef.current) {
+        setRecordingsRefreshing(false)
+      }
     }
   }, [
     dashboardPeriod,
+    debouncedRecordingsSearch,
+    queuePage,
     recordingsAnalysisStatus,
     recordingsCommercialId,
     recordingsPage,
-    recordingsSearch,
     recordingsSpeechLevel,
-    queuePage,
   ])
+
+  const loadAll = useCallback(async () => {
+    await Promise.all([loadCore(), loadRecordingsBlock()])
+  }, [loadCore, loadRecordingsBlock])
 
   const loadSessions = useCallback(async () => {
     setSessionsRefreshing(true)
@@ -219,8 +245,12 @@ export function useCoachingLogic() {
   }, [])
 
   useEffect(() => {
-    void loadAll()
-  }, [loadAll])
+    void loadCore()
+  }, [loadCore])
+
+  useEffect(() => {
+    void loadRecordingsBlock()
+  }, [loadRecordingsBlock])
 
   useEffect(() => {
     void loadSessions()

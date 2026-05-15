@@ -30,18 +30,14 @@ import {
   PlayCircle,
   ShieldCheck,
 } from 'lucide-react'
-import {
-  EXPLOITABILITY_LABELS,
-  PERIOD_OPTIONS,
-  QUEUE_LABELS,
-  STATUS_LABELS,
-} from '../coaching.constants'
+import { EXPLOITABILITY_LABELS, PERIOD_OPTIONS, QUEUE_LABELS } from '../coaching.constants'
 import { Pagination } from '@/components/Pagination'
 import {
   badgeToneClass,
   formatDate,
   formatDuration,
   formatWait,
+  getRecordingAnalysisStatus,
   numberOrZero,
 } from '../coaching.utils'
 import {
@@ -302,7 +298,7 @@ function formatDashboardSpeechState(recording) {
 }
 
 function DashboardRecordingState({ recording, logic }) {
-  const status = getDashboardRecordingStatus(recording, logic)
+  const status = getRecordingAnalysisStatus(recording, logic)
 
   if (status.kind === 'launching' || status.kind === 'queued' || status.kind === 'processing') {
     return (
@@ -334,7 +330,7 @@ function DashboardRecordingState({ recording, logic }) {
 }
 
 function DashboardRecordingActions({ recording, logic }) {
-  const status = getDashboardRecordingStatus(recording, logic)
+  const status = getRecordingAnalysisStatus(recording, logic)
   const canLaunch = status.canLaunch && logic.selectedPlanVersionId
 
   if (recording.latestSessionId && !canLaunch) {
@@ -377,28 +373,3 @@ function DashboardRecordingActions({ recording, logic }) {
   )
 }
 
-function getDashboardRecordingStatus(recording, logic) {
-  if (logic.launchingRecordingKeys?.has(recording.key)) {
-    return { kind: 'launching', label: 'Lancement...', canLaunch: false }
-  }
-  if (recording.analysisJobStatus === 'QUEUED' || recording.latestSessionStatus === 'PENDING') {
-    return { kind: 'queued', label: 'En attente', canLaunch: false }
-  }
-  if (
-    recording.analysisJobStatus === 'PROCESSING' ||
-    recording.latestSessionStatus === 'PROCESSING'
-  ) {
-    return { kind: 'processing', label: 'Analyse en cours', canLaunch: false }
-  }
-  if (recording.latestSessionStatus === 'COMPLETED') {
-    return { kind: 'done', label: 'Déjà analysé', canLaunch: false }
-  }
-  if (recording.analysisJobStatus && recording.analysisJobStatus !== 'FAILED') {
-    return {
-      kind: 'locked',
-      label: QUEUE_LABELS[recording.analysisJobStatus] || recording.analysisJobStatus,
-      canLaunch: false,
-    }
-  }
-  return { kind: 'ready', label: 'Prêt', canLaunch: true }
-}

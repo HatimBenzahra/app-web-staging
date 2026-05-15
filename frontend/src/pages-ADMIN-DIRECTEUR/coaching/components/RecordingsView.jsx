@@ -22,8 +22,14 @@ import {
 } from '@/components/ui/table'
 import { Check, CheckCircle2, Clock3, Eye, Loader2, Minus, PlayCircle } from 'lucide-react'
 import { Pagination } from '@/components/Pagination'
-import { EXPLOITABILITY_LABELS, QUEUE_LABELS, STATUS_LABELS } from '../coaching.constants'
-import { formatDate, formatDuration, formatSize, numberOrZero } from '../coaching.utils'
+import { EXPLOITABILITY_LABELS, STATUS_LABELS } from '../coaching.constants'
+import {
+  formatDate,
+  formatDuration,
+  formatSize,
+  getRecordingAnalysisStatus,
+  numberOrZero,
+} from '../coaching.utils'
 import { TableFrame, ToneBadge } from './CoachingShared'
 
 export default function RecordingsView({ logic }) {
@@ -508,59 +514,3 @@ function RecordingActions({ recording, logic }) {
   )
 }
 
-function getRecordingAnalysisStatus(recording, logic) {
-  if (logic.launchingRecordingKeys?.has(recording.key)) {
-    return {
-      kind: 'launching',
-      label: 'Lancement...',
-      hint: 'La demande est envoyée',
-      canLaunch: false,
-    }
-  }
-
-  if (recording.analysisJobStatus === 'QUEUED' || recording.latestSessionStatus === 'PENDING') {
-    return {
-      kind: 'queued',
-      label: 'En attente',
-      hint: 'Analyse programmée',
-      canLaunch: false,
-    }
-  }
-
-  if (
-    recording.analysisJobStatus === 'PROCESSING' ||
-    recording.latestSessionStatus === 'PROCESSING'
-  ) {
-    return {
-      kind: 'processing',
-      label: 'Analyse en cours',
-      hint: 'Le rapport se prépare',
-      canLaunch: false,
-    }
-  }
-
-  if (recording.latestSessionStatus === 'COMPLETED') {
-    return {
-      kind: 'done',
-      label: 'Déjà analysé',
-      hint: 'Fiche disponible',
-      canLaunch: false,
-    }
-  }
-
-  if (recording.analysisJobStatus && recording.analysisJobStatus !== 'FAILED') {
-    return {
-      kind: 'locked',
-      label: QUEUE_LABELS[recording.analysisJobStatus] || recording.analysisJobStatus,
-      hint: 'Analyse déjà lancée',
-      canLaunch: false,
-    }
-  }
-
-  return {
-    kind: 'ready',
-    label: 'Prêt',
-    hint: '',
-    canLaunch: true,
-  }
-}

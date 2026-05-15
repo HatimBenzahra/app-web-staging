@@ -62,19 +62,32 @@ import {
   ToneBadge,
 } from './CoachingShared'
 
+const AUDIO_TIME_THROTTLE_MS = 200
+
 export default function SessionReviewView({ logic }) {
   const session = logic.selectedSession
   const waveSurferRef = React.useRef(null)
   const waveSurferCleanupRef = React.useRef([])
+  const audioCurrentTimeRef = React.useRef(0)
+  const lastAudioSyncRef = React.useRef(0)
   const [activeExcerptId, setActiveExcerptId] = React.useState(null)
   const [playingExcerptId, setPlayingExcerptId] = React.useState(null)
   const [isAudioPlaying, setIsAudioPlaying] = React.useState(false)
-  const [audioCurrentTime, setAudioCurrentTime] = React.useState(0)
+  const [audioCurrentTime, setAudioCurrentTimeState] = React.useState(0)
   const [detailTab, setDetailTab] = React.useState('moments')
   const [transcriptMode, setTranscriptMode] = React.useState('readable')
   const [transcriptSearch, setTranscriptSearch] = React.useState('')
   const [technicalOpen, setTechnicalOpen] = React.useState(false)
   const [stepsDialogOpen, setStepsDialogOpen] = React.useState(false)
+
+  const setAudioCurrentTime = React.useCallback((time, { force = false } = {}) => {
+    audioCurrentTimeRef.current = time
+    const now = performance.now()
+    if (force || now - lastAudioSyncRef.current >= AUDIO_TIME_THROTTLE_MS) {
+      lastAudioSyncRef.current = now
+      setAudioCurrentTimeState(time)
+    }
+  }, [])
 
   const excerpts = React.useMemo(() => buildSessionExcerpts(session), [session])
   const activeExcerpt = excerpts.find(excerpt => excerpt.id === activeExcerptId) || excerpts[0]
@@ -98,7 +111,7 @@ export default function SessionReviewView({ logic }) {
       waveSurferRef.current = ws
       waveSurferCleanupRef.current = [
         ws.on('timeupdate', time => setAudioCurrentTime(time)),
-        ws.on('interaction', time => setAudioCurrentTime(time)),
+        ws.on('interaction', time => setAudioCurrentTime(time, { force: true })),
         ws.on('play', () => setIsAudioPlaying(true)),
         ws.on('pause', () => setIsAudioPlaying(false)),
         ws.on('finish', () => {
@@ -107,7 +120,7 @@ export default function SessionReviewView({ logic }) {
         }),
       ]
     },
-    [cleanupWaveSurferEvents]
+    [cleanupWaveSurferEvents, setAudioCurrentTime]
   )
 
   React.useEffect(() => cleanupWaveSurferEvents, [cleanupWaveSurferEvents])
@@ -117,24 +130,27 @@ export default function SessionReviewView({ logic }) {
     setIsAudioPlaying(false)
   }, [])
 
-  const playExcerpt = React.useCallback(excerpt => {
-    if (!excerpt || excerpt.startTime === null || excerpt.startTime === undefined) return
-    setActiveExcerptId(excerpt.id)
-    const startTime = Math.max(0, Number(excerpt.startTime) || 0)
-    setAudioCurrentTime(startTime)
-    if (!waveSurferRef.current) {
-      setPlayingExcerptId(null)
-      setIsAudioPlaying(false)
-      return
-    }
-    waveSurferRef.current.setTime(startTime)
-    setPlayingExcerptId(excerpt.id)
-    setIsAudioPlaying(true)
-    void Promise.resolve(waveSurferRef.current.play()).catch(() => {
-      setIsAudioPlaying(false)
-      setPlayingExcerptId(null)
-    })
-  }, [])
+  const playExcerpt = React.useCallback(
+    excerpt => {
+      if (!excerpt || excerpt.startTime === null || excerpt.startTime === undefined) return
+      setActiveExcerptId(excerpt.id)
+      const startTime = Math.max(0, Number(excerpt.startTime) || 0)
+      setAudioCurrentTime(startTime, { force: true })
+      if (!waveSurferRef.current) {
+        setPlayingExcerptId(null)
+        setIsAudioPlaying(false)
+        return
+      }
+      waveSurferRef.current.setTime(startTime)
+      setPlayingExcerptId(excerpt.id)
+      setIsAudioPlaying(true)
+      void Promise.resolve(waveSurferRef.current.play()).catch(() => {
+        setIsAudioPlaying(false)
+        setPlayingExcerptId(null)
+      })
+    },
+    [setAudioCurrentTime]
+  )
 
   const toggleExcerptPlayback = React.useCallback(
     excerpt => {
@@ -152,8 +168,8 @@ export default function SessionReviewView({ logic }) {
     setActiveExcerptId(null)
     setPlayingExcerptId(null)
     setIsAudioPlaying(false)
-    setAudioCurrentTime(0)
-  }, [session?.id])
+    setAudioCurrentTime(0, { force: true })
+  }, [session?.id, setAudioCurrentTime])
 
   React.useEffect(() => {
     if (!activeExcerptId && excerpts.length > 0) setActiveExcerptId(excerpts[0].id)
@@ -175,10 +191,10 @@ export default function SessionReviewView({ logic }) {
     if (audioCurrentTime <= (playingExcerpt.startTime || 0) + 0.15) return
     waveSurferRef.current?.pause()
     waveSurferRef.current?.setTime(playingExcerpt.endTime)
-    setAudioCurrentTime(playingExcerpt.endTime)
+    setAudioCurrentTime(playingExcerpt.endTime, { force: true })
     setIsAudioPlaying(false)
     setPlayingExcerptId(null)
-  }, [audioCurrentTime, excerpts, isAudioPlaying, playingExcerptId])
+  }, [audioCurrentTime, excerpts, isAudioPlaying, playingExcerptId, setAudioCurrentTime])
 
   const copyTranscript = React.useCallback(() => {
     if (transcriptValue) void navigator.clipboard?.writeText(transcriptValue)
@@ -773,7 +789,7 @@ function getExcerptProgress(excerpt, currentTime) {
   return Math.max(0, Math.min(100, ((currentTime - excerpt.startTime) / duration) * 100))
 }
 
-function EvidenceList({
+const EvidenceList = React.memo(function EvidenceList({
   excerpts,
   activeExcerptId,
   playingExcerptId,
@@ -859,7 +875,7 @@ function EvidenceList({
       })}
     </div>
   )
-}
+})
 
 function DetailMoments({
   moments,
@@ -1059,7 +1075,7 @@ function DetailConversations({
   )
 }
 
-function DetailRow({
+const DetailRow = React.memo(function DetailRow({
   icon: Icon,
   title,
   meta,
@@ -1126,9 +1142,9 @@ function DetailRow({
       {footer ? <p className="mt-3 text-sm font-medium">{footer}</p> : null}
     </div>
   )
-}
+})
 
-function TranscriptReader({
+const TranscriptReader = React.memo(function TranscriptReader({
   transcriptValue,
   transcriptMode,
   setTranscriptMode,
@@ -1217,4 +1233,4 @@ function TranscriptReader({
       </div>
     </div>
   )
-}
+})

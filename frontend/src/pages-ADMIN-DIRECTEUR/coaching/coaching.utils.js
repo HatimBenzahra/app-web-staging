@@ -1,3 +1,5 @@
+import { QUEUE_LABELS } from './coaching.constants'
+
 export {
   exploitabilityVariant,
   formatDate,
@@ -7,6 +9,63 @@ export {
   formatWait,
   statusVariant,
 } from '@/utils/recordings/recording-utils'
+
+export function getRecordingAnalysisStatus(recording, logic) {
+  if (logic?.launchingRecordingKeys?.has(recording.key)) {
+    return {
+      kind: 'launching',
+      label: 'Lancement...',
+      hint: 'La demande est envoyée',
+      canLaunch: false,
+    }
+  }
+
+  if (recording.analysisJobStatus === 'QUEUED' || recording.latestSessionStatus === 'PENDING') {
+    return {
+      kind: 'queued',
+      label: 'En attente',
+      hint: 'Analyse programmée',
+      canLaunch: false,
+    }
+  }
+
+  if (
+    recording.analysisJobStatus === 'PROCESSING' ||
+    recording.latestSessionStatus === 'PROCESSING'
+  ) {
+    return {
+      kind: 'processing',
+      label: 'Analyse en cours',
+      hint: 'Le rapport se prépare',
+      canLaunch: false,
+    }
+  }
+
+  if (recording.latestSessionStatus === 'COMPLETED') {
+    return {
+      kind: 'done',
+      label: 'Déjà analysé',
+      hint: 'Fiche disponible',
+      canLaunch: false,
+    }
+  }
+
+  if (recording.analysisJobStatus && recording.analysisJobStatus !== 'FAILED') {
+    return {
+      kind: 'locked',
+      label: QUEUE_LABELS[recording.analysisJobStatus] || recording.analysisJobStatus,
+      hint: 'Analyse déjà lancée',
+      canLaunch: false,
+    }
+  }
+
+  return {
+    kind: 'ready',
+    label: 'Prêt',
+    hint: '',
+    canLaunch: true,
+  }
+}
 
 export function normalizeTime(value) {
   const numeric = Number(value)
