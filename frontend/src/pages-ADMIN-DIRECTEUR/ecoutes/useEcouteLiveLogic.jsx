@@ -5,7 +5,7 @@ import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { useActiveRooms } from '@/hooks/audio/useActiveRooms'
 import { AudioMonitoringService, LiveKitUtils } from '@/services/audio'
 import { getStatusFilterOptions } from '@/constants/domain/user-status'
-import { filterEcouteUsers } from './ecoutes-utils'
+import { filterEcouteUsers } from '@/utils/recordings/recording-utils'
 
 export function useEcouteLiveLogic() {
   const { allUsers, loading, error, refetch } = useEcoutesUsers()

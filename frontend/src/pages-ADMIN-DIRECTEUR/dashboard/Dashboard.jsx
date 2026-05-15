@@ -30,7 +30,7 @@ import {
   MessageSquare,
   RotateCcw,
 } from 'lucide-react'
-import { formatDuration } from '../ecoutes/EnregistrementComponents'
+import { formatAudioDuration as formatDuration } from '@/utils/recordings/recording-utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardLogic } from './useDashboardLogic'
 import PorteDetailModal from './PorteDetailModal'

@@ -95,7 +95,7 @@ const toolsItems = [
     entity: 'ecoutes',
     subitems: [
       { title: 'Écoute Live', url: '/ecoutes/live' },
-      { title: 'Enregistrements', url: '/ecoutes/enregistrement' },
+      { title: 'Bibliothèque audio', url: '/ecoutes/enregistrement' },
     ],
   },
   {
@@ -105,7 +105,7 @@ const toolsItems = [
     entity: 'coaching',
     subitems: [
       { title: 'Dashboard', url: '/coaching/dashboard' },
-      { title: 'Enregistrements', url: '/coaching/recordings' },
+      { title: 'Candidats IA', url: '/coaching/recordings' },
       { title: 'Analyses', url: '/coaching/sessions' },
       { title: 'Plans', url: '/coaching/plans' },
     ],

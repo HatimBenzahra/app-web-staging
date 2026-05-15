@@ -43,7 +43,7 @@ import {
   DateRangeFilter,
   SmartSearchBar,
   SpeechScoreBar,
-} from './EnregistrementComponents'
+} from '@/components/recordings/RecordingComponents'
 
 const HEADER_SKELETON_KEYS = ['header-1', 'header-2', 'header-3', 'header-4', 'header-5', 'header-6']
 const LIST_SKELETON_KEYS = ['list-1', 'list-2', 'list-3', 'list-4']
@@ -224,7 +224,7 @@ export default function Enregistrement() {
             <Mic className="w-5 h-5 text-red-500" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Enregistrements</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Bibliothèque audio</h1>
             <p className="text-sm text-muted-foreground">Consultation des appels enregistrés</p>
           </div>
         </div>
@@ -250,7 +250,7 @@ export default function Enregistrement() {
             <Mic className="w-5 h-5 text-red-500" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Enregistrements</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Bibliothèque audio</h1>
             <p className="text-sm text-muted-foreground">Consultation des appels enregistrés</p>
           </div>
         </div>
@@ -273,8 +273,8 @@ export default function Enregistrement() {
           <Mic className="w-5 h-5 text-red-500" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Enregistrements</h1>
-          <p className="text-sm text-muted-foreground">Analyse et révision des appels commerciaux</p>
+          <h1 className="text-2xl font-bold tracking-tight">Bibliothèque audio</h1>
+          <p className="text-sm text-muted-foreground">Écoute, téléchargement et extraction des appels commerciaux</p>
         </div>
       </div>
 

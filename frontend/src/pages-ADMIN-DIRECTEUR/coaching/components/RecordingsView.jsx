@@ -29,9 +29,9 @@ export default function RecordingsView({ logic }) {
     <Card className="border-border/70">
       <CardHeader className="gap-4">
         <div className="space-y-1">
-          <CardTitle>Liste complète des enregistrements</CardTitle>
+          <CardTitle>Candidats IA à analyser</CardTitle>
           <CardDescription>
-            Stock accessible, recherche rapide, pagination et mise en file à la demande.
+            Liste priorisée pour choisir les appels exploitables et lancer une analyse coaching.
           </CardDescription>
         </div>
         <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr]">
@@ -103,7 +103,7 @@ export default function RecordingsView({ logic }) {
           </div>
         </div>
         <div className="text-sm text-muted-foreground">
-          {logic.recordingsTotal} enregistrements trouvés
+          {logic.recordingsTotal} candidat(s) trouvé(s)
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -183,7 +183,7 @@ export default function RecordingsView({ logic }) {
               {logic.recordings.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                    Aucun enregistrement commercial disponible pour cette recherche.
+                    Aucun candidat IA disponible pour cette recherche.
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -197,7 +197,7 @@ export default function RecordingsView({ logic }) {
           startIndex={logic.recordingsStartIndex}
           endIndex={logic.recordingsEndIndex}
           totalItems={logic.recordingsTotal}
-          itemLabel="enregistrements"
+          itemLabel="candidats"
           onPrevious={logic.goToPreviousRecordingsPage}
           onNext={logic.goToNextRecordingsPage}
           hasPreviousPage={logic.hasPreviousRecordingsPage}

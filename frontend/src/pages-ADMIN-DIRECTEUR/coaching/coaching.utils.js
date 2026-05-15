@@ -1,53 +1,12 @@
-export function formatDate(value) {
-  if (!value) return 'n/a'
-  return new Date(value).toLocaleString('fr-FR')
-}
-
-export function formatSeconds(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'n/a'
-  const totalSeconds = Math.max(0, Math.floor(Number(value)))
-  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0')
-  const seconds = String(totalSeconds % 60).padStart(2, '0')
-  return `${minutes}:${seconds}`
-}
-
-export function formatDuration(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'n/a'
-  const totalSeconds = Math.max(0, Math.floor(Number(value)))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`
-  return `${minutes}m ${String(totalSeconds % 60).padStart(2, '0')}s`
-}
-
-export function formatWait(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'n/a'
-  const seconds = Math.max(0, Math.floor(Number(value)))
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-}
-
-export function formatSize(value) {
-  if (!value || Number.isNaN(Number(value))) return 'n/a'
-  const bytes = Number(value)
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
-}
-
-export function statusVariant(status) {
-  if (status === 'FAILED') return 'destructive'
-  if (status === 'NEEDS_REVIEW') return 'secondary'
-  return 'outline'
-}
-
-export function exploitabilityVariant(status) {
-  if (status === 'PRIORITY') return 'default'
-  if (status === 'REVIEW') return 'secondary'
-  if (status === 'LOW_VALUE') return 'outline'
-  return 'outline'
-}
+export {
+  exploitabilityVariant,
+  formatDate,
+  formatDuration,
+  formatSeconds,
+  formatSize,
+  formatWait,
+  statusVariant,
+} from '@/utils/recordings/recording-utils'
 
 export function normalizeTime(value) {
   const numeric = Number(value)

@@ -18,10 +18,8 @@ import {
 } from 'lucide-react'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import PorteHistoriqueTimeline from './components/PorteHistoriqueTimeline'
-import {
-  SpeechScoreBar,
-  formatDuration,
-} from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
+import { SpeechScoreBar } from '@/components/recordings/RecordingComponents'
+import { formatAudioDuration as formatDuration } from '@/utils/recordings/recording-utils'
 import AudioPlayer from '@/components/AudioPlayer'
 
 function SegmentCard({ segment }) {

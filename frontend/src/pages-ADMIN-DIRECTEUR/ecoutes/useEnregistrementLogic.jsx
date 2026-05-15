@@ -9,7 +9,7 @@ import {
   enrichRecordingWithUser,
   filterRecordings,
   sortRecordings,
-} from './ecoutes-utils'
+} from '@/utils/recordings/recording-utils'
 
 export function useEnregistrementLogic() {
   const { allUsers, loading, error, refetch } = useEcoutesUsers()

@@ -5,7 +5,11 @@ import {
   filterRecordings,
   sortRecordings,
   filterEcouteUsers,
-} from './ecoutes-utils'
+  formatAudioDuration,
+  formatDate,
+  formatDuration,
+  formatSize,
+} from '@/utils/recordings/recording-utils'
 
 const makeUser = (id, prenom, nom, userType = 'commercial', status = 'ACTIF') => ({
   id,
@@ -291,5 +295,24 @@ describe('filterEcouteUsers', () => {
     const partial = [{ id: '5', status: 'ACTIF', userType: 'commercial' }]
     const result = filterEcouteUsers(partial, 'test', false, alwaysOnline, 'ALL')
     expect(result).toHaveLength(0)
+  })
+})
+
+describe('recording shared formatters', () => {
+  it('formate une durée audio courte en mm:ss', () => {
+    expect(formatAudioDuration(75)).toBe('1:15')
+    expect(formatAudioDuration(0)).toBeNull()
+  })
+
+  it('formate une durée coaching longue', () => {
+    expect(formatDuration(125)).toBe('2m 05s')
+    expect(formatDuration(3700)).toBe('1h 01m')
+    expect(formatDuration(null)).toBe('n/a')
+  })
+
+  it('formate une taille et une date avec les conventions partagées', () => {
+    expect(formatSize(2048)).toBe('2 Ko')
+    expect(formatSize(2.5 * 1024 * 1024)).toBe('2.5 Mo')
+    expect(formatDate(null)).toBe('n/a')
   })
 })

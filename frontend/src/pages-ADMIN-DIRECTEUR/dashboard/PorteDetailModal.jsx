@@ -16,10 +16,8 @@ import {
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import { usePorte, useRecordingSegmentsByPorte } from '@/hooks/metier/use-api'
 import PorteHistoriqueTimeline from '../immeubles/components/PorteHistoriqueTimeline'
-import {
-  SpeechScoreBar,
-  formatDuration,
-} from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
+import { SpeechScoreBar } from '@/components/recordings/RecordingComponents'
+import { formatAudioDuration as formatDuration } from '@/utils/recordings/recording-utils'
 import AudioPlayer from '@/components/AudioPlayer'
 
 function SegmentCard({ segment }) {

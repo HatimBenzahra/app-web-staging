@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import AudioPlayer from '@/components/AudioPlayer'
 import { RecordingService } from '@/services/audio'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
-import { SpeechScoreBar, formatDuration } from './EnregistrementComponents'
+import { SpeechScoreBar } from '@/components/recordings/RecordingComponents'
+import { formatAudioDuration as formatDuration } from '@/utils/recordings/recording-utils'
 import {
   ChevronLeft,
   ChevronRight,

@@ -54,8 +54,8 @@ export const COACHING_SECTIONS = [
   },
   {
     key: 'recordings',
-    label: 'Enregistrements',
-    description: 'Stock complet et lancement des analyses.',
+    label: 'Candidats IA',
+    description: 'Prioriser les appels à analyser.',
     href: '/coaching/recordings',
     icon: FileAudio,
   },
