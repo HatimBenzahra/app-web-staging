@@ -1,10 +1,10 @@
 import { ForbiddenException, forwardRef, Inject, Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { RecordingService } from '../recording/recording.service';
+import { PrismaService } from '../../prisma.service';
+import { RecordingService } from '../../recording/recording.service';
 import {
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
-} from './coaching.dto';
+} from '../coaching.dto';
 import { scoreRecordingExploitability } from './coaching-recording-catalog.utils';
 
 type CurrentUser = {

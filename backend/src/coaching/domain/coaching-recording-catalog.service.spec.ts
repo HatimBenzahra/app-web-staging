@@ -1,5 +1,5 @@
 import { CoachingRecordingCatalogService } from './coaching-recording-catalog.service';
-import { CoachingRecordingPeriodDto } from './coaching.dto';
+import { CoachingRecordingPeriodDto } from '../coaching.dto';
 
 const currentUser = { id: 10, role: 'admin' };
 
