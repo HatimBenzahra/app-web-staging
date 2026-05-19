@@ -7,6 +7,9 @@ import { CoachingVllmClient } from './infrastructure/coaching-vllm-client.servic
 import { CoachingEngineService } from './processing/coaching-engine.service';
 import { CoachingQueueService } from './processing/coaching-queue.service';
 import { CoachingSessionPersistenceService } from './processing/coaching-session-persistence.service';
+import { CoachingScoringEngineService } from './scoring/coaching-scoring-engine.service';
+import { ConversationQualityGateService } from './scoring/conversation-quality-gate.service';
+import { SalesPlanCriterionService } from './scoring/sales-plan-criterion.service';
 import { PrismaService } from '../prisma.service';
 import { RecordingModule } from '../recording/recording.module';
 import { TranscriptionModule } from '../transcription/transcription.module';
@@ -19,6 +22,9 @@ import { TranscriptionModule } from '../transcription/transcription.module';
     CoachingEngineService,
     CoachingQueueService,
     CoachingSessionPersistenceService,
+    CoachingScoringEngineService,
+    ConversationQualityGateService,
+    SalesPlanCriterionService,
     CoachingRecordingCatalogService,
     CoachingSalesPlanService,
     CoachingVllmClient,

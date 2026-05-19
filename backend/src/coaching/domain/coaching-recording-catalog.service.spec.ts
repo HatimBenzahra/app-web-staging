@@ -1,7 +1,43 @@
 import { CoachingRecordingCatalogService } from './coaching-recording-catalog.service';
 import { CoachingRecordingPeriodDto } from '../coaching.dto';
+import type { PrismaService } from '../../prisma.service';
+import type { RecordingService } from '../../recording/recording.service';
 
 const currentUser = { id: 10, role: 'admin' };
+
+type CommercialFixture = {
+  id: number;
+  prenom: string;
+  nom: string;
+  email: string;
+  directeurId: number;
+};
+
+type RecordingFixture = {
+  key: string;
+  size: number;
+  lastModified: Date;
+};
+
+type SpeechScoreFixture = {
+  key: string;
+  status: string;
+  score: number;
+  totalDurationSec: number;
+  speechDurationSec: number;
+};
+
+type LatestSessionFixture = {
+  id: number;
+  s3KeyOriginal: string;
+  status: string;
+  analysisJobs: Array<{
+    id: number;
+    status: string;
+    queuedAt: Date;
+    startedAt?: Date | null;
+  }>;
+};
 
 const makeService = ({
   commercials = [
@@ -24,10 +60,10 @@ const makeService = ({
   speechScores = [],
   latestSessions = [],
 }: {
-  commercials?: any[];
-  recordings?: any[];
-  speechScores?: any[];
-  latestSessions?: any[];
+  commercials?: CommercialFixture[];
+  recordings?: RecordingFixture[];
+  speechScores?: SpeechScoreFixture[];
+  latestSessions?: LatestSessionFixture[];
 }) => {
   const prisma = {
     commercial: {
@@ -48,8 +84,8 @@ const makeService = ({
 
   return {
     service: new CoachingRecordingCatalogService(
-      prisma as any,
-      recordingService as any,
+      prisma as unknown as PrismaService,
+      recordingService as unknown as RecordingService,
     ),
     prisma,
     recordingService,

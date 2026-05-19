@@ -113,6 +113,31 @@ export class RecordingSegmentDto {
 }
 
 @ObjectType()
+export class RecordingConversationSegmentDto {
+  @Field(() => Int) id: number;
+  @Field() s3KeyOriginal: string;
+  @Field(() => Int, { nullable: true }) recordingSegmentId?: number;
+  @Field(() => Int, { nullable: true }) coachingSessionId?: number;
+  @Field(() => Int, { nullable: true }) porteId?: number;
+  @Field(() => Int, { nullable: true }) commercialId?: number;
+  @Field(() => Int, { nullable: true }) managerId?: number;
+  @Field(() => Int, { nullable: true }) immeubleId?: number;
+  @Field() source: string;
+  @Field() type: string;
+  @Field() reviewStatus: string;
+  @Field(() => Float) confidence: number;
+  @Field(() => Float) startTime: number;
+  @Field(() => Float) endTime: number;
+  @Field(() => Float) durationSec: number;
+  @Field({ nullable: true }) text?: string;
+  @Field(() => Int, { nullable: true }) speechScore?: number;
+  @Field({ nullable: true }) s3KeySegment?: string;
+  @Field({ nullable: true }) classificationReason?: string;
+  @Field() createdAt: Date;
+  @Field() updatedAt: Date;
+}
+
+@ObjectType()
 export class ExtractionProgressDto {
   @Field() step: string;
   @Field(() => Int) current: number;

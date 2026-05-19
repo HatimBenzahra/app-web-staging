@@ -13,12 +13,15 @@ import {
   CreateSalesPlanVersionInput,
   LaunchCoachingAnalysisInput,
   ReviewCoachingSessionInput,
+  ReviewCoachingCriterionEvidenceInput,
+  CoachingCriterionEvidenceDto,
   SalesPlanDto,
 } from './coaching.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { CurrentUser as CoachingCurrentUser } from './types/coaching-pipeline.types';
 
 @Resolver()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -27,7 +30,7 @@ export class CoachingResolver {
 
   @Query(() => [SalesPlanDto])
   @Roles('admin', 'directeur')
-  coachingSalesPlans(@CurrentUser() currentUser: any): Promise<SalesPlanDto[]> {
+  coachingSalesPlans(@CurrentUser() currentUser: CoachingCurrentUser): Promise<SalesPlanDto[]> {
     return this.coachingService.getSalesPlans(currentUser);
   }
 
@@ -35,7 +38,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   createCoachingSalesPlan(
     @Args('input') input: CreateSalesPlanInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<SalesPlanDto> {
     return this.coachingService.createSalesPlan(input, currentUser);
   }
@@ -44,7 +47,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   createCoachingSalesPlanVersion(
     @Args('input') input: CreateSalesPlanVersionInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<SalesPlanDto> {
     return this.coachingService.createSalesPlanVersion(input, currentUser);
   }
@@ -53,7 +56,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   publishCoachingSalesPlanVersion(
     @Args('versionId', { type: () => Int }) versionId: number,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<SalesPlanDto> {
     return this.coachingService.publishSalesPlanVersion(versionId, currentUser);
   }
@@ -62,7 +65,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingRecordingCandidates(
     @Args('input', { nullable: true }) input: CoachingRecordingCandidatesInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingRecordingCandidatesPageDto> {
     return this.coachingService.getRecordingCandidates(input, currentUser);
   }
@@ -71,7 +74,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingSessions(
     @Args('input', { nullable: true }) input: CoachingSessionsInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingSessionsPageDto> {
     return this.coachingService.getCoachingSessions(input, currentUser);
   }
@@ -80,7 +83,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingAnalysisQueue(
     @Args('input', { nullable: true }) input: CoachingAnalysisQueueInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingQueueStateDto> {
     return this.coachingService.getAnalysisQueue(input, currentUser);
   }
@@ -89,7 +92,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingSession(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingSessionDto> {
     return this.coachingService.getCoachingSession(id, currentUser);
   }
@@ -98,7 +101,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   launchCoachingAnalysis(
     @Args('input') input: LaunchCoachingAnalysisInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingSessionDto> {
     return this.coachingService.launchCoachingAnalysis(input, currentUser);
   }
@@ -107,7 +110,7 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   relaunchCoachingAnalysis(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingSessionDto> {
     return this.coachingService.relaunchCoachingAnalysis(id, currentUser);
   }
@@ -116,8 +119,20 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   reviewCoachingSession(
     @Args('input') input: ReviewCoachingSessionInput,
-    @CurrentUser() currentUser: any,
+    @CurrentUser() currentUser: CoachingCurrentUser,
   ): Promise<CoachingSessionDto> {
     return this.coachingService.reviewCoachingSession(input, currentUser);
+  }
+
+  @Mutation(() => CoachingCriterionEvidenceDto)
+  @Roles('admin', 'directeur')
+  reviewCoachingCriterionEvidence(
+    @Args('input') input: ReviewCoachingCriterionEvidenceInput,
+    @CurrentUser() currentUser: CoachingCurrentUser,
+  ): Promise<CoachingCriterionEvidenceDto> {
+    return this.coachingService.reviewCoachingCriterionEvidence(
+      input,
+      currentUser,
+    );
   }
 }

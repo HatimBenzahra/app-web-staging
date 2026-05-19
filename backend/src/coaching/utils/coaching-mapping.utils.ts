@@ -4,9 +4,151 @@
  */
 
 import type {
+  CoachingAnalysisJobStatusDto,
+  CoachingConversationStatusDto,
   CoachingSessionDto,
   CoachingAnalysisJobDto,
+  CoachingReviewStatusDto,
+  CoachingSessionStatusDto,
+  CoachingStepCoverageStatusDto,
 } from '../coaching.dto';
+
+type AnalysisJobLike = {
+  id: number;
+  coachingSessionId: number;
+  status: string;
+  priority: number;
+  attempts: number;
+  maxAttempts: number;
+  currentStep?: string | null;
+  failureReason?: string | null;
+  queuedAt: Date;
+  startedAt?: Date | null;
+  completedAt?: Date | null;
+  failedAt?: Date | null;
+  nextRunAt?: Date | null;
+  lastHeartbeatAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type StepEvaluationLike = {
+  id: number;
+  ordre: number;
+  titre: string;
+  coverageStatus: string;
+  score?: number | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  verbatim?: string | null;
+  feedback?: string | null;
+  recommendation?: string | null;
+};
+
+type KeyMomentLike = {
+  id: number;
+  type: string;
+  title: string;
+  summary?: string | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  verbatim?: string | null;
+  importance?: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type CriterionEvidenceLike = {
+  id: number;
+  stepOrder: number;
+  criterionKey: string;
+  criterionLabel: string;
+  found: boolean;
+  quality: string;
+  confidence: number;
+  verbatim?: string | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  reason?: string | null;
+  reviewStatus: string;
+};
+
+type ConversationEvaluationLike = {
+  id: number;
+  ordre: number;
+  title?: string | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  transcriptText?: string | null;
+  readableTranscriptText?: string | null;
+  status: string;
+  reviewReason?: string | null;
+  overallScore?: number | null;
+  planCoverageScore?: number | null;
+  executionQualityScore?: number | null;
+  objectionHandlingScore?: number | null;
+  listeningRatioScore?: number | null;
+  closingScore?: number | null;
+  summary?: string | null;
+  strengths?: string[];
+  improvements?: string[];
+  recommendations?: string[];
+  scoringMode?: string | null;
+  scoringSchemaVersion?: string | null;
+  evidencePromptVersion?: string | null;
+  evaluationPromptVersion?: string | null;
+  criterionEvidences?: CriterionEvidenceLike[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SessionLike = {
+  id: number;
+  s3KeyOriginal: string;
+  roomName?: string | null;
+  commercialId?: number | null;
+  commercial?: { prenom: string; nom: string; directeurId?: number | null } | null;
+  directeurId?: number | null;
+  salesPlanVersionId: number;
+  salesPlanVersion?: {
+    label?: string | null;
+    salesPlan?: { nom?: string | null } | null;
+  } | null;
+  status: string;
+  reviewStatus: string;
+  confidenceScore?: number | null;
+  identificationSource?: string | null;
+  transcriptText?: string | null;
+  readableTranscriptText?: string | null;
+  transcriptDurationSec?: number | null;
+  whisperSegmentsCount?: number | null;
+  overallScore?: number | null;
+  planCoverageScore?: number | null;
+  executionQualityScore?: number | null;
+  objectionHandlingScore?: number | null;
+  listeningRatioScore?: number | null;
+  closingScore?: number | null;
+  summary?: string | null;
+  strengths?: string[];
+  improvements?: string[];
+  recommendations?: string[];
+  llmModel?: string | null;
+  scoringMode?: string | null;
+  scoringSchemaVersion?: string | null;
+  evidencePromptVersion?: string | null;
+  evaluationPromptVersion?: string | null;
+  failureReason?: string | null;
+  reviewReason?: string | null;
+  reviewNotes?: string | null;
+  launchedAt: Date;
+  processedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  analysisJobs?: AnalysisJobLike[];
+  stepEvaluations?: StepEvaluationLike[];
+  keyMoments?: KeyMomentLike[];
+  conversationEvaluations?: ConversationEvaluationLike[];
+};
 
 export function secondsSince(value: Date): number {
   return Math.max(0, Math.round((Date.now() - value.getTime()) / 1000));
@@ -29,11 +171,11 @@ export function pipelineStatus(
   return 'PENDING';
 }
 
-export function mapAnalysisJob(job: any): CoachingAnalysisJobDto {
+export function mapAnalysisJob(job: AnalysisJobLike): CoachingAnalysisJobDto {
   return {
     id: job.id,
     coachingSessionId: job.coachingSessionId,
-    status: job.status,
+    status: job.status as CoachingAnalysisJobStatusDto,
     priority: job.priority,
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
@@ -62,7 +204,7 @@ export function mapAnalysisJob(job: any): CoachingAnalysisJobDto {
 }
 
 export function buildPipelineSteps(
-  session: any,
+  session: SessionLike,
   job?: CoachingAnalysisJobDto,
 ): Array<{
   key: string;
@@ -129,7 +271,7 @@ export function buildPipelineSteps(
 }
 
 export function mapSession(
-  session: any,
+  session: SessionLike,
   audioUrl?: string,
 ): CoachingSessionDto {
   const analysisJob = session.analysisJobs?.[0]
@@ -148,8 +290,8 @@ export function mapSession(
     salesPlanVersionId: session.salesPlanVersionId,
     salesPlanNom: session.salesPlanVersion?.salesPlan?.nom ?? undefined,
     salesPlanVersionLabel: session.salesPlanVersion?.label ?? undefined,
-    status: session.status,
-    reviewStatus: session.reviewStatus,
+    status: session.status as CoachingSessionStatusDto,
+    reviewStatus: session.reviewStatus as CoachingReviewStatusDto,
     confidenceScore: session.confidenceScore ?? undefined,
     identificationSource: session.identificationSource ?? undefined,
     transcriptText: session.transcriptText ?? undefined,
@@ -167,6 +309,10 @@ export function mapSession(
     improvements: session.improvements ?? [],
     recommendations: session.recommendations ?? [],
     llmModel: session.llmModel ?? undefined,
+    scoringMode: session.scoringMode ?? undefined,
+    scoringSchemaVersion: session.scoringSchemaVersion ?? undefined,
+    evidencePromptVersion: session.evidencePromptVersion ?? undefined,
+    evaluationPromptVersion: session.evaluationPromptVersion ?? undefined,
     failureReason: session.failureReason ?? undefined,
     reviewReason: session.reviewReason ?? undefined,
     reviewNotes: session.reviewNotes ?? undefined,
@@ -178,11 +324,11 @@ export function mapSession(
     analysisJob,
     pipelineSteps: buildPipelineSteps(session, analysisJob),
     stepEvaluations:
-      session.stepEvaluations?.map((step: any) => ({
+      session.stepEvaluations?.map((step) => ({
         id: step.id,
         ordre: step.ordre,
         titre: step.titre,
-        coverageStatus: step.coverageStatus,
+        coverageStatus: step.coverageStatus as CoachingStepCoverageStatusDto,
         score: step.score ?? undefined,
         startTime: step.startTime ?? undefined,
         endTime: step.endTime ?? undefined,
@@ -191,7 +337,7 @@ export function mapSession(
         recommendation: step.recommendation ?? undefined,
       })) ?? [],
     keyMoments:
-      session.keyMoments?.map((moment: any) => ({
+      session.keyMoments?.map((moment) => ({
         id: moment.id,
         type: moment.type,
         title: moment.title,
@@ -204,7 +350,7 @@ export function mapSession(
         updatedAt: moment.updatedAt,
       })) ?? [],
     conversationEvaluations:
-      session.conversationEvaluations?.map((conversation: any) => ({
+      session.conversationEvaluations?.map((conversation) => ({
         id: conversation.id,
         ordre: conversation.ordre,
         title: conversation.title ?? undefined,
@@ -213,7 +359,7 @@ export function mapSession(
         transcriptText: conversation.transcriptText ?? undefined,
         readableTranscriptText:
           conversation.readableTranscriptText ?? undefined,
-        status: conversation.status,
+        status: conversation.status as CoachingConversationStatusDto,
         reviewReason: conversation.reviewReason ?? undefined,
         overallScore: conversation.overallScore ?? undefined,
         planCoverageScore: conversation.planCoverageScore ?? undefined,
@@ -226,6 +372,26 @@ export function mapSession(
         strengths: conversation.strengths ?? [],
         improvements: conversation.improvements ?? [],
         recommendations: conversation.recommendations ?? [],
+        scoringMode: conversation.scoringMode ?? undefined,
+        scoringSchemaVersion: conversation.scoringSchemaVersion ?? undefined,
+        evidencePromptVersion: conversation.evidencePromptVersion ?? undefined,
+        evaluationPromptVersion:
+          conversation.evaluationPromptVersion ?? undefined,
+        criterionEvidences:
+          conversation.criterionEvidences?.map((evidence) => ({
+            id: evidence.id,
+            stepOrder: evidence.stepOrder,
+            criterionKey: evidence.criterionKey,
+            criterionLabel: evidence.criterionLabel,
+            found: evidence.found,
+            quality: evidence.quality,
+            confidence: evidence.confidence,
+            verbatim: evidence.verbatim ?? undefined,
+            startTime: evidence.startTime ?? undefined,
+            endTime: evidence.endTime ?? undefined,
+            reason: evidence.reason ?? undefined,
+            reviewStatus: evidence.reviewStatus,
+          })) ?? [],
         createdAt: conversation.createdAt,
         updatedAt: conversation.updatedAt,
       })) ?? [],

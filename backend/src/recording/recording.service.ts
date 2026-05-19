@@ -36,11 +36,13 @@ import {
   RecordingUploadDetails,
   ConfirmRecordingUploadInput,
   RecordingSegmentDto,
+  RecordingConversationSegmentDto,
 } from './recording.dto';
 import { PrismaService } from '../prisma.service';
 import { TranscriptionService } from '../transcription/transcription.service';
 import { SpeechAnalysisService } from '../transcription/speech-analysis.service';
 import { CoachingService } from '../coaching/coaching.service';
+import { RecordingSegmentationService } from './recording-segmentation.service';
 
 type RoomTarget = {
   type: 'COMMERCIAL' | 'MANAGER';
@@ -91,6 +93,7 @@ export class RecordingService {
     private prisma: PrismaService,
     private transcription: TranscriptionService,
     private speechAnalysis: SpeechAnalysisService,
+    private segmentationService: RecordingSegmentationService,
     @Inject(forwardRef(() => CoachingService))
     private coachingService: CoachingService,
   ) {}
@@ -601,8 +604,23 @@ export class RecordingService {
       });
 
       if (createdSegments.length > 0) {
+        void this.segmentationService
+          .syncFromRecordingSegments(s3Key)
+          .catch((error) => {
+            this.logger.warn(
+              `Segmentation canonique ignorée pour ${s3Key}: ${error?.message || error}`,
+            );
+          });
         void this.processSegments(s3Key, createdSegments);
       }
+    } else {
+      void this.segmentationService
+        .ensureSegmentsForRecording(s3Key)
+        .catch((error) => {
+          this.logger.warn(
+            `Segmentation fallback ignorée pour ${s3Key}: ${error?.message || error}`,
+          );
+        });
     }
 
     const url = await this.signedUrlOrUndefined(s3Key);
@@ -741,6 +759,45 @@ export class RecordingService {
       status: segment.status,
       streamingUrl: segment.streamingUrl,
       createdAt: segment.createdAt,
+    }));
+  }
+
+  async getConversationSegmentsByRecording(
+    s3Key: string,
+    currentUser: { id: number; role: string },
+  ): Promise<RecordingConversationSegmentDto[]> {
+    if (currentUser.role !== 'admin' && currentUser.role !== 'directeur') {
+      throw new ForbiddenException('Access denied to conversation segments');
+    }
+
+    const roomName = this.extractRoomFromKey(s3Key);
+    if (roomName) {
+      await this.ensureRoomAccess(roomName, currentUser.id, currentUser.role);
+    }
+
+    const rows = await this.segmentationService.getSegmentsForRecording(s3Key);
+    return rows.map((row) => ({
+      id: row.id,
+      s3KeyOriginal: row.s3KeyOriginal,
+      recordingSegmentId: row.recordingSegmentId ?? undefined,
+      coachingSessionId: row.coachingSessionId ?? undefined,
+      porteId: row.porteId ?? undefined,
+      commercialId: (row as any).commercialId ?? undefined,
+      managerId: (row as any).managerId ?? undefined,
+      immeubleId: (row as any).immeubleId ?? undefined,
+      source: row.source,
+      type: row.type,
+      reviewStatus: row.reviewStatus,
+      confidence: row.confidence,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      durationSec: row.durationSec,
+      text: row.text ?? undefined,
+      speechScore: row.speechScore ?? undefined,
+      s3KeySegment: row.s3KeySegment ?? undefined,
+      classificationReason: (row as any).classificationReason ?? undefined,
+      createdAt: (row as any).createdAt,
+      updatedAt: (row as any).updatedAt,
     }));
   }
 
@@ -1134,6 +1191,8 @@ export class RecordingService {
           whisperDuration,
         );
       }
+
+      await this.segmentationService.syncFromRecordingSegments(originalS3Key);
 
     } catch (error) {
       this.logger.error(

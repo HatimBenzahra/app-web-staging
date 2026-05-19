@@ -265,3 +265,346 @@ export const SESSION_EVALUATION_JSON_SCHEMA = {
     },
   },
 };
+
+export const EVIDENCE_PROMPT_VERSION = 'evidence-v1';
+export const PLAN_APPLICATION_PROMPT_VERSION = 'plan-application-v1';
+export const REMARKS_PROMPT_VERSION = 'remarks-v1';
+export const SCORING_SCHEMA_VERSION = 'prowin-evidence-v1';
+
+export const APPLY_SALES_PLAN_SYSTEM_PROMPT = [
+  'Tu es un coach commercial Pro-Win.',
+  'Ton rôle est d’appliquer le plan de vente à une transcription de conversation terrain.',
+  'Tu ne donnes pas de score global libre: le backend calculera les notes.',
+  '',
+  'Méthode:',
+  '- Analyse chaque étape du plan de vente indépendamment.',
+  '- Pour chaque étape, indique si elle est observée dans le transcript.',
+  '- Cite des verbatims exacts ou quasi exacts pour justifier une étape observée.',
+  '- Donne une qualité: MISSING, WEAK, PARTIAL ou COMPLETE.',
+  '- Donne des remarques de coaching concrètes: points forts, manques, conseil actionnable.',
+  '- Si une étape n’est pas observable, n’invente pas: observed=false, quality=MISSING.',
+  '- Les timestamps sont optionnels; mets null si tu n’es pas sûr.',
+  '- Réponds uniquement en JSON valide sans markdown.',
+].join('\n');
+
+export const buildApplySalesPlanUserPrompt = (input: {
+  transcriptText: string;
+  status?: string | null;
+  segmentMetadata: Record<string, unknown>;
+  salesPlan: {
+    label?: string | null;
+    promptInstructions?: string | null;
+    steps: Array<{
+      ordre: number;
+      titre: string;
+      description?: string | null;
+      expectedSignals?: string | null;
+      poids: number;
+    }>;
+  };
+}): string =>
+  [
+    `Statut terrain: ${input.status || 'UNKNOWN'}`,
+    `Métadonnées segment: ${JSON.stringify(input.segmentMetadata)}`,
+    '',
+    `Plan de vente: ${input.salesPlan.label || 'Sans libellé'}`,
+    input.salesPlan.promptInstructions
+      ? `Instructions plan: ${input.salesPlan.promptInstructions}`
+      : '',
+    '',
+    'Étapes du plan à appliquer:',
+    JSON.stringify(
+      input.salesPlan.steps.map((step) => ({
+        ordre: step.ordre,
+        titre: step.titre,
+        description: step.description,
+        expectedSignals: step.expectedSignals,
+        poids: step.poids,
+      })),
+      null,
+      2,
+    ),
+    '',
+    'Transcript conversation:',
+    input.transcriptText,
+    '',
+    'Retourne une analyse par étape du plan. Le but est de produire des remarques utiles et des verbatims, pas un score libre.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+export const APPLY_SALES_PLAN_JSON_SCHEMA = {
+  name: 'coaching_sales_plan_application',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'conversationSummary',
+      'steps',
+      'keyMoments',
+      'strengths',
+      'improvements',
+      'recommendations',
+      'uncertainties',
+    ],
+    properties: {
+      conversationSummary: { type: ['string', 'null'] },
+      steps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'stepOrder',
+            'stepTitle',
+            'observed',
+            'quality',
+            'confidence',
+            'evidence',
+            'whatWentWell',
+            'whatIsMissing',
+            'coachingAdvice',
+            'reasoning',
+          ],
+          properties: {
+            stepOrder: { type: 'integer' },
+            stepTitle: { type: ['string', 'null'] },
+            observed: { type: 'boolean' },
+            quality: {
+              type: 'string',
+              enum: ['MISSING', 'WEAK', 'PARTIAL', 'COMPLETE'],
+            },
+            confidence: { type: 'number' },
+            evidence: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['verbatim', 'startTime', 'endTime', 'reason'],
+                properties: {
+                  verbatim: { type: 'string' },
+                  startTime: { type: ['number', 'null'] },
+                  endTime: { type: ['number', 'null'] },
+                  reason: { type: ['string', 'null'] },
+                },
+              },
+            },
+            whatWentWell: { type: 'array', items: { type: 'string' } },
+            whatIsMissing: { type: 'array', items: { type: 'string' } },
+            coachingAdvice: { type: 'array', items: { type: 'string' } },
+            reasoning: { type: ['string', 'null'] },
+          },
+        },
+      },
+      keyMoments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'type',
+            'title',
+            'summary',
+            'verbatim',
+            'startTime',
+            'endTime',
+            'importance',
+          ],
+          properties: {
+            type: { type: 'string' },
+            title: { type: ['string', 'null'] },
+            summary: { type: ['string', 'null'] },
+            verbatim: { type: ['string', 'null'] },
+            startTime: { type: ['number', 'null'] },
+            endTime: { type: ['number', 'null'] },
+            importance: { type: ['integer', 'null'] },
+          },
+        },
+      },
+      strengths: { type: 'array', items: { type: 'string' } },
+      improvements: { type: 'array', items: { type: 'string' } },
+      recommendations: { type: 'array', items: { type: 'string' } },
+      uncertainties: { type: 'array', items: { type: 'string' } },
+    },
+  },
+};
+
+export const EVIDENCE_EXTRACTION_SYSTEM_PROMPT = [
+  'Tu es un auditeur de preuves pour le coaching commercial Pro-Win.',
+  'Tu ne donnes JAMAIS de score libre.',
+  'Ton rôle est uniquement d’identifier des preuves observables dans le transcript.',
+  '',
+  'Règles strictes:',
+  '- Un critère trouvé doit avoir un verbatim exact ou quasi exact du transcript.',
+  '- Sans verbatim, found=false et quality=MISSING.',
+  '- Ne déduis pas une action si elle n’est pas observable.',
+  '- Les timestamps doivent correspondre au passage cité si disponibles.',
+  '- Si le transcript est incomplet, signale l’incertitude au lieu d’inventer.',
+  '- Réponds uniquement en JSON valide sans markdown.',
+].join('\n');
+
+export const buildEvidenceExtractionUserPrompt = (input: {
+  transcriptText: string;
+  status?: string | null;
+  segmentMetadata: Record<string, unknown>;
+  criteria: Array<{
+    stepOrder: number;
+    stepTitle: string;
+    key: string;
+    label: string;
+    description?: string | null;
+    weight: number;
+    required: boolean;
+    expectedEvidence?: string | null;
+    negativeSignals?: string | null;
+  }>;
+}): string =>
+  [
+    `Statut terrain: ${input.status || 'UNKNOWN'}`,
+    `Métadonnées segment: ${JSON.stringify(input.segmentMetadata)}`,
+    '',
+    'Scorecard applicable:',
+    JSON.stringify(
+      input.criteria.map((criterion) => ({
+        stepOrder: criterion.stepOrder,
+        stepTitle: criterion.stepTitle,
+        criterionKey: criterion.key,
+        label: criterion.label,
+        description: criterion.description,
+        required: criterion.required,
+        expectedEvidence: criterion.expectedEvidence,
+        negativeSignals: criterion.negativeSignals,
+      })),
+      null,
+      2,
+    ),
+    '',
+    'Transcript:',
+    input.transcriptText,
+    '',
+    'Retourne les preuves pour chaque critère applicable. Ne note pas la conversation.',
+  ].join('\n');
+
+export const EVIDENCE_EXTRACTION_JSON_SCHEMA = {
+  name: 'coaching_evidence_extraction',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['segmentQuality', 'criteriaEvidence', 'keyEvents', 'uncertainties'],
+    properties: {
+      segmentQuality: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['evaluable', 'reason', 'confidence'],
+        properties: {
+          evaluable: { type: 'boolean' },
+          reason: { type: ['string', 'null'] },
+          confidence: { type: ['number', 'null'] },
+        },
+      },
+      criteriaEvidence: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'stepOrder',
+            'criterionKey',
+            'found',
+            'quality',
+            'confidence',
+            'verbatim',
+            'startTime',
+            'endTime',
+            'reason',
+          ],
+          properties: {
+            stepOrder: { type: 'integer' },
+            criterionKey: { type: 'string' },
+            found: { type: 'boolean' },
+            quality: {
+              type: 'string',
+              enum: ['MISSING', 'WEAK', 'PARTIAL', 'COMPLETE'],
+            },
+            confidence: { type: 'number' },
+            verbatim: { type: ['string', 'null'] },
+            startTime: { type: ['number', 'null'] },
+            endTime: { type: ['number', 'null'] },
+            reason: { type: ['string', 'null'] },
+          },
+        },
+      },
+      keyEvents: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['type', 'title', 'summary', 'verbatim', 'startTime', 'endTime', 'importance'],
+          properties: {
+            type: { type: 'string' },
+            title: { type: ['string', 'null'] },
+            summary: { type: ['string', 'null'] },
+            verbatim: { type: ['string', 'null'] },
+            startTime: { type: ['number', 'null'] },
+            endTime: { type: ['number', 'null'] },
+            importance: { type: ['integer', 'null'] },
+          },
+        },
+      },
+      uncertainties: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+  },
+};
+
+export const COACHING_REMARKS_SYSTEM_PROMPT = [
+  'Tu es un coach commercial Pro-Win.',
+  'Tu rédiges des remarques pédagogiques uniquement à partir des scores calculés et des preuves validées.',
+  'Tu n’as pas le droit de modifier les scores.',
+  'Tu n’as pas le droit d’ajouter un fait sans preuve ou verbatim.',
+  'Chaque remarque importante doit citer un critère ou un événement fourni.',
+  'Réponds uniquement en JSON valide sans markdown.',
+].join('\n');
+
+export const buildCoachingRemarksUserPrompt = (input: {
+  status?: string | null;
+  scores: Record<string, unknown>;
+  evidence: unknown;
+}): string =>
+  [
+    `Statut terrain: ${input.status || 'UNKNOWN'}`,
+    '',
+    'Scores calculés par le backend:',
+    JSON.stringify(input.scores, null, 2),
+    '',
+    'Preuves validées:',
+    JSON.stringify(input.evidence, null, 2),
+    '',
+    'Rédige des remarques actionnables et défendables.',
+  ].join('\n');
+
+export const COACHING_REMARKS_JSON_SCHEMA = {
+  name: 'coaching_structured_remarks',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'summary',
+      'strengths',
+      'improvements',
+      'recommendations',
+      'managerAlerts',
+      'trainingActions',
+    ],
+    properties: {
+      summary: { type: ['string', 'null'] },
+      strengths: { type: 'array', items: { type: 'string' } },
+      improvements: { type: 'array', items: { type: 'string' } },
+      recommendations: { type: 'array', items: { type: 'string' } },
+      managerAlerts: { type: 'array', items: { type: 'string' } },
+      trainingActions: { type: 'array', items: { type: 'string' } },
+    },
+  },
+};

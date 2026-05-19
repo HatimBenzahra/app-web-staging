@@ -162,7 +162,7 @@ export function buildLlmUserPrompt(transcriptText: string): string {
  * Robust JSON parser for LLM outputs.
  * Handles markdown fences and extraction of {…} from chatter.
  */
-export function parseLlmJson(content: string): any | null {
+export function parseLlmJson(content: string): unknown | null {
   const trimmed = content.trim();
   try {
     return JSON.parse(trimmed);

@@ -11,6 +11,8 @@ import {
   CreateSalesPlanVersionInput,
   LaunchCoachingAnalysisInput,
   ReviewCoachingSessionInput,
+  ReviewCoachingCriterionEvidenceInput,
+  CoachingCriterionEvidenceDto,
   SalesPlanDto,
 } from './coaching.dto';
 import { CoachingEngineService } from './processing/coaching-engine.service';
@@ -96,6 +98,13 @@ export class CoachingService {
     currentUser: CurrentUser,
   ): Promise<CoachingSessionDto> {
     return this.engine.reviewCoachingSession(input, currentUser);
+  }
+
+  async reviewCoachingCriterionEvidence(
+    input: ReviewCoachingCriterionEvidenceInput,
+    currentUser: CurrentUser,
+  ): Promise<CoachingCriterionEvidenceDto> {
+    return this.engine.reviewCoachingCriterionEvidence(input, currentUser);
   }
 
   async autoQueueLatestPublishedAnalysisForRecording(

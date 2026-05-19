@@ -164,6 +164,7 @@ model Porte {
   immeuble          Immeuble           @relation(fields: [immeubleId], references: [id])
   statusHistorique  StatusHistorique[]
   recordingSegments RecordingSegment[]
+  recordingConversationSegments RecordingConversationSegment[]
 
   @@unique([immeubleId, numero])
 }
@@ -237,6 +238,43 @@ enum CoachingAnalysisJobStatus {
   CANCELLED
 }
 
+enum RecordingConversationSegmentType {
+  PROSPECT
+  INTERNAL
+  NOISE
+  UNKNOWN
+}
+
+enum RecordingConversationSegmentSource {
+  MOBILE_DOOR
+  AUDIO_TRANSCRIPT
+  LLM_VALIDATION
+  FALLBACK
+}
+
+enum RecordingConversationReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  VALIDATED
+  CORRECTED
+  REJECTED
+}
+
+enum CoachingCriterionQuality {
+  MISSING
+  WEAK
+  PARTIAL
+  COMPLETE
+}
+
+enum CoachingEvidenceReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  VALIDATED
+  CORRECTED
+  REJECTED
+}
+
 model SalesPlan {
   id              Int             @id @default(autoincrement())
   nom             String
@@ -287,9 +325,48 @@ model SalesPlanStep {
 
   salesPlanVersion SalesPlanVersion         @relation(fields: [salesPlanVersionId], references: [id], onDelete: Cascade)
   stepEvaluations  CoachingStepEvaluation[]
+  criteria         SalesPlanCriterion[]
+  criterionEvidences CoachingCriterionEvidence[]
 
   @@unique([salesPlanVersionId, ordre])
   @@index([salesPlanVersionId])
+}
+
+model SalesPlanCriterion {
+  id                 Int      @id @default(autoincrement())
+  salesPlanStepId    Int
+  key                String
+  label              String
+  description        String?
+  weight             Int      @default(10)
+  required           Boolean  @default(false)
+  applicableStatuses String[]
+  expectedEvidence   String?
+  negativeSignals    String?
+  order              Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  salesPlanStep SalesPlanStep @relation(fields: [salesPlanStepId], references: [id], onDelete: Cascade)
+  evidences     CoachingCriterionEvidence[]
+
+  @@unique([salesPlanStepId, key])
+  @@index([salesPlanStepId])
+  @@index([key])
+  @@index([order])
+}
+
+model ScoringSchemaVersion {
+  id          Int      @id @default(autoincrement())
+  name        String
+  version     String
+  rulesJson   Json
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, version])
+  @@index([isActive])
 }
 
 model CoachingSession {
@@ -319,6 +396,10 @@ model CoachingSession {
   recommendations        String[]
   llmModel               String?
   llmRawResponse         String?
+  scoringMode            String?
+  scoringSchemaVersion   String?
+  evidencePromptVersion  String?
+  evaluationPromptVersion String?
   failureReason          String?
   reviewReason           String?
   reviewNotes            String?
@@ -336,6 +417,7 @@ model CoachingSession {
   conversationEvaluations CoachingConversationEvaluation[]
   keyMoments       CoachingKeyMoment[]
   analysisJobs     CoachingAnalysisJob[]
+  recordingConversationSegments RecordingConversationSegment[]
 
   @@index([salesPlanVersionId])
   @@index([commercialId])
@@ -395,14 +477,51 @@ model CoachingConversationEvaluation {
   improvements           String[]
   recommendations        String[]
   llmRawResponse         String?
+  scoringMode            String?
+  scoringSchemaVersion   String?
+  evidencePromptVersion  String?
+  evaluationPromptVersion String?
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
 
   coachingSession CoachingSession @relation(fields: [coachingSessionId], references: [id], onDelete: Cascade)
+  criterionEvidences CoachingCriterionEvidence[]
 
   @@unique([coachingSessionId, ordre])
   @@index([coachingSessionId])
   @@index([status])
+}
+
+model CoachingCriterionEvidence {
+  id                          Int                          @id @default(autoincrement())
+  coachingConversationEvaluationId Int
+  salesPlanStepId             Int?
+  salesPlanCriterionId        Int?
+  stepOrder                   Int
+  criterionKey                String
+  criterionLabel              String
+  found                       Boolean                      @default(false)
+  quality                     CoachingCriterionQuality     @default(MISSING)
+  confidence                  Float                        @default(0.5)
+  verbatim                    String?
+  startTime                   Float?
+  endTime                     Float?
+  reason                      String?
+  reviewStatus                CoachingEvidenceReviewStatus @default(NOT_REQUIRED)
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+
+  coachingConversationEvaluation CoachingConversationEvaluation @relation(fields: [coachingConversationEvaluationId], references: [id], onDelete: Cascade)
+  salesPlanStep                  SalesPlanStep?                 @relation(fields: [salesPlanStepId], references: [id], onDelete: SetNull)
+  salesPlanCriterion             SalesPlanCriterion?            @relation(fields: [salesPlanCriterionId], references: [id], onDelete: SetNull)
+
+  @@index([coachingConversationEvaluationId])
+  @@index([salesPlanStepId])
+  @@index([salesPlanCriterionId])
+  @@index([criterionKey])
+  @@index([quality])
+  @@index([found])
+  @@index([reviewStatus])
 }
 
 model CoachingStepEvaluation {
@@ -692,12 +811,51 @@ model RecordingSegment {
   updatedAt     DateTime      @updatedAt
 
   porte Porte @relation(fields: [porteId], references: [id], onDelete: Cascade)
+  conversationSegment RecordingConversationSegment?
 
   @@index([porteId])
   @@index([commercialId])
   @@index([immeubleId])
   @@index([s3KeyOriginal])
   @@index([status])
+}
+
+model RecordingConversationSegment {
+  id                 Int                                @id @default(autoincrement())
+  s3KeyOriginal      String
+  recordingSegmentId Int?                               @unique
+  coachingSessionId  Int?
+  porteId            Int?
+  commercialId       Int?
+  managerId          Int?
+  immeubleId         Int?
+  statut             StatutPorte?
+  source             RecordingConversationSegmentSource @default(FALLBACK)
+  type               RecordingConversationSegmentType   @default(UNKNOWN)
+  reviewStatus       RecordingConversationReviewStatus  @default(PENDING)
+  confidence         Float                              @default(0.5)
+  startTime          Float
+  endTime            Float
+  durationSec        Float
+  text               String?
+  speechScore        Int?
+  s3KeySegment       String?
+  classificationReason String?
+  createdAt          DateTime                           @default(now())
+  updatedAt          DateTime                           @updatedAt
+
+  recordingSegment RecordingSegment? @relation(fields: [recordingSegmentId], references: [id], onDelete: SetNull)
+  coachingSession  CoachingSession?  @relation(fields: [coachingSessionId], references: [id], onDelete: SetNull)
+  porte            Porte?            @relation(fields: [porteId], references: [id], onDelete: SetNull)
+
+  @@index([s3KeyOriginal])
+  @@index([recordingSegmentId])
+  @@index([coachingSessionId])
+  @@index([porteId])
+  @@index([type])
+  @@index([reviewStatus])
+  @@index([source])
+  @@index([startTime])
 }
 
 model GpsPosition {

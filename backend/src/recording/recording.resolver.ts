@@ -15,6 +15,7 @@ import {
   SpeechScoreDto,
   PaginatedRecordingsResult,
   RecordingSegmentDto,
+  RecordingConversationSegmentDto,
 } from './recording.dto';
 import { RecordingService } from './recording.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -172,6 +173,15 @@ export class RecordingResolver {
     @CurrentUser() user: any,
   ): Promise<RecordingSegmentDto[]> {
     return this.svc.getSegmentsByKey(s3Key, user);
+  }
+
+  @Query(() => [RecordingConversationSegmentDto])
+  @Roles('admin', 'directeur')
+  async recordingConversationSegmentsByKey(
+    @Args('s3Key') s3Key: string,
+    @CurrentUser() user: any,
+  ): Promise<RecordingConversationSegmentDto[]> {
+    return this.svc.getConversationSegmentsByRecording(s3Key, user);
   }
 
   @Query(() => [RecordingSegmentDto])

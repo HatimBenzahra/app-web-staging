@@ -62,23 +62,25 @@ export function normalizeCoverageStatus(
   return 'MISSING';
 }
 
-export function normalizeKeyMoment(value: any): KeyMomentPayload | null {
-  const title = normalizeText(value?.title);
+export function normalizeKeyMoment(value: unknown): KeyMomentPayload | null {
+  const record =
+    value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const title = normalizeText(record.title);
   if (!title) {
     return null;
   }
   return {
     type:
-      normalizeText(value?.type)
+      normalizeText(record.type)
         ?.toUpperCase()
         .replace(/[^A-Z0-9_]/g, '_')
         .slice(0, 40) || 'A_REVOIR',
     title,
-    summary: normalizeText(value?.summary),
-    startTime: normalizeNullableNumber(value?.startTime),
-    endTime: normalizeNullableNumber(value?.endTime),
-    verbatim: normalizeText(value?.verbatim),
-    importance: normalizeNullableScore(value?.importance),
+    summary: normalizeText(record.summary),
+    startTime: normalizeNullableNumber(record.startTime),
+    endTime: normalizeNullableNumber(record.endTime),
+    verbatim: normalizeText(record.verbatim),
+    importance: normalizeNullableScore(record.importance),
   };
 }
 

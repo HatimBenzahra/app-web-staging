@@ -8,9 +8,14 @@ import {
   OnModuleInit,
   forwardRef,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  CoachingEvidenceReviewStatus,
+  CoachingSessionStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { RecordingService } from '../../recording/recording.service';
+import { RecordingSegmentationService } from '../../recording/recording-segmentation.service';
 import { TranscriptionService } from '../../transcription/transcription.service';
 import {
   CoachingRecordingCandidatesInput,
@@ -25,6 +30,8 @@ import {
   CreateSalesPlanVersionInput,
   LaunchCoachingAnalysisInput,
   ReviewCoachingSessionInput,
+  ReviewCoachingCriterionEvidenceInput,
+  CoachingCriterionEvidenceDto,
   SalesPlanDto,
 } from '../coaching.dto';
 import { CoachingRecordingCatalogService } from '../domain/coaching-recording-catalog.service';
@@ -35,8 +42,6 @@ import {
   splitTranscriptIntoConversations,
   splitSegmentsIntoChunks,
   buildBlocksFromBoundaries,
-  hasConversationStartMarker,
-  hasConversationEndMarker,
 } from '../utils/conversation-blocks.utils';
 import {
   estimatePromptCharsApprox,
@@ -64,6 +69,19 @@ import {
   CLASSIFY_SYSTEM_PROMPT,
   CLASSIFY_JSON_SCHEMA,
   SESSION_EVALUATION_JSON_SCHEMA,
+  COACHING_REMARKS_JSON_SCHEMA,
+  COACHING_REMARKS_SYSTEM_PROMPT,
+  APPLY_SALES_PLAN_JSON_SCHEMA,
+  APPLY_SALES_PLAN_SYSTEM_PROMPT,
+  EVIDENCE_EXTRACTION_JSON_SCHEMA,
+  EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
+  EVIDENCE_PROMPT_VERSION,
+  PLAN_APPLICATION_PROMPT_VERSION,
+  REMARKS_PROMPT_VERSION,
+  SCORING_SCHEMA_VERSION,
+  buildApplySalesPlanUserPrompt,
+  buildCoachingRemarksUserPrompt,
+  buildEvidenceExtractionUserPrompt,
   buildClassifyUserPrompt,
   buildDetectChunkUserPrompt,
   buildRewriteUserPrompt,
@@ -76,6 +94,7 @@ import {
   cleanTranscriptNoiseForPrompt,
   prepareTranscriptForReadabilityPrompt,
 } from '../utils/coaching-transcript-readability.utils';
+import { cleanTranscriptForQuality } from '../utils/transcript-quality.utils';
 import {
   isAutoCoachingEnabled,
   resolveAutoQueueSpeechMaxAttempts,
@@ -89,6 +108,18 @@ import {
 } from '../utils/coaching-env-resolvers.utils';
 import { CoachingQueueService } from './coaching-queue.service';
 import { CoachingSessionPersistenceService } from './coaching-session-persistence.service';
+import { CoachingScoringEngineService } from '../scoring/coaching-scoring-engine.service';
+import { ConversationQualityGateService } from '../scoring/conversation-quality-gate.service';
+import { SalesPlanCriterionService } from '../scoring/sales-plan-criterion.service';
+import {
+  CriterionEvidencePayload,
+  DeterministicScoringResult,
+  EvidenceExtractionPayload,
+  QualityGateResult,
+  SalesPlanApplicationPayload,
+  SalesPlanCriterionDefinition,
+  SalesPlanStepApplicationPayload,
+} from '../scoring/coaching-scoring.types';
 import {
   normalizeText,
   normalizeTextArray,
@@ -120,7 +151,10 @@ export const SESSION_FULL_INCLUDE =
     analysisJobs: { orderBy: { createdAt: 'desc' } },
     stepEvaluations: { orderBy: { ordre: 'asc' } },
     keyMoments: { orderBy: { startTime: 'asc' } },
-    conversationEvaluations: { orderBy: { ordre: 'asc' } },
+    conversationEvaluations: {
+      orderBy: { ordre: 'asc' },
+      include: { criterionEvidences: { orderBy: { id: 'asc' } } },
+    },
   });
 
 export const SESSION_LIST_INCLUDE =
@@ -184,12 +218,29 @@ type SessionEvaluationPayload = {
   stepEvaluations: StepEvaluationPayload[];
   rawResponse?: string | null;
   usedFallback?: boolean;
+  scoringMode?: string;
+  scoringSchemaVersion?: string;
+  evidencePromptVersion?: string;
+  evaluationPromptVersion?: string;
+  criterionEvidences?: CriterionEvidencePayload[];
 };
 
 type CoachingTranscriptPayload = {
-  segments: Array<{ start: number; end: number; text: string }>;
+  segments: Array<{
+    start: number;
+    end: number;
+    text: string;
+    type?: 'PROSPECT' | 'INTERNAL' | 'NOISE' | 'UNKNOWN';
+    source?: string;
+    confidence?: number;
+    statut?: string | null;
+    speechScore?: number | null;
+  }>;
   duration: number;
-  source: 'WHISPER_FULL_RECORDING' | 'RECORDING_SEGMENTS';
+  source:
+    | 'WHISPER_FULL_RECORDING'
+    | 'RECORDING_SEGMENTS'
+    | 'RECORDING_CONVERSATION_SEGMENTS';
 };
 
 type CoachingConversationBlock = {
@@ -202,6 +253,11 @@ type CoachingConversationBlock = {
   segmentsCount: number;
   status: 'COMPLETED' | 'NEEDS_REVIEW' | 'SKIPPED' | 'FAILED';
   reviewReason?: string | null;
+  segmentType?: 'PROSPECT' | 'INTERNAL' | 'NOISE' | 'UNKNOWN';
+  segmentSource?: string | null;
+  segmentConfidence?: number | null;
+  segmentStatut?: string | null;
+  speechScore?: number | null;
 };
 
 type ConversationDetectionSummary = {
@@ -221,6 +277,10 @@ type SessionStatusContext = {
   identificationSource: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
 @Injectable()
 export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CoachingEngineService.name);
@@ -238,12 +298,16 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => RecordingService))
     private readonly recordingService: RecordingService,
+    private readonly segmentationService: RecordingSegmentationService,
     private readonly recordingCatalogService: CoachingRecordingCatalogService,
     private readonly transcriptionService: TranscriptionService,
     private readonly salesPlanService: CoachingSalesPlanService,
     private readonly vllmClient: CoachingVllmClient,
     private readonly queueService: CoachingQueueService,
     private readonly persistenceService: CoachingSessionPersistenceService,
+    private readonly criterionService: SalesPlanCriterionService,
+    private readonly qualityGateService: ConversationQualityGateService,
+    private readonly scoringEngineService: CoachingScoringEngineService,
   ) {}
 
   onModuleInit(): void {
@@ -343,8 +407,8 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
   private buildCoachingSessionsWhere(
     input: CoachingSessionsInput | undefined,
     currentUser: CurrentUser,
-  ): Record<string, any> {
-    const andConditions: Record<string, any>[] = [];
+  ): Prisma.CoachingSessionWhereInput {
+    const andConditions: Prisma.CoachingSessionWhereInput[] = [];
 
     if (currentUser.role !== 'admin') {
       andConditions.push({
@@ -362,8 +426,16 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     const search = input?.search?.trim();
     if (search) {
       const numericSearch = Number(search.replace(/^#/, ''));
-      const searchConditions: Record<string, any>[] = [
-        { commercialNom: { contains: search, mode: 'insensitive' } },
+      const searchConditions: Prisma.CoachingSessionWhereInput[] = [
+        {
+          commercial: {
+            OR: [
+              { nom: { contains: search, mode: 'insensitive' } },
+              { prenom: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+        },
         { roomName: { contains: search, mode: 'insensitive' } },
         { s3KeyOriginal: { contains: search, mode: 'insensitive' } },
         {
@@ -388,7 +460,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
           status: { in: ['PENDING', 'PROCESSING'] },
         });
       } else {
-        andConditions.push({ status: input.status });
+        andConditions.push({ status: input.status as CoachingSessionStatus });
       }
     }
 
@@ -779,6 +851,10 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    if (!refreshed) {
+      throw new NotFoundException('Session coaching introuvable');
+    }
+
     return mapSession(refreshed);
   }
 
@@ -806,7 +882,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
 
     await this.assertSessionAccess(session, currentUser);
 
-    const updateData: Record<string, any> = {
+    const updateData: Prisma.CoachingSessionUncheckedUpdateInput = {
       reviewNotes: cleanOptionalText(input.reviewNotes) ?? null,
     };
 
@@ -877,6 +953,61 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     });
 
     return mapSession(updated);
+  }
+
+  async reviewCoachingCriterionEvidence(
+    input: ReviewCoachingCriterionEvidenceInput,
+    currentUser: CurrentUser,
+  ): Promise<CoachingCriterionEvidenceDto> {
+    assertAdminOrDirecteur(currentUser);
+
+    const evidence =
+      await this.prisma.coachingCriterionEvidence.findUnique({
+        where: { id: input.evidenceId },
+        include: {
+          coachingConversationEvaluation: {
+            include: { coachingSession: { include: { commercial: true } } },
+          },
+        },
+      });
+
+    if (!evidence) {
+      throw new NotFoundException('Preuve coaching introuvable');
+    }
+
+    await this.assertSessionAccess(
+      evidence.coachingConversationEvaluation.coachingSession,
+      currentUser,
+    );
+
+    const allowed = Object.values(CoachingEvidenceReviewStatus);
+    const reviewStatus = String(input.reviewStatus || '').toUpperCase();
+    if (!allowed.includes(reviewStatus as CoachingEvidenceReviewStatus)) {
+      throw new ForbiddenException('Statut de revue invalide');
+    }
+
+    const updated = await this.prisma.coachingCriterionEvidence.update({
+      where: { id: input.evidenceId },
+      data: {
+        reviewStatus: reviewStatus as CoachingEvidenceReviewStatus,
+        reason: cleanOptionalText(input.reason) ?? evidence.reason,
+      },
+    });
+
+    return {
+      id: updated.id,
+      stepOrder: updated.stepOrder,
+      criterionKey: updated.criterionKey,
+      criterionLabel: updated.criterionLabel,
+      found: updated.found,
+      quality: updated.quality,
+      confidence: updated.confidence,
+      verbatim: updated.verbatim ?? undefined,
+      startTime: updated.startTime ?? undefined,
+      endTime: updated.endTime ?? undefined,
+      reason: updated.reason ?? undefined,
+      reviewStatus: updated.reviewStatus,
+    };
   }
 
   async autoQueueLatestPublishedAnalysisForRecording(
@@ -1232,6 +1363,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
         inferredCommercialId,
         transcript.source,
       );
+      this.applySegmentationSourceToStatusContext(transcript, statusContext);
       const transcriptText = buildTranscriptText(transcript.segments);
 
       const detection = await this.ensureConversations(
@@ -1346,11 +1478,14 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       identificationSource: inferredCommercialId ? 'ROOM_NAME' : 'UNKNOWN',
     };
 
-    if (transcriptSource === 'RECORDING_SEGMENTS') {
+    if (
+      transcriptSource === 'RECORDING_SEGMENTS' ||
+      transcriptSource === 'RECORDING_CONVERSATION_SEGMENTS'
+    ) {
       context.identificationSource =
         context.identificationSource === 'UNKNOWN'
-          ? 'RECORDING_SEGMENTS'
-          : `${context.identificationSource}+RECORDING_SEGMENTS`;
+          ? transcriptSource
+          : `${context.identificationSource}+${transcriptSource}`;
     }
 
     if (!inferredCommercialId) {
@@ -1361,6 +1496,40 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     }
 
     return context;
+  }
+
+  private applySegmentationSourceToStatusContext(
+    transcript: CoachingTranscriptPayload,
+    context: SessionStatusContext,
+  ): void {
+    if (transcript.source !== 'RECORDING_CONVERSATION_SEGMENTS') {
+      return;
+    }
+
+    const sources = Array.from(
+      new Set(
+        transcript.segments
+          .map((segment) => segment.source)
+          .filter((source): source is string => Boolean(source)),
+      ),
+    );
+    if (sources.length === 0) {
+      return;
+    }
+
+    const suffix = `SEGMENTATION_${sources.join('+')}`;
+    context.identificationSource =
+      context.identificationSource === 'UNKNOWN'
+        ? suffix
+        : `${context.identificationSource}+${suffix}`;
+    if (sources.some((source) => source === 'AUDIO_TRANSCRIPT')) {
+      context.status = 'NEEDS_REVIEW';
+      context.reviewStatus = 'PENDING';
+      context.reviewReason =
+        context.reviewReason ??
+        'Segmentation audio fallback sans événement porte, revue recommandée.';
+      context.confidenceScore = Math.min(context.confidenceScore, 0.55);
+    }
   }
 
   private async applyConversationDetectionOutcome(
@@ -1424,11 +1593,77 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       return evaluation;
     }
 
+    if (conversationEvaluations.length > 0) {
+      const reviewReasons = conversationEvaluations
+        .map((entry) => entry.block.reviewReason?.trim())
+        .filter((reason): reason is string => Boolean(reason));
+      const reason =
+        reviewReasons[0] ??
+        'Aucune conversation n’a une transcription assez fiable pour calculer un score.';
+      return this.buildNonEvaluableEvaluation(session.salesPlanVersion, reason);
+    }
+
     await this.updateAnalysisJobStep(
       jobId,
       'Évaluation globale IA (fallback — aucune conversation exploitable)',
     );
-    return this.evaluateTranscript(session.salesPlanVersion, transcriptText);
+    const fallbackEvaluation = await this.evaluateTranscript(session.salesPlanVersion, {
+      ordre: 1,
+      title: 'Session complète',
+      startTime: 0,
+      endTime: 0,
+      transcriptText,
+      segmentsCount: 1,
+      status: 'NEEDS_REVIEW',
+      reviewReason:
+        'Évaluation globale fallback, aucune conversation exploitable isolée.',
+    });
+    return (
+      fallbackEvaluation ??
+      this.buildNonEvaluableEvaluation(
+        session.salesPlanVersion,
+        'Le plan de vente n’a pas pu être appliqué automatiquement au transcript.',
+      )
+    );
+  }
+
+  private buildNonEvaluableEvaluation(
+    salesPlanVersion: {
+      steps: Array<{
+        ordre: number;
+        titre: string;
+      }>;
+    },
+    reason: string,
+  ): SessionEvaluationPayload {
+    return {
+      overallScore: null,
+      planCoverageScore: null,
+      executionQualityScore: null,
+      objectionHandlingScore: null,
+      listeningRatioScore: null,
+      closingScore: null,
+      summary: `Score non calculé: ${reason}`,
+      strengths: [],
+      improvements: ['Transcription insuffisante pour un coaching fiable.'],
+      recommendations: [
+        'Revoir l’audio ou relancer la transcription avant d’utiliser ce rapport pour évaluer le commercial.',
+      ],
+      keyMoments: [],
+      stepEvaluations: salesPlanVersion.steps.map((step) => ({
+        ordre: step.ordre,
+        titre: step.titre,
+        coverageStatus: 'MISSING',
+        score: null,
+        startTime: null,
+        endTime: null,
+        verbatim: null,
+        feedback: 'Non évalué: transcription inexploitable.',
+        recommendation: 'Valider la qualité audio/transcription avant scoring.',
+      })),
+      rawResponse: 'NON_EVALUABLE_TRANSCRIPT',
+      usedFallback: true,
+    };
   }
 
   private applyFallbackReviewStatus(
@@ -1442,7 +1677,10 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     context.status = 'NEEDS_REVIEW';
     context.reviewStatus = 'PENDING';
     context.reviewReason =
-      'Le rapport a été calculé sans le LLM principal et nécessite une validation humaine.';
+      evaluation.rawResponse === 'NON_EVALUABLE_TRANSCRIPT'
+        ? (evaluation.summary ??
+          'Transcription inexploitable, score non calculé.')
+        : 'Le rapport a été calculé sans le LLM principal et nécessite une validation humaine.';
     context.confidenceScore = Math.min(context.confidenceScore, 0.7);
     context.identificationSource =
       context.identificationSource === 'UNKNOWN'
@@ -1527,6 +1765,35 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       'Stage 2 — Découpage en conversations',
     );
 
+    if (transcript.source === 'RECORDING_CONVERSATION_SEGMENTS') {
+      const canonicalBlocks =
+        this.buildBlocksFromCanonicalConversationSegments(transcript);
+      if (canonicalBlocks.length > 0) {
+        const detectedInternal = transcript.segments.filter(
+          (segment) => segment.type === 'INTERNAL',
+        ).length;
+        const detectedNoise = transcript.segments.filter(
+          (segment) => segment.type === 'NOISE',
+        ).length;
+        const detectedProspect = transcript.segments.filter(
+          (segment) =>
+            segment.type === 'PROSPECT' || segment.type === 'UNKNOWN',
+        ).length;
+
+        this.logger.log(
+          `Session ${session.id} — Stage 2: ${canonicalBlocks.length} conversation(s) depuis segmentation canonique (${detectedProspect} prospect/unknown, ${detectedInternal} internal, ${detectedNoise} noise)`,
+        );
+        return {
+          blocks: canonicalBlocks,
+          semanticDetectionUsed: false,
+          detectedTotal: transcript.segments.length,
+          detectedProspect,
+          detectedInternal,
+          detectedNoise,
+        };
+      }
+    }
+
     const detectedBoundaries = await this.detectConversationsWithLlm(
       transcript,
       jobId,
@@ -1577,14 +1844,83 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private buildBlocksFromCanonicalConversationSegments(
+    transcript: CoachingTranscriptPayload,
+  ): CoachingConversationBlock[] {
+    const maxConversations = resolveMaxConversations();
+    return transcript.segments
+      .filter((segment) => {
+        const text = segment.text.trim();
+        if (text.length === 0) {
+          return false;
+        }
+        return segment.type !== 'INTERNAL' && segment.type !== 'NOISE';
+      })
+      .slice(0, maxConversations)
+      .map((segment, index) => ({
+        ordre: index + 1,
+        title: `Conversation ${index + 1}`,
+        startTime: segment.start,
+        endTime: segment.end,
+        transcriptText: segment.text.trim(),
+        segmentsCount: 1,
+        status:
+          segment.type === 'UNKNOWN' || (segment.confidence ?? 1) < 0.7
+            ? 'NEEDS_REVIEW'
+            : 'COMPLETED',
+        reviewReason:
+          segment.type === 'UNKNOWN'
+            ? 'Segment canonique non classifié, revue recommandée.'
+            : (segment.confidence ?? 1) < 0.7
+              ? 'Segment canonique à faible confiance.'
+            : null,
+        segmentType: segment.type,
+        segmentSource: segment.source ?? null,
+        segmentConfidence: segment.confidence ?? null,
+        segmentStatut: segment.statut ?? null,
+        speechScore: segment.speechScore ?? null,
+      }));
+  }
+
   private async ensureTranscription(
     session: { id: number; s3KeyOriginal: string },
     jobId?: number,
   ): Promise<CoachingTranscriptPayload> {
     const s3Key = session.s3KeyOriginal;
 
-    let transcript = await this.loadTranscriptFromSegments(s3Key);
+    let transcript = await this.loadTranscriptFromConversationSegments(s3Key);
     if (transcript) {
+      await this.segmentationService.attachSegmentsToSession(
+        s3Key,
+        session.id,
+      );
+      const totalChars = transcript.segments.reduce(
+        (sum, s) => sum + s.text.length,
+        0,
+      );
+      this.logger.log(
+        `Session ${session.id} — Stage 1: transcript depuis segmentation canonique (${transcript.segments.length} segments, ${totalChars} chars)`,
+      );
+      await this.updateAnalysisJobStep(
+        jobId,
+        `Segmentation canonique en cache (${transcript.segments.length} segments)`,
+      );
+      return transcript;
+    }
+
+    transcript = await this.loadTranscriptFromSegments(s3Key);
+    if (transcript) {
+      await this.segmentationService.syncFromRecordingSegments(s3Key);
+      const canonicalTranscript =
+        await this.loadTranscriptFromConversationSegments(s3Key);
+      if (canonicalTranscript) {
+        await this.segmentationService.attachSegmentsToSession(
+          s3Key,
+          session.id,
+        );
+        return canonicalTranscript;
+      }
+
       const totalChars = transcript.segments.reduce(
         (sum, s) => sum + s.text.length,
         0,
@@ -1606,7 +1942,27 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       jobId,
       'Analyse IA en cours (transcription Whisper + segmentation)',
     );
-    await this.transcriptionService.processRecording(s3Key);
+    const whisperResult = await this.transcriptionService.processRecording(s3Key);
+    await this.segmentationService.ensureSegmentsForRecording(
+      s3Key,
+      whisperResult,
+    );
+
+    transcript = await this.loadTranscriptFromConversationSegments(s3Key);
+    if (transcript) {
+      await this.segmentationService.attachSegmentsToSession(
+        s3Key,
+        session.id,
+      );
+      const totalChars = transcript.segments.reduce(
+        (sum, s) => sum + s.text.length,
+        0,
+      );
+      this.logger.log(
+        `Session ${session.id} — Stage 1: transcript généré depuis segmentation canonique (${transcript.segments.length} segments, ${totalChars} chars)`,
+      );
+      return transcript;
+    }
 
     transcript = await this.loadTranscriptFromSegments(s3Key);
     if (!transcript) {
@@ -1622,6 +1978,42 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       `Session ${session.id} — Stage 1: transcript généré (${transcript.segments.length} segments, ${totalChars} chars)`,
     );
     return transcript;
+  }
+
+  private async loadTranscriptFromConversationSegments(
+    s3KeyOriginal: string,
+  ): Promise<CoachingTranscriptPayload | null> {
+    const segments =
+      await this.segmentationService.getUsableSegmentsForCoaching(
+        s3KeyOriginal,
+      );
+
+    const transcriptSegments = segments
+      .map((segment) => ({
+        start: segment.startTime,
+        end: segment.endTime,
+        text: segment.text?.trim() ?? '',
+        type: segment.type as
+          | 'PROSPECT'
+          | 'INTERNAL'
+          | 'NOISE'
+          | 'UNKNOWN',
+        source: segment.source,
+        confidence: segment.confidence,
+        statut: segment.statut ?? null,
+        speechScore: segment.speechScore ?? null,
+      }))
+      .filter((segment) => segment.text.length > 0);
+
+    if (transcriptSegments.length === 0) {
+      return null;
+    }
+
+    return {
+      segments: transcriptSegments,
+      duration: Math.max(...transcriptSegments.map((segment) => segment.end)),
+      source: 'RECORDING_CONVERSATION_SEGMENTS',
+    };
   }
 
   private async loadTranscriptFromSegments(
@@ -1853,18 +2245,20 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    const rawClosed = Array.isArray((parsed as any).closed_conversations)
-      ? (parsed as any).closed_conversations
+    const parsedRecord = isRecord(parsed) ? parsed : {};
+    const rawClosed = Array.isArray(parsedRecord.closed_conversations)
+      ? parsedRecord.closed_conversations
       : [];
 
     const closed_conversations = rawClosed
-      .map((c: any) => {
-        const start = Number(c?.startTime);
-        const end = Number(c?.endTime);
+      .map((candidate: unknown) => {
+        const c = isRecord(candidate) ? candidate : {};
+        const start = Number(c.startTime);
+        const end = Number(c.endTime);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
           return null;
         }
-        const typeRaw = String(c?.type ?? '').toLowerCase();
+        const typeRaw = String(c.type ?? '').toLowerCase();
         const type: 'prospect' | 'internal' | 'noise' =
           typeRaw === 'prospect'
             ? 'prospect'
@@ -1872,12 +2266,12 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
               ? 'internal'
               : 'noise';
         const reason =
-          typeof c?.reason === 'string' ? c.reason.slice(0, 300) : '';
+          typeof c.reason === 'string' ? c.reason.slice(0, 300) : '';
         return { startTime: start, endTime: end, type, reason };
       })
       .filter(
         (
-          c: any,
+          c: unknown,
         ): c is {
           startTime: number;
           endTime: number;
@@ -1886,7 +2280,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
         } => Boolean(c),
       );
 
-    const rawState = (parsed as any).state ?? {};
+    const rawState = isRecord(parsedRecord.state) ? parsedRecord.state : {};
     const newState = {
       conversation_open: Boolean(rawState.conversation_open),
       current_start_time: Number.isFinite(Number(rawState.current_start_time))
@@ -1972,6 +2366,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
         description: string | null;
         expectedSignals: string | null;
         poids: number;
+        id?: number;
       }>;
     },
     blocks: CoachingConversationBlock[],
@@ -1999,11 +2394,45 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       if (block.status === 'SKIPPED') {
         return { block, evaluation: null };
       }
+      const cleanedTranscript = cleanTranscriptForQuality(block.transcriptText);
+      const evaluationBlock: CoachingConversationBlock = {
+        ...block,
+        transcriptText: cleanedTranscript.cleanedText || block.transcriptText,
+        readableTranscriptText:
+          cleanedTranscript.cleanedText || block.readableTranscriptText,
+      };
+      const qualityGate = this.qualityGateService.evaluate({
+        status: evaluationBlock.segmentStatut,
+        type: evaluationBlock.segmentType,
+        source: evaluationBlock.segmentSource,
+        confidence: evaluationBlock.segmentConfidence,
+        speechScore: evaluationBlock.speechScore,
+        durationSec: Math.max(0, evaluationBlock.endTime - evaluationBlock.startTime),
+        transcriptText: evaluationBlock.transcriptText,
+      });
+      const qualityReason = qualityGate.reasons.join(' ');
+      if (
+        qualityGate.decision === 'SKIP' ||
+        qualityGate.decision === 'REVIEW_ONLY'
+      ) {
+        return {
+          block: {
+            ...evaluationBlock,
+            status:
+              qualityGate.decision === 'SKIP' ? 'SKIPPED' : 'NEEDS_REVIEW',
+            reviewReason:
+              qualityReason ||
+              'Transcription insuffisante pour une évaluation fiable.',
+          },
+          evaluation: null,
+        };
+      }
+
       try {
         const classifyResult = resolveConvClassifyEnabled()
           ? await this.classifyConversation(
               salesPlanVersion,
-              block.transcriptText,
+              evaluationBlock.transcriptText,
             )
           : null;
         const effectivePlan = classifyResult
@@ -2014,17 +2443,28 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
           : salesPlanVersion;
         const evaluation = await this.evaluateTranscript(
           effectivePlan,
-          block.transcriptText,
+          evaluationBlock,
         );
-        return { block, evaluation };
+        if (!evaluation) {
+          return {
+            block: {
+              ...evaluationBlock,
+              status: 'NEEDS_REVIEW',
+              reviewReason:
+                'Le plan de vente n’a pas pu être appliqué automatiquement à cette conversation.',
+            },
+            evaluation: null,
+          };
+        }
+        return { block: evaluationBlock, evaluation };
       } catch (error: unknown) {
         const msg = (error as { message?: string })?.message ?? String(error);
         this.logger.warn(
-          `Stage 4: évaluation conv ${block.ordre} impossible: ${msg}`,
+          `Stage 4: évaluation conv ${evaluationBlock.ordre} impossible: ${msg}`,
         );
         return {
           block: {
-            ...block,
+            ...evaluationBlock,
             status: 'FAILED',
             reviewReason:
               'Cette conversation n’a pas pu être évaluée, mais la session globale continue.',
@@ -2086,6 +2526,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       label: string | null;
       promptInstructions: string | null;
       steps: Array<{
+        id?: number;
         ordre: number;
         titre: string;
         description: string | null;
@@ -2093,8 +2534,16 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
         poids: number;
       }>;
     },
-    transcriptText: string,
-  ): Promise<SessionEvaluationPayload> {
+    block: CoachingConversationBlock,
+  ): Promise<SessionEvaluationPayload | null> {
+    if (this.resolveScoringMode() === 'evidence') {
+      return this.evaluateTranscriptWithEvidence(
+        salesPlanVersion,
+        block,
+      );
+    }
+
+    const transcriptText = block.transcriptText;
     const llmEvaluation = await this.evaluateWithLlm(
       salesPlanVersion,
       transcriptText,
@@ -2113,6 +2562,569 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
       evaluateWithFallback(salesPlanVersion, transcriptText),
       transcriptText,
     );
+  }
+
+  private async evaluateTranscriptWithEvidence(
+    salesPlanVersion: {
+      id: number;
+      label: string | null;
+      promptInstructions: string | null;
+      steps: Array<{
+        id?: number;
+        ordre: number;
+        titre: string;
+        description: string | null;
+        expectedSignals: string | null;
+        poids: number;
+      }>;
+    },
+    block: CoachingConversationBlock,
+  ): Promise<SessionEvaluationPayload | null> {
+    const qualityGate = this.qualityGateService.evaluate({
+      status: block.segmentStatut,
+      type: block.segmentType,
+      source: block.segmentSource,
+      confidence: block.segmentConfidence,
+      speechScore: block.speechScore,
+      durationSec: Math.max(0, block.endTime - block.startTime),
+      transcriptText: block.transcriptText,
+    });
+
+    if (qualityGate.decision === 'SKIP') {
+      return null;
+    }
+
+    const application = await this.applySalesPlanWithLlm({
+      block,
+      salesPlanVersion,
+      status: block.segmentStatut,
+      qualityGate,
+    });
+
+    if (!application || application.steps.length === 0) {
+      return null;
+    }
+
+    const observedSteps = application.steps.filter((step) => step.observed);
+    if (observedSteps.length === 0) {
+      this.logger.warn(
+        `apply_sales_plan: aucune étape observée pour conversation ${block.ordre}`,
+      );
+      return null;
+    }
+
+    const scoring = this.scoringEngineService.calculateFromStepApplication({
+      salesPlanSteps: salesPlanVersion.steps,
+      application,
+      qualityGateReviewReasons:
+        qualityGate.decision === 'EVALUATE_WITH_REVIEW' ||
+        qualityGate.decision === 'REVIEW_ONLY'
+          ? qualityGate.reasons
+          : [],
+    });
+
+    const criterionEvidences = this.buildCriterionEvidencesFromStepApplication(
+      application,
+      salesPlanVersion.steps,
+      block.startTime,
+    );
+
+    const evidenceEvaluation: SessionEvaluationPayload = {
+      overallScore: scoring.overallScore,
+      planCoverageScore: scoring.planCoverageScore,
+      executionQualityScore: scoring.executionQualityScore,
+      objectionHandlingScore: scoring.objectionHandlingScore,
+      listeningRatioScore: scoring.listeningRatioScore,
+      closingScore: scoring.closingScore,
+      summary:
+        application.conversationSummary ??
+        this.buildStepApplicationSummary(scoring, application),
+      strengths: scoring.strengths,
+      improvements: scoring.improvements,
+      recommendations: scoring.recommendations,
+      keyMoments: application.keyMoments.map((event) => ({
+        type: event.type,
+        title: event.title ?? event.type,
+        summary: event.summary,
+        startTime: this.normalizeApplicationTime(event.startTime, block.startTime),
+        endTime: this.normalizeApplicationTime(event.endTime, block.startTime),
+        verbatim: event.verbatim,
+        importance: event.importance,
+      })),
+      stepEvaluations: scoring.stepEvaluations,
+      rawResponse: application.rawResponse,
+      usedFallback: false,
+      scoringMode: 'step_application',
+      scoringSchemaVersion: SCORING_SCHEMA_VERSION,
+      evidencePromptVersion: PLAN_APPLICATION_PROMPT_VERSION,
+      evaluationPromptVersion: REMARKS_PROMPT_VERSION,
+      criterionEvidences,
+    };
+
+    return {
+      ...completeEvaluationPayload(
+        salesPlanVersion,
+        evidenceEvaluation,
+        block.transcriptText,
+      ),
+      scoringMode: evidenceEvaluation.scoringMode,
+      scoringSchemaVersion: evidenceEvaluation.scoringSchemaVersion,
+      evidencePromptVersion: evidenceEvaluation.evidencePromptVersion,
+      evaluationPromptVersion: evidenceEvaluation.evaluationPromptVersion,
+      criterionEvidences: evidenceEvaluation.criterionEvidences,
+    };
+  }
+
+  private async applySalesPlanWithLlm(input: {
+    block: CoachingConversationBlock;
+    salesPlanVersion: {
+      label: string | null;
+      promptInstructions: string | null;
+      steps: Array<{
+        ordre: number;
+        titre: string;
+        description: string | null;
+        expectedSignals: string | null;
+        poids: number;
+      }>;
+    };
+    status?: string | null;
+    qualityGate: QualityGateResult;
+  }): Promise<SalesPlanApplicationPayload | null> {
+    if (!this.vllmClient.isConfigured()) {
+      return null;
+    }
+
+    const result = await this.vllmClient.chat(
+      {
+        model: this.vllmClient.model,
+        temperature: 0.2,
+        max_tokens: 2400,
+        messages: [
+          { role: 'system', content: APPLY_SALES_PLAN_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: buildApplySalesPlanUserPrompt({
+              transcriptText: truncateTranscriptForPrompt(
+                input.block.transcriptText,
+                this.maxTranscriptPromptChars,
+              ),
+              status: input.status,
+              segmentMetadata: {
+                startTime: input.block.startTime,
+                endTime: input.block.endTime,
+                durationSec: input.block.endTime - input.block.startTime,
+                source: input.block.segmentSource,
+                type: input.block.segmentType,
+                confidence: input.block.segmentConfidence,
+                speechScore: input.block.speechScore,
+                qualityGate: input.qualityGate,
+              },
+              salesPlan: {
+                label: input.salesPlanVersion.label,
+                promptInstructions: input.salesPlanVersion.promptInstructions,
+                steps: input.salesPlanVersion.steps,
+              },
+            }),
+          },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: APPLY_SALES_PLAN_JSON_SCHEMA,
+        },
+      },
+      { step: 'apply_sales_plan' },
+    );
+    if (!result) return null;
+
+    const parsed = parseLlmJson(result.content);
+    if (!isRecord(parsed)) {
+      this.logger.warn(
+        `apply_sales_plan: JSON invalide ou non objet. raw="${result.content.slice(0, 1200)}"`,
+      );
+      return null;
+    }
+
+    const normalized = this.normalizeSalesPlanApplication(
+      parsed,
+      input.salesPlanVersion.steps,
+      result.content,
+    );
+    if (normalized.steps.length === 0) {
+      this.logger.warn('apply_sales_plan: aucune étape exploitable retournée');
+      return null;
+    }
+
+    this.logger.log(
+      `apply_sales_plan: ${normalized.steps.filter((step) => step.observed).length}/${input.salesPlanVersion.steps.length} étape(s) observée(s), uncertainties=${normalized.uncertainties.length}`,
+    );
+    return normalized;
+  }
+
+  private normalizeSalesPlanApplication(
+    raw: Record<string, unknown>,
+    salesPlanSteps: Array<{
+      ordre: number;
+      titre: string;
+    }>,
+    rawResponse: string,
+  ): SalesPlanApplicationPayload {
+    const stepOrders = new Set(salesPlanSteps.map((step) => step.ordre));
+    const rawSteps = Array.isArray(raw.steps) ? raw.steps : [];
+    const steps = rawSteps
+      .map((item): SalesPlanStepApplicationPayload | null => {
+        if (!isRecord(item)) return null;
+        const stepOrder = Number(item.stepOrder);
+        if (!Number.isFinite(stepOrder) || !stepOrders.has(stepOrder)) {
+          return null;
+        }
+        const observed = Boolean(item.observed);
+        const evidence = Array.isArray(item.evidence)
+          ? item.evidence
+              .map((evidenceItem) => {
+                if (!isRecord(evidenceItem)) return null;
+                const verbatim = normalizeText(evidenceItem.verbatim);
+                if (!verbatim) return null;
+                return {
+                  verbatim,
+                  startTime: normalizeNullableNumber(evidenceItem.startTime),
+                  endTime: normalizeNullableNumber(evidenceItem.endTime),
+                  reason: normalizeText(evidenceItem.reason),
+                };
+              })
+              .filter(
+                (
+                  evidenceItem,
+                ): evidenceItem is {
+                  verbatim: string;
+                  startTime: number | null;
+                  endTime: number | null;
+                  reason: string | null;
+                } => Boolean(evidenceItem),
+              )
+          : [];
+        return {
+          stepOrder,
+          stepTitle: normalizeText(item.stepTitle),
+          observed,
+          quality: this.normalizeApplicationQuality(item.quality, observed),
+          confidence: this.normalizeConfidence(item.confidence),
+          evidence,
+          whatWentWell: normalizeTextArray(item.whatWentWell),
+          whatIsMissing: normalizeTextArray(item.whatIsMissing),
+          coachingAdvice: normalizeTextArray(item.coachingAdvice),
+          reasoning: normalizeText(item.reasoning),
+        };
+      })
+      .filter(
+        (step): step is SalesPlanStepApplicationPayload => Boolean(step),
+      );
+
+    return {
+      conversationSummary: normalizeText(raw.conversationSummary),
+      steps,
+      keyMoments: Array.isArray(raw.keyMoments)
+        ? raw.keyMoments
+            .map((item) => {
+              if (!isRecord(item)) return null;
+              const type = normalizeText(item.type) ?? 'A_REVOIR';
+              return {
+                type,
+                title: normalizeText(item.title),
+                summary: normalizeText(item.summary),
+                verbatim: normalizeText(item.verbatim),
+                startTime: normalizeNullableNumber(item.startTime),
+                endTime: normalizeNullableNumber(item.endTime),
+                importance: normalizeNullableNumber(item.importance),
+              };
+            })
+            .filter(
+              (
+                item,
+              ): item is {
+                type: string;
+                title: string | null;
+                summary: string | null;
+                verbatim: string | null;
+                startTime: number | null;
+                endTime: number | null;
+                importance: number | null;
+              } => Boolean(item),
+            )
+        : [],
+      strengths: normalizeTextArray(raw.strengths),
+      improvements: normalizeTextArray(raw.improvements),
+      recommendations: normalizeTextArray(raw.recommendations),
+      uncertainties: normalizeTextArray(raw.uncertainties),
+      rawResponse,
+    };
+  }
+
+  private buildCriterionEvidencesFromStepApplication(
+    application: SalesPlanApplicationPayload,
+    salesPlanSteps: Array<{
+      ordre: number;
+      titre: string;
+    }>,
+    blockStartTime: number,
+  ): CriterionEvidencePayload[] {
+    const titleByOrder = new Map(
+      salesPlanSteps.map((step) => [step.ordre, step.titre]),
+    );
+    return application.steps.map((step) => {
+      const evidence = step.evidence[0];
+      const verbatim = normalizeText(evidence?.verbatim);
+      const found = step.observed && Boolean(verbatim);
+      return {
+        salesPlanStepId: null,
+        salesPlanCriterionId: null,
+        stepOrder: step.stepOrder,
+        criterionKey: `step_${step.stepOrder}`,
+        criterionLabel:
+          titleByOrder.get(step.stepOrder) ??
+          step.stepTitle ??
+          `Étape ${step.stepOrder}`,
+        found,
+        quality: found ? step.quality : 'MISSING',
+        confidence: step.confidence,
+        verbatim: found ? verbatim : null,
+        startTime: this.normalizeApplicationTime(
+          evidence?.startTime,
+          blockStartTime,
+        ),
+        endTime: this.normalizeApplicationTime(evidence?.endTime, blockStartTime),
+        reason:
+          evidence?.reason ??
+          step.reasoning ??
+          (found
+            ? 'Étape observée dans le transcript.'
+            : 'Étape non observée dans le transcript.'),
+        reviewStatus: step.confidence < 0.55 ? 'PENDING' : 'NOT_REQUIRED',
+      };
+    });
+  }
+
+  private buildStepApplicationSummary(
+    scoring: DeterministicScoringResult,
+    application: SalesPlanApplicationPayload,
+  ): string {
+    const observed = application.steps.filter((step) => step.observed).length;
+    const total = application.steps.length;
+    const uncertainty = application.uncertainties.length
+      ? ` Incertitudes: ${application.uncertainties.slice(0, 2).join(' ')}`
+      : '';
+    return `Plan de vente appliqué à la conversation: ${observed}/${total} étape(s) observée(s), score backend ${scoring.overallScore}/100.${uncertainty}`;
+  }
+
+  private normalizeApplicationQuality(
+    value: unknown,
+    observed: boolean,
+  ): 'MISSING' | 'WEAK' | 'PARTIAL' | 'COMPLETE' {
+    if (!observed) return 'MISSING';
+    if (
+      value === 'COMPLETE' ||
+      value === 'PARTIAL' ||
+      value === 'WEAK' ||
+      value === 'MISSING'
+    ) {
+      return value;
+    }
+    return 'PARTIAL';
+  }
+
+  private normalizeConfidence(value: unknown): number {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0.6;
+    return Math.max(0, Math.min(1, numeric));
+  }
+
+  private normalizeApplicationTime(
+    value: number | null | undefined,
+    blockStartTime: number,
+  ): number | null {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return numeric < blockStartTime && numeric < 600
+      ? Number((numeric + blockStartTime).toFixed(2))
+      : Number(numeric.toFixed(2));
+  }
+
+  private async extractEvidenceWithLlm(input: {
+    block: CoachingConversationBlock;
+    criteria: SalesPlanCriterionDefinition[];
+    status?: string | null;
+    qualityGate: QualityGateResult;
+  }): Promise<EvidenceExtractionPayload | null> {
+    if (!this.vllmClient.isConfigured()) {
+      return null;
+    }
+
+    const messages = [
+      { role: 'system', content: EVIDENCE_EXTRACTION_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: buildEvidenceExtractionUserPrompt({
+          transcriptText: truncateTranscriptForPrompt(
+            input.block.transcriptText,
+            this.maxTranscriptPromptChars,
+          ),
+          status: input.status,
+          segmentMetadata: {
+            startTime: input.block.startTime,
+            endTime: input.block.endTime,
+            durationSec: input.block.endTime - input.block.startTime,
+            source: input.block.segmentSource,
+            type: input.block.segmentType,
+            confidence: input.block.segmentConfidence,
+            speechScore: input.block.speechScore,
+            qualityGate: input.qualityGate,
+          },
+          criteria: input.criteria,
+        }),
+      },
+    ];
+
+    const result = await this.vllmClient.chat(
+      {
+        model: this.vllmClient.model,
+        temperature: 0.1,
+        max_tokens: 2500,
+        messages,
+        response_format: {
+          type: 'json_schema',
+          json_schema: EVIDENCE_EXTRACTION_JSON_SCHEMA,
+        },
+      },
+      { step: 'extract_evidence' },
+    );
+    if (!result) return null;
+
+    const parsed = parseLlmJson(result.content);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    const parsedRecord = isRecord(parsed) ? parsed : {};
+    return {
+      segmentQuality: isRecord(parsedRecord.segmentQuality)
+        ? parsedRecord.segmentQuality
+        : undefined,
+      criteriaEvidence: Array.isArray(parsedRecord.criteriaEvidence)
+        ? parsedRecord.criteriaEvidence
+        : [],
+      keyEvents: Array.isArray(parsedRecord.keyEvents) ? parsedRecord.keyEvents : [],
+      uncertainties: Array.isArray(parsedRecord.uncertainties)
+        ? parsedRecord.uncertainties.filter(
+            (uncertainty): uncertainty is string =>
+              typeof uncertainty === 'string',
+          )
+        : [],
+      rawResponse: result.content,
+    };
+  }
+
+  private async generateEvidenceBasedRemarks(input: {
+    status?: string | null;
+    scoring: DeterministicScoringResult;
+    evidence: EvidenceExtractionPayload;
+  }): Promise<{
+    summary?: string | null;
+    strengths: string[];
+    improvements: string[];
+    recommendations: string[];
+  } | null> {
+    if (!this.vllmClient.isConfigured()) {
+      return null;
+    }
+
+    const result = await this.vllmClient.chat(
+      {
+        model: this.vllmClient.model,
+        temperature: 0.2,
+        max_tokens: 1600,
+        messages: [
+          { role: 'system', content: COACHING_REMARKS_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: buildCoachingRemarksUserPrompt({
+              status: input.status,
+              scores: {
+                overallScore: input.scoring.overallScore,
+                stepEvaluations: input.scoring.stepEvaluations,
+                reviewRequired: input.scoring.reviewRequired,
+                reviewReason: input.scoring.reviewReason,
+              },
+              evidence: {
+                criteriaEvidence: input.evidence.criteriaEvidence,
+                keyEvents: input.evidence.keyEvents,
+                uncertainties: input.evidence.uncertainties,
+              },
+            }),
+          },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: COACHING_REMARKS_JSON_SCHEMA,
+        },
+      },
+      { step: 'generate_evidence_remarks' },
+    );
+    if (!result) return null;
+    const parsed = parseLlmJson(result.content);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    const parsedRecord = isRecord(parsed) ? parsed : {};
+    return {
+      summary: normalizeText(parsedRecord.summary),
+      strengths: normalizeTextArray(parsedRecord.strengths),
+      improvements: normalizeTextArray(parsedRecord.improvements),
+      recommendations: [
+        ...normalizeTextArray(parsedRecord.recommendations),
+        ...normalizeTextArray(parsedRecord.trainingActions),
+      ].slice(0, 8),
+    };
+  }
+
+  private buildMissingEvidencePayload(
+    criteria: SalesPlanCriterionDefinition[],
+    reason: string,
+  ): EvidenceExtractionPayload {
+    return {
+      segmentQuality: { evaluable: false, reason, confidence: 0.3 },
+      criteriaEvidence: criteria.map((criterion) => ({
+        salesPlanStepId: criterion.salesPlanStepId ?? null,
+        salesPlanCriterionId: criterion.id ?? null,
+        stepOrder: criterion.stepOrder,
+        criterionKey: criterion.key,
+        criterionLabel: criterion.label,
+        found: false,
+        quality: 'MISSING',
+        confidence: 0.8,
+        verbatim: null,
+        startTime: null,
+        endTime: null,
+        reason,
+      })) as CriterionEvidencePayload[],
+      keyEvents: [],
+      uncertainties: [reason],
+    };
+  }
+
+  private buildEvidenceSummary(
+    scoring: { overallScore: number; reviewRequired: boolean; reviewReason?: string | null },
+    qualityGate: QualityGateResult,
+  ): string {
+    const review = scoring.reviewRequired
+      ? ` Revue recommandée: ${scoring.reviewReason || qualityGate.reasons.join(' ')}`
+      : '';
+    return `Score calculé à partir des preuves observables (${scoring.overallScore}/100).${review}`;
+  }
+
+  private resolveScoringMode(): 'legacy' | 'evidence' {
+    return process.env.COACHING_SCORING_MODE === 'legacy'
+      ? 'legacy'
+      : 'evidence';
   }
 
   private async rewriteTranscriptForReadability(
@@ -2298,7 +3310,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
 
     const parsed = parseLlmJson(result.content);
     if (
-      !parsed ||
+      !isRecord(parsed) ||
       typeof parsed.type !== 'string' ||
       !Array.isArray(parsed.applicableStepOrders)
     ) {
@@ -2408,7 +3420,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
     try {
       const content = result.content;
       const parsed = parseLlmJson(content);
-      if (!parsed) {
+      if (!isRecord(parsed)) {
         return null;
       }
 
@@ -2425,7 +3437,7 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
         recommendations: normalizeTextArray(parsed.recommendations),
         keyMoments: Array.isArray(parsed.keyMoments)
           ? parsed.keyMoments
-              .map((moment: any) => normalizeKeyMoment(moment))
+              .map((moment: unknown) => normalizeKeyMoment(moment))
               .filter(
                 (moment: KeyMomentPayload | null): moment is KeyMomentPayload =>
                   Boolean(moment),
@@ -2434,22 +3446,25 @@ export class CoachingEngineService implements OnModuleInit, OnModuleDestroy {
           : [],
         rawResponse: content,
         stepEvaluations: Array.isArray(parsed.stepEvaluations)
-          ? parsed.stepEvaluations.map((step: any, index: number) => ({
-              ordre: Number.isFinite(Number(step?.ordre))
+          ? parsed.stepEvaluations.map((stepValue: unknown, index: number) => {
+              const step = isRecord(stepValue) ? stepValue : {};
+              return {
+              ordre: Number.isFinite(Number(step.ordre))
                 ? Number(step.ordre)
                 : index + 1,
               titre:
-                normalizeText(step?.titre) ||
+                normalizeText(step.titre) ||
                 salesPlanVersion.steps[index]?.titre ||
                 `Étape ${index + 1}`,
-              coverageStatus: normalizeCoverageStatus(step?.coverageStatus),
-              score: normalizeNullableScore(step?.score),
-              startTime: normalizeNullableNumber(step?.startTime),
-              endTime: normalizeNullableNumber(step?.endTime),
-              verbatim: normalizeText(step?.verbatim),
-              feedback: normalizeText(step?.feedback),
-              recommendation: normalizeText(step?.recommendation),
-            }))
+              coverageStatus: normalizeCoverageStatus(step.coverageStatus),
+              score: normalizeNullableScore(step.score),
+              startTime: normalizeNullableNumber(step.startTime),
+              endTime: normalizeNullableNumber(step.endTime),
+              verbatim: normalizeText(step.verbatim),
+              feedback: normalizeText(step.feedback),
+              recommendation: normalizeText(step.recommendation),
+            };
+            })
           : [],
       };
     } catch (error: unknown) {

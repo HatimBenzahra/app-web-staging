@@ -218,6 +218,10 @@ const GET_COACHING_SESSION = `
       improvements
       recommendations
       llmModel
+      scoringMode
+      scoringSchemaVersion
+      evidencePromptVersion
+      evaluationPromptVersion
       failureReason
       reviewReason
       reviewNotes
@@ -293,6 +297,24 @@ const GET_COACHING_SESSION = `
         strengths
         improvements
         recommendations
+        scoringMode
+        scoringSchemaVersion
+        evidencePromptVersion
+        evaluationPromptVersion
+        criterionEvidences {
+          id
+          stepOrder
+          criterionKey
+          criterionLabel
+          found
+          quality
+          confidence
+          verbatim
+          startTime
+          endTime
+          reason
+          reviewStatus
+        }
         createdAt
         updatedAt
       }

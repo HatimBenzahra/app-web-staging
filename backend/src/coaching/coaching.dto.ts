@@ -267,6 +267,22 @@ export class ReviewCoachingSessionInput {
 }
 
 @InputType()
+export class ReviewCoachingCriterionEvidenceInput {
+  @Field(() => Int)
+  @IsInt()
+  evidenceId: number;
+
+  @Field()
+  @IsString()
+  reviewStatus: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+@InputType()
 export class CoachingRecordingCandidatesInput {
   @Field(() => Int, { nullable: true, defaultValue: 20 })
   @IsOptional()
@@ -558,6 +574,45 @@ export class CoachingStepEvaluationDto {
 }
 
 @ObjectType()
+export class CoachingCriterionEvidenceDto {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  stepOrder: number;
+
+  @Field()
+  criterionKey: string;
+
+  @Field()
+  criterionLabel: string;
+
+  @Field()
+  found: boolean;
+
+  @Field()
+  quality: string;
+
+  @Field(() => Float)
+  confidence: number;
+
+  @Field({ nullable: true })
+  verbatim?: string;
+
+  @Field(() => Float, { nullable: true })
+  startTime?: number;
+
+  @Field(() => Float, { nullable: true })
+  endTime?: number;
+
+  @Field({ nullable: true })
+  reason?: string;
+
+  @Field()
+  reviewStatus: string;
+}
+
+@ObjectType()
 export class CoachingKeyMomentDto {
   @Field(() => Int)
   id: number;
@@ -648,6 +703,21 @@ export class CoachingConversationEvaluationDto {
 
   @Field(() => [String])
   recommendations: string[];
+
+  @Field({ nullable: true })
+  scoringMode?: string;
+
+  @Field({ nullable: true })
+  scoringSchemaVersion?: string;
+
+  @Field({ nullable: true })
+  evidencePromptVersion?: string;
+
+  @Field({ nullable: true })
+  evaluationPromptVersion?: string;
+
+  @Field(() => [CoachingCriterionEvidenceDto])
+  criterionEvidences: CoachingCriterionEvidenceDto[];
 
   @Field()
   createdAt: Date;
@@ -855,6 +925,18 @@ export class CoachingSessionDto {
 
   @Field({ nullable: true })
   llmModel?: string;
+
+  @Field({ nullable: true })
+  scoringMode?: string;
+
+  @Field({ nullable: true })
+  scoringSchemaVersion?: string;
+
+  @Field({ nullable: true })
+  evidencePromptVersion?: string;
+
+  @Field({ nullable: true })
+  evaluationPromptVersion?: string;
 
   @Field({ nullable: true })
   failureReason?: string;

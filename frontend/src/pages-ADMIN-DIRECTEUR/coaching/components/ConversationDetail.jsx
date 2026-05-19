@@ -66,6 +66,7 @@ function ConversationDetail({
   const strengths = (conversation.strengths || []).filter(Boolean).slice(0, 3)
   const improvements = (conversation.improvements || []).filter(Boolean).slice(0, 3)
   const recommendations = (conversation.recommendations || []).filter(Boolean).slice(0, 3)
+  const criterionEvidences = (conversation.criterionEvidences || []).slice(0, 8)
 
   return (
     <div className="space-y-5">
@@ -182,6 +183,10 @@ function ConversationDetail({
               </div>
             </div>
           ) : null}
+
+          {criterionEvidences.length > 0 ? (
+            <EvidencePanel evidences={criterionEvidences} />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -254,6 +259,50 @@ function ConversationDetail({
           <ChatTranscript transcript={transcript} />
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function EvidencePanel({ evidences }) {
+  const foundCount = evidences.filter(item => item.found).length
+  return (
+    <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Target className="h-3.5 w-3.5" />
+          Pourquoi cette note ?
+        </div>
+        <span className="text-[11px] text-muted-foreground tabular-nums">
+          {foundCount}/{evidences.length} preuve(s)
+        </span>
+      </div>
+      <ul className="grid gap-2 md:grid-cols-2">
+        {evidences.map(evidence => (
+          <li
+            key={evidence.id || `${evidence.stepOrder}-${evidence.criterionKey}`}
+            className={cn(
+              'rounded-md border px-2.5 py-2 text-xs',
+              evidence.found
+                ? 'border-chart-2/25 bg-chart-2/8'
+                : 'border-border/70 bg-muted/15'
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-medium">{evidence.criterionLabel}</span>
+              <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
+                {evidence.quality}
+              </Badge>
+            </div>
+            {evidence.verbatim ? (
+              <p className="mt-1.5 line-clamp-2 text-muted-foreground">"{evidence.verbatim}"</p>
+            ) : (
+              <p className="mt-1.5 italic text-muted-foreground">
+                Aucune preuve observable.
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

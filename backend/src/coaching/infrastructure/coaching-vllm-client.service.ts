@@ -11,6 +11,19 @@ function resolveTimeoutMs(): number {
   return Math.floor(raw);
 }
 
+type VllmChatResponse = {
+  choices?: Array<{
+    message?: {
+      content?: unknown;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+};
+
 /**
  * Thin client over the vLLM /chat/completions endpoint.
  * Handles auth, timeout (AbortController), 1-retry on network/5xx,
@@ -31,7 +44,7 @@ export class CoachingVllmClient {
   async chat(
     payload: unknown,
     context: { step: string; sessionId?: number | null },
-  ): Promise<{ data: any; content: string } | null> {
+  ): Promise<{ data: VllmChatResponse; content: string } | null> {
     if (!this.baseUrl || !this.apiKey) {
       return null;
     }
@@ -76,8 +89,8 @@ export class CoachingVllmClient {
           return null;
         }
 
-        const data = (await response.json()) as any;
-        const content = data?.choices?.[0]?.message?.content;
+        const data = (await response.json()) as VllmChatResponse;
+        const content = data.choices?.[0]?.message?.content;
 
         this.logger.log(
           `llm.usage step=${context.step} sessionId=${context.sessionId ?? 'n/a'} promptTokens=${data?.usage?.prompt_tokens ?? 'n/a'} completionTokens=${data?.usage?.completion_tokens ?? 'n/a'} totalTokens=${data?.usage?.total_tokens ?? 'n/a'} durationMs=${Date.now() - startedAt} attempt=${attempt}`,

@@ -18,7 +18,7 @@ import { SpeechAnalysisService } from './speech-analysis.service';
 
 const FFMPEG_MAX_BUFFER = 10 * 1024 * 1024;
 
-interface WhisperSegment {
+export interface WhisperSegment {
   start: number;
   end: number;
   text: string;
@@ -30,6 +30,11 @@ interface WhisperResponse {
   duration: number;
   processing_time: number;
 }
+
+export type RecordingTranscriptionResult = {
+  segments: WhisperSegment[];
+  duration: number;
+};
 
 export interface ExtractionProgress {
   step: string;
@@ -143,10 +148,12 @@ export class TranscriptionService implements OnModuleDestroy {
     }));
   }
 
-  async processRecording(s3Key: string): Promise<void> {
+  async processRecording(
+    s3Key: string,
+  ): Promise<RecordingTranscriptionResult | null> {
     if (this.inFlight.has(s3Key)) {
       this.logger.debug(`Traitement déjà en cours pour ${s3Key}, skip`);
-      return;
+      return null;
     }
 
     this.inFlight.add(s3Key);
@@ -163,14 +170,14 @@ export class TranscriptionService implements OnModuleDestroy {
     try {
       // Vérifier que c'est un fichier audio valide (pas un _conv existant)
       if (s3Key.endsWith('_conv.mp4')) {
-        return;
+        return null;
       }
 
       if (!this.whisperUrl) {
         this.logger.warn(
           `WHISPER_API_URL absent, extraction ignorée pour ${s3Key}`,
         );
-        return;
+        return null;
       }
 
       this.logger.log(`Début traitement : ${s3Key}`);
@@ -182,7 +189,7 @@ export class TranscriptionService implements OnModuleDestroy {
       const downloaded = await this.downloadFromS3(s3Key, originalFile);
       if (!downloaded) {
         this.failProgress(s3Key);
-        return;
+        return null;
       }
 
       this.setProgress(s3Key, 'transcribing', 2);
@@ -192,7 +199,7 @@ export class TranscriptionService implements OnModuleDestroy {
           `Aucun segment de parole détecté pour ${s3Key} — pas de version conversation`,
         );
         this.failProgress(s3Key);
-        return;
+        return null;
       }
 
       const { segments, duration: whisperDuration } = whisperResult;
@@ -211,7 +218,7 @@ export class TranscriptionService implements OnModuleDestroy {
       const cut = await this.cutAudio(originalFile, convFile, merged);
       if (!cut) {
         this.failProgress(s3Key);
-        return;
+        return whisperResult;
       }
 
       this.setProgress(s3Key, 'uploading', 4);
@@ -219,7 +226,7 @@ export class TranscriptionService implements OnModuleDestroy {
       const uploaded = await this.uploadToS3(convFile, convKey);
       if (!uploaded) {
         this.failProgress(s3Key);
-        return;
+        return whisperResult;
       }
 
       const originalSize = fs.statSync(originalFile).size;
@@ -230,16 +237,52 @@ export class TranscriptionService implements OnModuleDestroy {
         `Traitement terminé : ${s3Key} → ${convKey} (${ratio}% réduit)`,
       );
       this.clearProgress(s3Key);
+      return whisperResult;
     } catch (error) {
       this.logger.error(
         `Erreur inattendue lors du traitement de ${s3Key}: ${error?.message || error}`,
       );
       this.failProgress(s3Key);
+      return null;
     } finally {
       // Nettoyage systématique des fichiers temporaires
       this.cleanupDir(tmpDir);
       this.inFlight.delete(s3Key);
       this.releaseSlot();
+    }
+  }
+
+  async transcribeRecordingFromS3(
+    s3Key: string,
+  ): Promise<RecordingTranscriptionResult | null> {
+    if (!this.whisperUrl || s3Key.endsWith('_conv.mp4')) {
+      return null;
+    }
+
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `transcription-direct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    const originalFile = path.join(tmpDir, 'original.mp4');
+
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const downloaded = await this.downloadFromS3(s3Key, originalFile);
+      if (!downloaded) {
+        return null;
+      }
+
+      const whisperResult = await this.transcribeFile(originalFile);
+      if (whisperResult?.duration && whisperResult.duration > 0) {
+        this.speechAnalysis.cacheFromWhisperSegments(
+          s3Key,
+          whisperResult.segments,
+          whisperResult.duration,
+        );
+      }
+      return whisperResult;
+    } finally {
+      this.cleanupDir(tmpDir);
     }
   }
 

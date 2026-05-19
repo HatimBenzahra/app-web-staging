@@ -2,8 +2,11 @@ import { ForbiddenException, forwardRef, Inject, Injectable } from '@nestjs/comm
 import { PrismaService } from '../../prisma.service';
 import { RecordingService } from '../../recording/recording.service';
 import {
+  CoachingAnalysisJobStatusDto,
   CoachingRecordingCandidatesInput,
   CoachingRecordingCandidatesPageDto,
+  CoachingRecordingExploitabilityStatusDto,
+  CoachingSessionStatusDto,
 } from '../coaching.dto';
 import { scoreRecordingExploitability } from './coaching-recording-catalog.utils';
 
@@ -201,16 +204,19 @@ export class CoachingRecordingCatalogService {
         return {
           ...item,
           latestSessionId: latestSession?.id,
-          latestSessionStatus: latestSession?.status as any,
+          latestSessionStatus:
+            latestSession?.status as CoachingSessionStatusDto | undefined,
           speechScore: speechScore?.score,
           speechScoreStatus: speechScore?.status,
           totalDurationSec: speechScore?.totalDurationSec,
           speechDurationSec: speechScore?.speechDurationSec,
           exploitabilityScore: exploitability.score,
-          exploitabilityStatus: exploitability.status as any,
+          exploitabilityStatus:
+            exploitability.status as CoachingRecordingExploitabilityStatusDto,
           exploitabilityReasons: exploitability.reasons,
           analysisJobId: latestJob?.id,
-          analysisJobStatus: latestJob?.status as any,
+          analysisJobStatus:
+            latestJob?.status as CoachingAnalysisJobStatusDto | undefined,
           analysisQueuedAt: latestJob?.queuedAt ?? undefined,
           analysisStartedAt: latestJob?.startedAt ?? undefined,
         };
