@@ -222,8 +222,14 @@ export class PorteService {
       data: { updatedAt: new Date() },
     });
 
-    // Synchroniser les statistiques si le statut a changé
-    if (data.statut && data.statut !== oldStatut) {
+    // Synchroniser les statistiques si le statut OU le nbContrats a changé.
+    // Modifier nbContrats sur une porte CONTRAT_SIGNE doit aussi mettre à jour
+    // les stats agrégées (contratsSignes = somme des nbContrats par jour).
+    const statutChanged = data.statut && data.statut !== oldStatut;
+    const contratsChanged =
+      data.nbContrats !== undefined &&
+      data.nbContrats !== currentPorte.nbContrats;
+    if (statutChanged || contratsChanged) {
       try {
         await this.statisticSyncService.syncCommercialStats(updatedPorte.immeubleId);
       } catch (error) {
@@ -231,6 +237,9 @@ export class PorteService {
         console.error('Erreur sync statistiques:', error);
       }
 
+    }
+
+    if (statutChanged && data.statut) {
       // Enregistrer dans l'historique si le statut a changé
       try {
         // Déterminer si c'est un commercial ou un manager qui fait la modification

@@ -640,6 +640,10 @@ export class StatisticService {
       select: {
         statut: true,
         createdAt: true,
+        porteId: true,
+        porte: {
+          select: { nbContrats: true },
+        },
       },
     });
 
@@ -659,7 +663,14 @@ export class StatisticService {
         });
       }
 
-      const stats = calculateStatsForStatus(entry.statut, 1);
+      // Pour CONTRAT_SIGNE, on multiplie par porte.nbContrats (une porte
+      // peut représenter plusieurs contrats signés à la fois). Pour les
+      // autres statuts, on compte 1 par évènement.
+      const count =
+        entry.statut === 'CONTRAT_SIGNE'
+          ? entry.porte?.nbContrats || 1
+          : 1;
+      const stats = calculateStatsForStatus(entry.statut, count);
       const current = grouped.get(dayKey)!;
       current.rdvPris += stats.rendezVousPris;
       current.portesProspectees += stats.nbPortesProspectes;
