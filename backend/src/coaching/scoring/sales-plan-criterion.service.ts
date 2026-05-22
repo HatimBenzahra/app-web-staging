@@ -66,9 +66,7 @@ export class SalesPlanCriterionService {
     step: SalesPlanStepLike,
     status?: string | null,
   ): SalesPlanCriterionDefinition[] {
-    const title = step.titre.toLowerCase();
-    const defaults = this.defaultCriteriaForTitle(title);
-    const criteria = defaults.length > 0 ? defaults : this.criteriaFromSignals(step);
+    const criteria = this.criteriaFromSignals(step);
 
     return criteria.map((criterion, index) => ({
       salesPlanStepId: step.id ?? null,
@@ -84,64 +82,6 @@ export class SalesPlanCriterionService {
       negativeSignals: criterion.negativeSignals ?? null,
       order: index + 1,
     })).filter((criterion) => this.appliesToStatus(criterion, status));
-  }
-
-  private defaultCriteriaForTitle(
-    title: string,
-  ): Array<{
-    key: string;
-    label: string;
-    description?: string;
-    weight: number;
-    required: boolean;
-    applicableStatuses: string[];
-    expectedEvidence?: string;
-    negativeSignals?: string;
-  }> {
-    if (title.includes('ouverture') || title.includes('cadrage')) {
-      return [
-        this.criterion('salutation', 'Salue clairement le prospect', 15, true),
-        this.criterion('presentation', 'Se présente ou présente la société', 20, true),
-        this.criterion('motif', 'Explique le motif du passage', 25, true),
-        this.criterion('disponibilite', 'Demande si la personne est disponible', 20, false),
-        this.criterion('duree_courte', 'Annonce un échange court', 20, false),
-      ];
-    }
-    if (title.includes('découverte') || title.includes('decouverte')) {
-      return [
-        this.criterion('question_contexte', 'Pose une question sur la situation actuelle', 25, true),
-        this.criterion('besoin', 'Identifie un besoin ou irritant', 25, true),
-        this.criterion('ecoute', 'Laisse le prospect répondre', 20, true),
-        this.criterion('reformulation', 'Reformule la situation du prospect', 15, false),
-        this.criterion('qualification', 'Qualifie le potentiel commercial', 15, false),
-      ];
-    }
-    if (title.includes('valeur') || title.includes('proposition')) {
-      return [
-        this.criterion('benefice', 'Présente un bénéfice concret', 35, true),
-        this.criterion('lien_besoin', 'Relie l’offre au besoin détecté', 30, true),
-        this.criterion('clarte', 'Explique simplement la proposition', 20, true),
-        this.criterion('preuve', 'Apporte une preuve ou comparaison', 15, false),
-      ];
-    }
-    if (title.includes('objection')) {
-      return [
-        this.criterion('objection_identifiee', 'Identifie l’objection', 20, true, ['REFUS']),
-        this.criterion('reformulation_objection', 'Reformule ou accuse réception', 20, true, ['REFUS']),
-        this.criterion('reponse_adaptee', 'Répond avec un argument adapté', 35, true, ['REFUS']),
-        this.criterion('alternative', 'Propose une alternative ou prochaine étape', 15, false, ['REFUS']),
-        this.criterion('ton', 'Garde un ton professionnel', 10, true),
-      ];
-    }
-    if (title.includes('closing') || title.includes('prochaine')) {
-      return [
-        this.criterion('prochaine_etape', 'Propose une prochaine étape claire', 35, true, ['RDV_PRIS', 'CONTRAT_SIGNE', 'REFUS']),
-        this.criterion('confirmation', 'Confirme l’accord ou la décision', 25, true, ['RDV_PRIS', 'CONTRAT_SIGNE']),
-        this.criterion('recapitulatif', 'Récapitule les éléments importants', 20, false, ['RDV_PRIS', 'CONTRAT_SIGNE']),
-        this.criterion('cloture_polie', 'Clôture poliment', 20, true),
-      ];
-    }
-    return [];
   }
 
   private criteriaFromSignals(

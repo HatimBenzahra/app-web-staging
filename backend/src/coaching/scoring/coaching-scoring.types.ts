@@ -36,6 +36,10 @@ export type CriterionEvidencePayload = {
   startTime?: number | null;
   endTime?: number | null;
   reason?: string | null;
+  evidenceCompleteness?: 'FULL' | 'PARTIAL' | 'UNCERTAIN' | 'NONE';
+  missingBecause?: 'NOT_OBSERVED' | 'TRANSCRIPT_UNCLEAR' | 'NOT_APPLICABLE' | null;
+  scoreable?: boolean;
+  sourceTurnIds?: string[];
   reviewStatus?: 'NOT_REQUIRED' | 'PENDING' | 'VALIDATED' | 'CORRECTED' | 'REJECTED';
 };
 
@@ -70,7 +74,11 @@ export type SalesPlanStepApplicationPayload = {
     startTime?: number | null;
     endTime?: number | null;
     reason?: string | null;
+    sourceTurnIds?: string[];
   }>;
+  evidenceCompleteness?: 'FULL' | 'PARTIAL' | 'UNCERTAIN' | 'NONE';
+  missingBecause?: 'NOT_OBSERVED' | 'TRANSCRIPT_UNCLEAR' | 'NOT_APPLICABLE' | null;
+  scoreable?: boolean;
   whatWentWell: string[];
   whatIsMissing: string[];
   coachingAdvice: string[];

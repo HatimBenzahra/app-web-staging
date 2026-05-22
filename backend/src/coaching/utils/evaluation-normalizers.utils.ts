@@ -4,10 +4,7 @@
  */
 
 import type { KeyMomentPayload } from '../types/coaching-pipeline.types';
-import {
-  extractBestVerbatim,
-  resolveExcerptTimeRange,
-} from './transcript-parsing.utils';
+import { resolveExcerptTimeRange } from './transcript-parsing.utils';
 
 export function normalizeText(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -103,46 +100,7 @@ export function completeKeyMomentTiming(
 }
 
 export function buildFallbackKeyMoments(
-  transcriptText: string,
+  _transcriptText: string,
 ): KeyMomentPayload[] {
-  const moments: KeyMomentPayload[] = [];
-  const patterns: Array<{ type: string; title: string; keywords: string[] }> = [
-    {
-      type: 'OBJECTION',
-      title: 'Objection ou hesitation client',
-      keywords: ['pas intéressé', 'pas interesse', 'trop cher', 'réfléchir', 'refus'],
-    },
-    {
-      type: 'SIGNAL_ACHAT',
-      title: 'Signal d interet',
-      keywords: ['combien', 'rendez-vous', 'contrat', 'signature', 'installer'],
-    },
-    {
-      type: 'PROMESSE',
-      title: 'Promesse ou engagement',
-      keywords: ['je vous rappelle', 'on repasse', 'je vous envoie', 'demain'],
-    },
-  ];
-
-  const lowerTranscript = transcriptText.toLowerCase();
-  for (const pattern of patterns) {
-    const keyword = pattern.keywords.find((entry) =>
-      lowerTranscript.includes(entry.toLowerCase()),
-    );
-    const match = keyword ? extractBestVerbatim(transcriptText, keyword) : null;
-    if (!match) {
-      continue;
-    }
-    const range = resolveExcerptTimeRange(transcriptText, match);
-    moments.push({
-      type: pattern.type,
-      title: pattern.title,
-      summary: 'Moment détecté automatiquement à partir du transcript.',
-      startTime: range?.start ?? null,
-      endTime: range?.end ?? null,
-      verbatim: match,
-      importance: 65,
-    });
-  }
-  return moments.slice(0, 4);
+  return [];
 }

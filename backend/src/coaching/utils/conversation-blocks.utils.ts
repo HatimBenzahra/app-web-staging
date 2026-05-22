@@ -1,6 +1,6 @@
 /**
  * Conversation block construction from Whisper segments.
- * Heuristic (gap/marker) + LLM-driven (boundaries) splitters.
+ * Technical gap + LLM-driven (boundaries) splitters.
  * Pure functions, no DI.
  */
 
@@ -18,16 +18,6 @@ export function buildTranscriptText(segments: Segment[]): string {
       return `[${start}-${end}] ${segment.text.trim()}`;
     })
     .join('\n');
-}
-
-export function hasConversationStartMarker(text: string): boolean {
-  return /\b(bonjour|bonsoir|allo|allô|madame|monsieur)\b/i.test(text);
-}
-
-export function hasConversationEndMarker(text: string): boolean {
-  return /\b(au revoir|bonne journée|bonne soiree|bonne soirée|merci bonne|à bientôt|a bientot)\b/i.test(
-    text,
-  );
 }
 
 /** A block is usable for LLM eval when it's long enough or covers enough time. */
@@ -88,8 +78,9 @@ export function splitSegmentsIntoChunks(
 }
 
 /**
- * Heuristic conversation split (fallback when LLM detection unavailable).
- * Splits on long silences (>35s) and greeting/closing markers.
+ * Legacy conversation split (fallback when LLM detection/mobile doors are unavailable).
+ * Splits only on long silences (>35s). It deliberately avoids greeting/closing
+ * keyword markers because natural-language markers are too fragile for field audio.
  */
 export function splitTranscriptIntoConversations(
   segments: Segment[],
@@ -121,20 +112,9 @@ export function splitTranscriptIntoConversations(
         gap >= pauseThresholdSec &&
         previousBlockText.length >= minBlockTextLength,
     );
-    const shouldSplitOnGreeting = Boolean(
-      previous &&
-        hasConversationStartMarker(segment.text) &&
-        previousBlockText.length >= minBlockTextLength,
-    );
-    const shouldSplitAfterClosing = Boolean(
-      previous &&
-        hasConversationEndMarker(previous.text) &&
-        previousBlockText.length >= minBlockTextLength,
-    );
-
     if (
       current.length > 0 &&
-      (shouldSplitOnPause || shouldSplitOnGreeting || shouldSplitAfterClosing)
+      shouldSplitOnPause
     ) {
       blocks.push(current);
       current = [];
@@ -164,9 +144,9 @@ export function splitTranscriptIntoConversations(
       endTime,
       transcriptText,
       segmentsCount: block.length,
-      status: usable ? 'COMPLETED' : 'SKIPPED',
+      status: usable ? 'NEEDS_REVIEW' : 'SKIPPED',
       reviewReason: usable
-        ? null
+        ? 'Segmentation legacy par pauses longues: revue requise avant scoring.'
         : 'Conversation trop courte ou trop pauvre pour une évaluation fiable.',
     };
   });

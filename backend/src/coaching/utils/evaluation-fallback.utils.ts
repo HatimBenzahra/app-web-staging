@@ -1,20 +1,13 @@
 /**
- * Heuristic fallback evaluation + completion of partial LLM evaluations.
+ * Conservative fallback evaluation + completion of partial LLM evaluations.
  * Pure functions, no DI.
  */
 
 import type {
   SessionEvaluationPayload,
-  StepEvaluationPayload,
 } from '../types/coaching-pipeline.types';
-import {
-  extractBestVerbatim,
-  resolveExcerptTimeRange,
-} from './transcript-parsing.utils';
-import {
-  buildFallbackKeyMoments,
-  completeKeyMomentTiming,
-} from './evaluation-normalizers.utils';
+import { resolveExcerptTimeRange } from './transcript-parsing.utils';
+import { completeKeyMomentTiming } from './evaluation-normalizers.utils';
 
 type SalesPlanForEval = {
   steps: Array<{
@@ -27,132 +20,49 @@ type SalesPlanForEval = {
 };
 
 /**
- * Build a heuristic evaluation when the LLM is unavailable.
- * Uses keyword match against each step's signals/description.
+ * Build a conservative placeholder when the LLM is unavailable.
+ * It intentionally does not infer coverage, scores, key moments or dimensions
+ * from transcript terms. Natural-language understanding belongs to the LLM
+ * and to explicit human review.
  */
 export function evaluateWithFallback(
   salesPlanVersion: SalesPlanForEval,
-  transcriptText: string,
+  _transcriptText: string,
 ): SessionEvaluationPayload {
-  const lowerTranscript = transcriptText.toLowerCase();
-  const totalWeight = salesPlanVersion.steps.reduce(
-    (sum, step) => sum + step.poids,
-    0,
-  );
-
   const stepEvaluations = salesPlanVersion.steps.map((step) => {
-    const sourceText = [
-      step.titre,
-      step.description || '',
-      step.expectedSignals || '',
-    ]
-      .join(' ')
-      .toLowerCase();
-
-    const keywords = Array.from(
-      new Set(
-        sourceText
-          .split(/[^a-zA-ZÀ-ÿ0-9]+/)
-          .map((token) => token.trim())
-          .filter((token) => token.length >= 4),
-      ),
-    ).slice(0, 8);
-
-    const hits = keywords.filter((keyword) =>
-      lowerTranscript.includes(keyword),
-    );
-    const ratio = keywords.length === 0 ? 0 : hits.length / keywords.length;
-
-    let coverageStatus: StepEvaluationPayload['coverageStatus'] = 'MISSING';
-    let score = 35;
-
-    if (ratio >= 0.45) {
-      coverageStatus = 'COVERED';
-      score = 85;
-    } else if (ratio >= 0.15) {
-      coverageStatus = 'PARTIAL';
-      score = 60;
-    }
-
-    const excerpt = extractBestVerbatim(transcriptText, hits[0]);
-    const excerptRange = excerpt
-      ? resolveExcerptTimeRange(transcriptText, excerpt)
-      : null;
-
     return {
       ordre: step.ordre,
       titre: step.titre,
-      coverageStatus,
-      score,
-      startTime: excerptRange?.start ?? null,
-      endTime: excerptRange?.end ?? null,
-      verbatim: excerpt,
+      coverageStatus: 'MISSING' as const,
+      score: 0,
+      startTime: null,
+      endTime: null,
+      verbatim: null,
       feedback:
-        coverageStatus === 'COVERED'
-          ? 'La transcription contient des signaux compatibles avec cette étape.'
-          : coverageStatus === 'PARTIAL'
-            ? 'L’étape apparaît partiellement dans la transcription et mérite une vérification humaine.'
-            : 'Aucun signal clair de cette étape n’a été détecté automatiquement.',
+        'Évaluation non calculée: le LLM d’analyse est indisponible ou incomplet.',
       recommendation:
-        coverageStatus === 'MISSING'
-          ? `Renforcer explicitement l’étape "${step.titre}" pendant la trame commerciale.`
-          : `Consolider la formulation de l’étape "${step.titre}" pour la rendre plus nette.`,
+        'Relancer l’analyse ou effectuer une revue humaine; aucun score automatique par mots-clés.',
     };
   });
 
-  const weightedScore = Math.round(
-    stepEvaluations.reduce((sum, step) => {
-      const sourceStep = salesPlanVersion.steps.find(
-        (candidate) => candidate.ordre === step.ordre,
-      );
-      return sum + (step.score || 0) * (sourceStep?.poids || 0);
-    }, 0) / Math.max(totalWeight, 1),
-  );
-
-  const weightedCoverageScore = Math.round(
-    stepEvaluations.reduce((sum, step) => {
-      const sourceStep = salesPlanVersion.steps.find(
-        (candidate) => candidate.ordre === step.ordre,
-      );
-      const coverageValue =
-        step.coverageStatus === 'COVERED'
-          ? 100
-          : step.coverageStatus === 'PARTIAL'
-            ? 55
-            : 0;
-      return sum + coverageValue * (sourceStep?.poids || 0);
-    }, 0) / Math.max(totalWeight, 1),
-  );
-
   return {
-    overallScore: weightedScore,
-    planCoverageScore: weightedCoverageScore,
-    executionQualityScore: weightedScore,
-    objectionHandlingScore: lowerTranscript.includes('objection')
-      ? 65
-      : Math.max(45, weightedScore - 10),
+    overallScore: 0,
+    planCoverageScore: 0,
+    executionQualityScore: 0,
+    objectionHandlingScore: 0,
     listeningRatioScore: null,
-    closingScore:
-      lowerTranscript.includes('rendez-vous') ||
-      lowerTranscript.includes('contrat') ||
-      lowerTranscript.includes('signature')
-        ? 72
-        : 48,
+    closingScore: 0,
     summary:
-      'Évaluation de secours calculée sans le LLM principal. Utiliser ce rapport pour tester le flow puis valider manuellement.',
-    strengths: stepEvaluations
-      .filter((step) => step.coverageStatus === 'COVERED')
-      .slice(0, 3)
-      .map((step) => `Étape bien visible: ${step.titre}`),
-    improvements: stepEvaluations
-      .filter((step) => step.coverageStatus !== 'COVERED')
-      .slice(0, 3)
-      .map((step) => `Travailler l’étape: ${step.titre}`),
-    recommendations: [
-      'Faire relire le rapport si le scoring paraît trop mécanique.',
-      'Comparer le transcript avec la trame commerciale réelle avant validation finale.',
+      'Évaluation non calculée automatiquement: le LLM principal n’a pas fourni d’analyse exploitable.',
+    strengths: [],
+    improvements: [
+      'Revue humaine requise: aucun scoring par mots-clés n’est autorisé.',
     ],
-    keyMoments: buildFallbackKeyMoments(transcriptText),
+    recommendations: [
+      'Relancer l’analyse lorsque le service LLM est disponible.',
+      'Valider manuellement la transcription finale avant toute conclusion commerciale.',
+    ],
+    keyMoments: [],
     stepEvaluations,
     rawResponse: null,
     usedFallback: true,
@@ -182,8 +92,8 @@ export function completeEvaluationPayload(
       ordre: planStep.ordre,
       titre: existing?.titre || planStep.titre,
       coverageStatus:
-        existing?.coverageStatus || fallbackStep?.coverageStatus || 'MISSING',
-      score: existing?.score ?? fallbackStep?.score ?? null,
+        existing?.coverageStatus ?? fallbackStep?.coverageStatus ?? 'MISSING',
+      score: existing?.score ?? fallbackStep?.score ?? 0,
       startTime:
         existing?.startTime ??
         fallbackStep?.startTime ??
@@ -194,32 +104,20 @@ export function completeEvaluationPayload(
         fallbackStep?.endTime ??
         resolveExcerptTimeRange(transcriptText, existing?.verbatim)?.end ??
         null,
-      verbatim: existing?.verbatim ?? fallbackStep?.verbatim ?? null,
+      verbatim: existing?.verbatim ?? null,
       feedback: existing?.feedback ?? fallbackStep?.feedback ?? null,
       recommendation:
         existing?.recommendation ?? fallbackStep?.recommendation ?? null,
     };
   });
 
-  const totalWeight = salesPlanVersion.steps.reduce(
-    (sum, step) => sum + step.poids,
-    0,
-  );
-  const weightedScore = Math.round(
-    stepEvaluations.reduce((sum, step) => {
-      const sourceStep = salesPlanVersion.steps.find(
-        (candidate) => candidate.ordre === step.ordre,
-      );
-      return sum + (step.score || 0) * (sourceStep?.poids || 0);
-    }, 0) / Math.max(totalWeight, 1),
-  );
-
   return {
     ...evaluation,
-    overallScore: evaluation.overallScore ?? weightedScore,
+    overallScore: evaluation.overallScore ?? fallback.overallScore,
     planCoverageScore:
       evaluation.planCoverageScore ?? fallback.planCoverageScore,
-    executionQualityScore: evaluation.executionQualityScore ?? weightedScore,
+    executionQualityScore:
+      evaluation.executionQualityScore ?? fallback.executionQualityScore,
     objectionHandlingScore:
       evaluation.objectionHandlingScore ?? fallback.objectionHandlingScore,
     listeningRatioScore:

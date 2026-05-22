@@ -9,6 +9,10 @@ import type {
   SessionEvaluationPayload,
   StepEvaluationPayload,
 } from '../types/coaching-pipeline.types';
+import type { DialogueTurnPayload } from '../types/coaching-dialogue.types';
+import type {
+  ConversationKind,
+} from '../types/coaching-dialogue.types';
 
 type PersistableConversationBlock = {
   ordre: number;
@@ -17,6 +21,13 @@ type PersistableConversationBlock = {
   endTime: number;
   transcriptText: string;
   readableTranscriptText?: string | null;
+  dialogueTurns?: DialogueTurnPayload[] | null;
+  dialoguePromptVersion?: string | null;
+  dialogueRawResponse?: string | null;
+  conversationKind?: ConversationKind | null;
+  usableForScoring?: boolean | null;
+  scoreabilityReason?: string | null;
+  dialogueQualityJson?: unknown;
   status: 'COMPLETED' | 'NEEDS_REVIEW' | 'SKIPPED' | 'FAILED';
   reviewReason?: string | null;
 };
@@ -169,6 +180,14 @@ export class CoachingSessionPersistenceService {
                 endTime: block.endTime,
                 transcriptText: block.transcriptText,
                 readableTranscriptText: block.readableTranscriptText,
+                dialogueTurns: block.dialogueTurns ?? undefined,
+                dialoguePromptVersion: block.dialoguePromptVersion ?? null,
+                dialogueRawResponse: block.dialogueRawResponse ?? null,
+                conversationKind: block.conversationKind ?? null,
+                usableForScoring: block.usableForScoring ?? null,
+                scoreabilityReason:
+                  cleanOptionalText(block.scoreabilityReason) ?? null,
+                dialogueQualityJson: block.dialogueQualityJson ?? undefined,
                 status: block.status,
                 reviewReason:
                   cleanOptionalText(block.reviewReason) ??
@@ -211,6 +230,11 @@ export class CoachingSessionPersistenceService {
                 startTime: evidence.startTime ?? null,
                 endTime: evidence.endTime ?? null,
                 reason: cleanOptionalText(evidence.reason) ?? null,
+                evidenceCompleteness:
+                  evidence.evidenceCompleteness ?? null,
+                missingBecause: evidence.missingBecause ?? null,
+                scoreable: evidence.scoreable ?? true,
+                sourceTurnIds: evidence.sourceTurnIds ?? undefined,
                 reviewStatus: evidence.reviewStatus ?? 'NOT_REQUIRED',
               })),
             });

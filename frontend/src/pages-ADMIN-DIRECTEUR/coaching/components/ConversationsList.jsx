@@ -6,12 +6,12 @@ import { badgeToneClass, formatSeconds, numberOrZero } from '../coaching.utils'
 import { InlineEmptyState, ToneBadge } from './CoachingShared'
 
 /**
- * Vertical list of conversations on the left rail of the master-detail layout.
+ * Vertical list of candidate windows on the left rail of the master-detail layout.
  *
  * @param {Object} props
  * @param {Array} props.conversations
  * @param {number|null} props.selectedId
- * @param {number|null} props.currentTimecodeId   - conversation currently under the audio cursor
+ * @param {number|null} props.currentTimecodeId   - candidate window currently under the audio cursor
  * @param {boolean} props.isAudioPlaying
  * @param {(conversation: Object) => void} props.onSelect
  */
@@ -24,7 +24,7 @@ function ConversationsList({
 }) {
   if (!conversations || conversations.length === 0) {
     return (
-      <InlineEmptyState text="Aucune conversation séparée n’a encore été produite pour cette session." />
+      <InlineEmptyState text="Aucune fenêtre candidate n’a encore été produite pour cette session." />
     )
   }
 
@@ -32,7 +32,7 @@ function ConversationsList({
     <ul
       className="flex h-full max-h-[640px] flex-col gap-2 overflow-y-auto pr-1"
       role="list"
-      aria-label="Conversations de la session"
+      aria-label="Fenêtres candidates de la session"
     >
       {conversations.map(conversation => {
         const selected = selectedId === conversation.id
@@ -68,7 +68,7 @@ function ConversationsList({
                     {conversation.ordre}
                   </span>
                   <span className="min-w-0 truncate text-sm font-medium">
-                    {conversation.title || `Conversation ${conversation.ordre}`}
+                    {conversation.title || `Fenêtre candidate ${conversation.ordre}`}
                   </span>
                 </div>
                 <Badge variant="outline" className={badgeToneClass('primary')}>

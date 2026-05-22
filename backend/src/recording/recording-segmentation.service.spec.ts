@@ -124,9 +124,27 @@ describe('RecordingSegmentationService', () => {
       transcribeRecordingFromS3: jest.fn().mockResolvedValue({
         duration: 80,
         segments: [
-          { start: 0, end: 5, text: 'Bonjour.' },
-          { start: 8, end: 16, text: 'Je vous appelle pour votre contrat.' },
-          { start: 55, end: 62, text: 'Merci bonne journée.' },
+          {
+            start: 0,
+            end: 5,
+            text: 'Bonjour.',
+            words: [{ word: 'Bonjour', start: 0.5, end: 1.1 }],
+          },
+          {
+            start: 8,
+            end: 16,
+            text: 'Je vous appelle pour votre contrat.',
+            words: [
+              { word: 'Je', start: 8.1, end: 8.2 },
+              { word: 'contrat', start: 14.8, end: 15.5 },
+            ],
+          },
+          {
+            start: 55,
+            end: 62,
+            text: 'Merci bonne journée.',
+            words: [{ word: 'Merci', start: 55.2, end: 55.6 }],
+          },
         ],
       }),
     };
@@ -146,6 +164,11 @@ describe('RecordingSegmentationService', () => {
       text: 'Bonjour. Je vous appelle pour votre contrat.',
     });
     expect(result[1].startTime).toBe(55);
+    expect(result[0].wordsJson).toEqual([
+      { word: 'Bonjour', start: 0.5, end: 1.1 },
+      { word: 'Je', start: 8.1, end: 8.2 },
+      { word: 'contrat', start: 14.8, end: 15.5 },
+    ]);
   });
 
   it('enrichit les portes mobiles sans transcription depuis Whisper complet', async () => {
@@ -191,9 +214,27 @@ describe('RecordingSegmentationService', () => {
     const result = await service.ensureSegmentsForRecording('recordings/c.mp4', {
       duration: 700,
       segments: [
-        { start: 30, end: 75, text: 'Bonjour madame, je viens pour la fibre.' },
-        { start: 200, end: 250, text: 'On peut prendre deux minutes ?' },
-        { start: 300, end: 360, text: 'Vous êtes chez quel fournisseur ?' },
+        {
+          start: 30,
+          end: 75,
+          text: 'Bonjour madame, je viens pour la fibre.',
+          words: [
+            { word: 'Bonjour', start: 30.2, end: 30.7 },
+            { word: 'fibre', start: 70, end: 70.4 },
+          ],
+        },
+        {
+          start: 200,
+          end: 250,
+          text: 'On peut prendre deux minutes ?',
+          words: [{ word: 'minutes', start: 220, end: 220.5 }],
+        },
+        {
+          start: 300,
+          end: 360,
+          text: 'Vous êtes chez quel fournisseur ?',
+          words: [{ word: 'fournisseur', start: 330, end: 331 }],
+        },
       ],
     });
 
@@ -205,10 +246,25 @@ describe('RecordingSegmentationService', () => {
       reviewStatus: 'NOT_REQUIRED',
       confidence: 0.82,
       text: 'Bonjour madame, je viens pour la fibre.',
+      sourceTranscriptSegments: [
+        { start: 30, end: 75, text: 'Bonjour madame, je viens pour la fibre.' },
+      ],
     });
     expect(result[1].text).toBe(
       'On peut prendre deux minutes ? Vous êtes chez quel fournisseur ?',
     );
+    expect(result[1].sourceTranscriptSegments).toEqual([
+      { start: 200, end: 250, text: 'On peut prendre deux minutes ?' },
+      { start: 300, end: 360, text: 'Vous êtes chez quel fournisseur ?' },
+    ]);
+    expect(result[0].wordsJson).toEqual([
+      { word: 'Bonjour', start: 30.2, end: 30.7 },
+      { word: 'fibre', start: 70, end: 70.4 },
+    ]);
+    expect(result[1].wordsJson).toEqual([
+      { word: 'minutes', start: 220, end: 220.5 },
+      { word: 'fournisseur', start: 330, end: 331 },
+    ]);
     expect(transcriptionService.transcribeRecordingFromS3).not.toHaveBeenCalled();
     expect(prisma.recordingConversationSegment.createMany).not.toHaveBeenCalled();
   });
@@ -239,7 +295,16 @@ describe('RecordingSegmentationService', () => {
     const result = await service.ensureSegmentsForRecording('recordings/d.mp4', {
       duration: 180,
       segments: [
-        { start: 95, end: 115, text: 'Bonjour je suis bien à la bonne adresse.' },
+        {
+          start: 95,
+          end: 115,
+          text: 'Bonjour je suis bien à la bonne adresse.',
+          words: [
+            { word: 'hors', start: 96, end: 97 },
+            { word: 'Bonjour', start: 101, end: 101.4 },
+            { word: 'adresse', start: 114, end: 114.6 },
+          ],
+        },
         { start: 140, end: 150, text: 'Texte hors porte.' },
       ],
     });
@@ -248,6 +313,13 @@ describe('RecordingSegmentationService', () => {
     expect(result[0].text).toBe(
       'Bonjour je suis bien à la bonne adresse.',
     );
+    expect(result[0].sourceTranscriptSegments).toEqual([
+      { start: 95, end: 115, text: 'Bonjour je suis bien à la bonne adresse.' },
+    ]);
+    expect(result[0].wordsJson).toEqual([
+      { word: 'Bonjour', start: 101, end: 101.4 },
+      { word: 'adresse', start: 114, end: 114.6 },
+    ]);
     expect(result[0].speechScore).toBe(50);
   });
 });

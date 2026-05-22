@@ -285,6 +285,36 @@ const GET_COACHING_SESSION = `
         endTime
         transcriptText
         readableTranscriptText
+        dialogueTurns {
+          speaker
+          startTime
+          endTime
+          text
+          rawText
+          normalizedText
+          sourceQuote
+          confidence
+          speakerConfidence
+          textConfidence
+          correctionLevel
+          normalizations {
+            raw
+            normalized
+            type
+            confidence
+            meaningChanged
+            reason
+          }
+          scorable
+          displayable
+          blockType
+          exclusionReason
+          reason
+        }
+        dialoguePromptVersion
+        conversationKind
+        usableForScoring
+        scoreabilityReason
         status
         reviewReason
         overallScore
@@ -313,6 +343,10 @@ const GET_COACHING_SESSION = `
           startTime
           endTime
           reason
+          evidenceCompleteness
+          missingBecause
+          scoreable
+          sourceTurnIds
           reviewStatus
         }
         createdAt

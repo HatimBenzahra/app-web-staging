@@ -1,8 +1,3 @@
-/**
- * Mapping utilities: Prisma rows → GraphQL DTOs.
- * Pure functions, no DI.
- */
-
 import type {
   CoachingAnalysisJobStatusDto,
   CoachingConversationStatusDto,
@@ -11,6 +6,8 @@ import type {
   CoachingReviewStatusDto,
   CoachingSessionStatusDto,
   CoachingStepCoverageStatusDto,
+  CoachingDialogueNormalizationDto,
+  CoachingDialogueTurnDto,
 } from '../coaching.dto';
 
 type AnalysisJobLike = {
@@ -70,6 +67,10 @@ type CriterionEvidenceLike = {
   startTime?: number | null;
   endTime?: number | null;
   reason?: string | null;
+  evidenceCompleteness?: string | null;
+  missingBecause?: string | null;
+  scoreable?: boolean | null;
+  sourceTurnIds?: unknown;
   reviewStatus: string;
 };
 
@@ -81,6 +82,12 @@ type ConversationEvaluationLike = {
   endTime?: number | null;
   transcriptText?: string | null;
   readableTranscriptText?: string | null;
+  dialogueTurns?: unknown;
+  dialoguePromptVersion?: string | null;
+  dialogueRawResponse?: string | null;
+  conversationKind?: string | null;
+  usableForScoring?: boolean | null;
+  scoreabilityReason?: string | null;
   status: string;
   reviewReason?: string | null;
   overallScore?: number | null;
@@ -102,7 +109,7 @@ type ConversationEvaluationLike = {
   updatedAt: Date;
 };
 
-type SessionLike = {
+export type SessionLike = {
   id: number;
   s3KeyOriginal: string;
   roomName?: string | null;
@@ -169,6 +176,125 @@ export function pipelineStatus(
     return 'PROCESSING';
   }
   return 'PENDING';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function normalizeDialogueTurns(value: unknown): CoachingDialogueTurnDto[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map<CoachingDialogueTurnDto | null>((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+      const text = typeof item.text === 'string' ? item.text.trim() : '';
+      if (!text) {
+        return null;
+      }
+      const confidence = Number(item.confidence);
+      const speakerConfidence = Number(item.speakerConfidence);
+      const textConfidence = Number(item.textConfidence);
+      const startTime = Number(item.startTime);
+      const endTime = Number(item.endTime);
+      return {
+        speaker:
+          typeof item.speaker === 'string' && item.speaker
+            ? item.speaker
+            : 'UNKNOWN',
+        startTime: Number.isFinite(startTime) ? startTime : undefined,
+        endTime: Number.isFinite(endTime) ? endTime : undefined,
+        text,
+        rawText:
+          typeof item.rawText === 'string' && item.rawText.trim()
+            ? item.rawText.trim()
+            : undefined,
+        normalizedText:
+          typeof item.normalizedText === 'string' && item.normalizedText.trim()
+            ? item.normalizedText.trim()
+            : undefined,
+        sourceQuote:
+          typeof item.sourceQuote === 'string' && item.sourceQuote.trim()
+            ? item.sourceQuote.trim()
+            : undefined,
+        confidence: Number.isFinite(confidence)
+          ? Math.max(0, Math.min(1, confidence))
+          : 0.5,
+        speakerConfidence: Number.isFinite(speakerConfidence)
+          ? Math.max(0, Math.min(1, speakerConfidence))
+          : undefined,
+        textConfidence: Number.isFinite(textConfidence)
+          ? Math.max(0, Math.min(1, textConfidence))
+          : undefined,
+        correctionLevel:
+          typeof item.correctionLevel === 'string'
+            ? item.correctionLevel
+            : undefined,
+        normalizations: normalizeDialogueNormalizations(item.normalizations),
+        scorable: item.scorable !== false,
+        displayable: item.displayable !== false,
+        blockType:
+          typeof item.blockType === 'string' && item.blockType.trim()
+            ? item.blockType.trim()
+            : undefined,
+        exclusionReason:
+          typeof item.exclusionReason === 'string' &&
+          item.exclusionReason.trim()
+            ? item.exclusionReason.trim()
+            : undefined,
+        reason:
+          typeof item.reason === 'string' && item.reason.trim()
+            ? item.reason.trim()
+            : undefined,
+      };
+    })
+    .filter((turn): turn is CoachingDialogueTurnDto => Boolean(turn));
+}
+
+function normalizeDialogueNormalizations(
+  value: unknown,
+): CoachingDialogueNormalizationDto[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item): CoachingDialogueNormalizationDto | null => {
+      if (!isRecord(item)) return null;
+      const raw = typeof item.raw === 'string' ? item.raw.trim() : '';
+      const normalized =
+        typeof item.normalized === 'string' ? item.normalized.trim() : '';
+      const type = typeof item.type === 'string' ? item.type : 'NONE';
+      const confidence = Number(item.confidence);
+      if (!raw || !normalized) return null;
+      return {
+        raw,
+        normalized,
+        type,
+        confidence: Number.isFinite(confidence)
+          ? Math.max(0, Math.min(1, confidence))
+          : 0.5,
+        meaningChanged: Boolean(item.meaningChanged),
+        reason:
+          typeof item.reason === 'string' && item.reason.trim()
+            ? item.reason.trim()
+            : undefined,
+      };
+    })
+    .filter(
+      (normalization): normalization is CoachingDialogueNormalizationDto =>
+        Boolean(normalization),
+    );
+}
+
+export function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 export function mapAnalysisJob(job: AnalysisJobLike): CoachingAnalysisJobDto {
@@ -270,130 +396,4 @@ export function buildPipelineSteps(
   ];
 }
 
-export function mapSession(
-  session: SessionLike,
-  audioUrl?: string,
-): CoachingSessionDto {
-  const analysisJob = session.analysisJobs?.[0]
-    ? mapAnalysisJob(session.analysisJobs[0])
-    : undefined;
-
-  return {
-    id: session.id,
-    s3KeyOriginal: session.s3KeyOriginal,
-    roomName: session.roomName ?? undefined,
-    commercialId: session.commercialId ?? undefined,
-    commercialNom: session.commercial
-      ? `${session.commercial.prenom} ${session.commercial.nom}`
-      : undefined,
-    directeurId: session.directeurId ?? undefined,
-    salesPlanVersionId: session.salesPlanVersionId,
-    salesPlanNom: session.salesPlanVersion?.salesPlan?.nom ?? undefined,
-    salesPlanVersionLabel: session.salesPlanVersion?.label ?? undefined,
-    status: session.status as CoachingSessionStatusDto,
-    reviewStatus: session.reviewStatus as CoachingReviewStatusDto,
-    confidenceScore: session.confidenceScore ?? undefined,
-    identificationSource: session.identificationSource ?? undefined,
-    transcriptText: session.transcriptText ?? undefined,
-    readableTranscriptText: session.readableTranscriptText ?? undefined,
-    transcriptDurationSec: session.transcriptDurationSec ?? undefined,
-    whisperSegmentsCount: session.whisperSegmentsCount ?? undefined,
-    overallScore: session.overallScore ?? undefined,
-    planCoverageScore: session.planCoverageScore ?? undefined,
-    executionQualityScore: session.executionQualityScore ?? undefined,
-    objectionHandlingScore: session.objectionHandlingScore ?? undefined,
-    listeningRatioScore: session.listeningRatioScore ?? undefined,
-    closingScore: session.closingScore ?? undefined,
-    summary: session.summary ?? undefined,
-    strengths: session.strengths ?? [],
-    improvements: session.improvements ?? [],
-    recommendations: session.recommendations ?? [],
-    llmModel: session.llmModel ?? undefined,
-    scoringMode: session.scoringMode ?? undefined,
-    scoringSchemaVersion: session.scoringSchemaVersion ?? undefined,
-    evidencePromptVersion: session.evidencePromptVersion ?? undefined,
-    evaluationPromptVersion: session.evaluationPromptVersion ?? undefined,
-    failureReason: session.failureReason ?? undefined,
-    reviewReason: session.reviewReason ?? undefined,
-    reviewNotes: session.reviewNotes ?? undefined,
-    audioUrl,
-    launchedAt: session.launchedAt,
-    processedAt: session.processedAt ?? undefined,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    analysisJob,
-    pipelineSteps: buildPipelineSteps(session, analysisJob),
-    stepEvaluations:
-      session.stepEvaluations?.map((step) => ({
-        id: step.id,
-        ordre: step.ordre,
-        titre: step.titre,
-        coverageStatus: step.coverageStatus as CoachingStepCoverageStatusDto,
-        score: step.score ?? undefined,
-        startTime: step.startTime ?? undefined,
-        endTime: step.endTime ?? undefined,
-        verbatim: step.verbatim ?? undefined,
-        feedback: step.feedback ?? undefined,
-        recommendation: step.recommendation ?? undefined,
-      })) ?? [],
-    keyMoments:
-      session.keyMoments?.map((moment) => ({
-        id: moment.id,
-        type: moment.type,
-        title: moment.title,
-        summary: moment.summary ?? undefined,
-        startTime: moment.startTime ?? undefined,
-        endTime: moment.endTime ?? undefined,
-        verbatim: moment.verbatim ?? undefined,
-        importance: moment.importance ?? undefined,
-        createdAt: moment.createdAt,
-        updatedAt: moment.updatedAt,
-      })) ?? [],
-    conversationEvaluations:
-      session.conversationEvaluations?.map((conversation) => ({
-        id: conversation.id,
-        ordre: conversation.ordre,
-        title: conversation.title ?? undefined,
-        startTime: conversation.startTime ?? undefined,
-        endTime: conversation.endTime ?? undefined,
-        transcriptText: conversation.transcriptText ?? undefined,
-        readableTranscriptText:
-          conversation.readableTranscriptText ?? undefined,
-        status: conversation.status as CoachingConversationStatusDto,
-        reviewReason: conversation.reviewReason ?? undefined,
-        overallScore: conversation.overallScore ?? undefined,
-        planCoverageScore: conversation.planCoverageScore ?? undefined,
-        executionQualityScore: conversation.executionQualityScore ?? undefined,
-        objectionHandlingScore:
-          conversation.objectionHandlingScore ?? undefined,
-        listeningRatioScore: conversation.listeningRatioScore ?? undefined,
-        closingScore: conversation.closingScore ?? undefined,
-        summary: conversation.summary ?? undefined,
-        strengths: conversation.strengths ?? [],
-        improvements: conversation.improvements ?? [],
-        recommendations: conversation.recommendations ?? [],
-        scoringMode: conversation.scoringMode ?? undefined,
-        scoringSchemaVersion: conversation.scoringSchemaVersion ?? undefined,
-        evidencePromptVersion: conversation.evidencePromptVersion ?? undefined,
-        evaluationPromptVersion:
-          conversation.evaluationPromptVersion ?? undefined,
-        criterionEvidences:
-          conversation.criterionEvidences?.map((evidence) => ({
-            id: evidence.id,
-            stepOrder: evidence.stepOrder,
-            criterionKey: evidence.criterionKey,
-            criterionLabel: evidence.criterionLabel,
-            found: evidence.found,
-            quality: evidence.quality,
-            confidence: evidence.confidence,
-            verbatim: evidence.verbatim ?? undefined,
-            startTime: evidence.startTime ?? undefined,
-            endTime: evidence.endTime ?? undefined,
-            reason: evidence.reason ?? undefined,
-            reviewStatus: evidence.reviewStatus,
-          })) ?? [],
-        createdAt: conversation.createdAt,
-        updatedAt: conversation.updatedAt,
-      })) ?? [],
-  };
-}
+export { mapSession } from './coaching-session-mapping.utils';

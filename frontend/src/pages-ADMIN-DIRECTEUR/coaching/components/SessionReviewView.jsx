@@ -24,7 +24,6 @@ import ConversationsList from './ConversationsList'
 import ConversationDetail from './ConversationDetail'
 import ContinuousReader from './ContinuousReader'
 import RawTranscriptView from './RawTranscriptView'
-import StepsDialog from './StepsDialog'
 import { FieldBlock } from './CoachingShared'
 import { useAudioSync } from './hooks/useAudioSync'
 
@@ -47,13 +46,11 @@ export default function SessionReviewView({ logic }) {
 
   const [viewMode, setViewMode] = React.useState('split')
   const [selectedConversationId, setSelectedConversationId] = React.useState(null)
-  const [stepsDialogOpen, setStepsDialogOpen] = React.useState(false)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
 
   // Reset transient UI state when switching session.
   React.useEffect(() => {
     setSelectedConversationId(null)
-    setStepsDialogOpen(false)
     setDrawerOpen(false)
     resetAudio()
   }, [session?.id, resetAudio])
@@ -116,7 +113,6 @@ export default function SessionReviewView({ logic }) {
         isAudioPlaying={isAudioPlaying}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onOpenSteps={() => setStepsDialogOpen(true)}
       />
 
       {viewMode === 'split' ? (
@@ -201,15 +197,6 @@ export default function SessionReviewView({ logic }) {
         </SheetContent>
       </Sheet>
 
-      <StepsDialog
-        open={stepsDialogOpen}
-        onOpenChange={setStepsDialogOpen}
-        steps={session.stepEvaluations || []}
-        audioAvailable={Boolean(session.audioUrl)}
-        playingRangeId={playingRangeId}
-        isAudioPlaying={isAudioPlaying}
-        onToggleRange={togglePlayRange}
-      />
     </div>
   )
 }
@@ -319,6 +306,39 @@ function buildActiveRangeInfo(playingRangeId, session, conversations) {
       label: step.titre || `Étape ${step.ordre}`,
       startTime: step.startTime,
       endTime: step.endTime,
+    }
+  }
+
+  if (playingRangeId.startsWith('evidence-')) {
+    const raw = playingRangeId.slice('evidence-'.length)
+    for (const conversation of conversations) {
+      const evidence = (conversation.criterionEvidences || []).find(
+        item => String(item.id || `${item.stepOrder}-${item.criterionKey}`) === raw
+      )
+      if (evidence) {
+        return {
+          label: `${evidence.criterionLabel || `Étape ${evidence.stepOrder}`} · Conversation ${conversation.ordre}`,
+          startTime: evidence.startTime,
+          endTime: evidence.endTime,
+        }
+      }
+    }
+  }
+
+  if (playingRangeId.startsWith('dialogue-')) {
+    const match = playingRangeId.match(/^dialogue-(\d+)-turn-(\d+)$/)
+    if (match) {
+      const conversationId = Number(match[1])
+      const index = Number(match[2])
+      const conversation = conversations.find(item => item.id === conversationId)
+      const turn = (conversation?.dialogueTurns || [])[index]
+      if (conversation && turn) {
+        return {
+          label: `Tour de parole · Conversation ${conversation.ordre}`,
+          startTime: turn.startTime,
+          endTime: turn.endTime,
+        }
+      }
     }
   }
 

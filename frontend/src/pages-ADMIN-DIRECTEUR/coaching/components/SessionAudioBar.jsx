@@ -1,6 +1,6 @@
 import React from 'react'
 import { Button } from '@/components/ui/button'
-import { FileText, Headphones, ListChecks, Rows3, Square } from 'lucide-react'
+import { FileText, Headphones, Rows3, Square } from 'lucide-react'
 import AudioPlayer from '@/components/AudioPlayer'
 import { InlineEmptyState, ToneBadge } from './CoachingShared'
 import { formatSeconds } from '../coaching.utils'
@@ -16,7 +16,6 @@ const VIEW_MODES = [
  *  - the WaveSurfer audio player (or an empty state)
  *  - a thin status row (currently playing range + duration)
  *  - the layout-mode toggle (per-conversation / continuous reading / raw transcript)
- *  - the "Voir les étapes" shortcut
  *
  * @param {Object} props
  * @param {Object} props.session
@@ -25,7 +24,6 @@ const VIEW_MODES = [
  * @param {boolean} props.isAudioPlaying
  * @param {'split'|'continuous'|'raw'} props.viewMode
  * @param {(mode: 'split'|'continuous'|'raw') => void} props.onViewModeChange
- * @param {() => void} props.onOpenSteps
  */
 function SessionAudioBar({
   session,
@@ -34,7 +32,6 @@ function SessionAudioBar({
   isAudioPlaying,
   viewMode,
   onViewModeChange,
-  onOpenSteps,
 }) {
   return (
     <div className="sticky top-0 z-30 -mx-1 rounded-lg border border-accent/25 bg-accent/5 px-4 py-4 shadow-sm backdrop-blur-sm sm:mx-0">
@@ -69,10 +66,6 @@ function SessionAudioBar({
               )
             })}
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={onOpenSteps}>
-            <ListChecks className="mr-2 h-4 w-4" />
-            Voir les étapes
-          </Button>
         </div>
       </div>
 
@@ -103,7 +96,7 @@ function SessionAudioBar({
             </span>
           </>
         ) : (
-          <span>Sélectionnez une conversation ou un verbatim pour cibler la lecture.</span>
+          <span>Sélectionnez une fenêtre candidate ou un verbatim pour cibler la lecture.</span>
         )}
       </div>
     </div>

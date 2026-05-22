@@ -20,11 +20,12 @@ import { badgeToneClass, formatSeconds, numberOrZero } from '../coaching.utils'
 import { ToneBadge } from './CoachingShared'
 import ChatTranscript from './ChatTranscript'
 import MiniScore from './MiniScore'
+import PlanPipelineTable from './PlanPipelineTable'
 
 const VERBATIM_BUDGET = 4
 
 /**
- * Detail panel for a single conversation. Renders header (status + range + play),
+ * Detail panel for a single candidate window. Renders header (status + range + play),
  * a compact score row, harmonised signal cards, key moments, verbatims and the
  * chat-style transcript.
  *
@@ -48,7 +49,7 @@ function ConversationDetail({
     return (
       <Card className="border-border/70">
         <CardContent className="flex min-h-[280px] items-center justify-center text-sm text-muted-foreground">
-          Sélectionnez une conversation dans la liste pour afficher son analyse détaillée.
+          Sélectionnez une fenêtre candidate dans la liste pour afficher son analyse détaillée.
         </CardContent>
       </Card>
     )
@@ -58,7 +59,6 @@ function ConversationDetail({
   const isPlayingConv = isAudioPlaying && playingRangeId === conversationRangeId
   const canPlayConv =
     audioAvailable && conversation.startTime !== null && conversation.startTime !== undefined
-  const stepScores = Array.isArray(conversation.stepScores) ? conversation.stepScores : []
   const keyMoments = filterMomentsForConversation(sessionKeyMoments, conversation)
   const transcript = conversation.readableTranscriptText || conversation.transcriptText || ''
   const verbatims = collectVerbatims(conversation, keyMoments).slice(0, VERBATIM_BUDGET)
@@ -74,7 +74,7 @@ function ConversationDetail({
         <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <ToneBadge status="conversation">Conversation {conversation.ordre}</ToneBadge>
+              <ToneBadge status="conversation">Fenêtre candidate {conversation.ordre}</ToneBadge>
               <ToneBadge status={conversation.status}>
                 {CONVERSATION_LABELS[conversation.status] || conversation.status}
               </ToneBadge>
@@ -84,7 +84,7 @@ function ConversationDetail({
               </span>
             </div>
             <CardTitle className="text-xl">
-              {conversation.title || `Conversation ${conversation.ordre}`}
+              {conversation.title || `Fenêtre candidate ${conversation.ordre}`}
             </CardTitle>
             {conversation.summary ? (
               <p className="text-sm leading-6 text-muted-foreground">{conversation.summary}</p>
@@ -114,7 +114,7 @@ function ConversationDetail({
               ) : (
                 <PlayCircle className="mr-2 h-4 w-4" />
               )}
-              {isPlayingConv ? 'Pause' : 'Écouter la conv'}
+              {isPlayingConv ? 'Pause' : 'Écouter fenêtre'}
             </Button>
           </div>
         </CardHeader>
@@ -165,14 +165,27 @@ function ConversationDetail({
             />
           </div>
 
-          {stepScores.length > 0 ? (
-            <StepCoverageStrip stepScores={stepScores} />
-          ) : (
-            <p className="rounded-md border border-dashed border-border/70 bg-muted/15 px-3 py-2 text-xs italic text-muted-foreground">
-              <Target className="mr-1.5 inline h-3 w-3" />
-              Couverture par étape non calculée pour cette conversation.
-            </p>
-          )}
+          <PlanPipelineTable
+            conversation={conversation}
+            audioAvailable={audioAvailable}
+            playingRangeId={playingRangeId}
+            isAudioPlaying={isAudioPlaying}
+            onToggleRange={onToggleRange}
+            rangeIdPrefix={`dialogue-${conversation.id}`}
+          />
+
+          {conversation.usableForScoring === false ? (
+            <div className="flex items-start gap-3 rounded-lg border border-chart-5/30 bg-chart-5/10 px-3 py-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-chart-5" />
+              <div>
+                <div className="font-semibold">Fenêtre non scorable automatiquement</div>
+                <p className="mt-1 text-muted-foreground">
+                  {conversation.scoreabilityReason ||
+                    "La transcription finale n'a pas assez de passages prospect fiables."}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {conversation.reviewReason ? (
             <div className="flex items-start gap-3 rounded-lg border border-chart-5/30 bg-chart-5/10 px-3 py-3 text-sm">
@@ -249,14 +262,21 @@ function ConversationDetail({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            Transcription de la conversation
+            Transcription finale
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Version retravaillée par l’IA — bulles de chat pour distinguer les intervenants.
+            Version nettoyée et validée de cette fenêtre candidate avant toute analyse du plan de vente.
           </p>
         </CardHeader>
         <CardContent>
-          <ChatTranscript transcript={transcript} />
+          <ChatTranscript
+            transcript={transcript}
+            dialogueTurns={conversation.dialogueTurns || []}
+            audioAvailable={audioAvailable}
+            playingRangeId={playingRangeId}
+            isAudioPlaying={isAudioPlaying}
+            onToggleRange={onToggleRange}
+          />
         </CardContent>
       </Card>
     </div>

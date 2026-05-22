@@ -22,6 +22,14 @@ export interface WhisperSegment {
   start: number;
   end: number;
   text: string;
+  words?: WhisperWord[];
+}
+
+export interface WhisperWord {
+  word: string;
+  start: number;
+  end: number;
+  score?: number;
 }
 
 interface WhisperResponse {
@@ -29,6 +37,8 @@ interface WhisperResponse {
   segments: WhisperSegment[];
   duration: number;
   processing_time: number;
+  align_used?: boolean;
+  alignment_enabled?: boolean;
 }
 
 export type RecordingTranscriptionResult = {
@@ -330,7 +340,7 @@ export class TranscriptionService implements OnModuleDestroy {
         'audio.mp4',
       );
 
-      const url = `${this.whisperUrl}/transcribe/prospection?language=auto`;
+      const url = `${this.whisperUrl}/transcribe/prospection?language=auto&word_timestamps=true`;
 
       const controller = new AbortController();
       const timeout = setTimeout(
@@ -361,7 +371,10 @@ export class TranscriptionService implements OnModuleDestroy {
 
       if (!data.segments || data.segments.length === 0) return null;
 
-      return { segments: data.segments, duration: data.duration || 0 };
+      return {
+        segments: this.normalizeWhisperSegments(data.segments),
+        duration: data.duration || 0,
+      };
     } catch (error) {
       if (error?.name === 'AbortError') {
         this.logger.error(
@@ -372,6 +385,56 @@ export class TranscriptionService implements OnModuleDestroy {
       }
       return null;
     }
+  }
+
+  private normalizeWhisperSegments(segments: WhisperSegment[]): WhisperSegment[] {
+    return segments
+      .map((segment) => {
+        const start = Number(segment.start);
+        const end = Number(segment.end);
+        const text = typeof segment.text === 'string' ? segment.text.trim() : '';
+        const words = this.normalizeWhisperWords(segment.words);
+        return {
+          start,
+          end,
+          text,
+          ...(words.length > 0 ? { words } : {}),
+        };
+      })
+      .filter(
+        (segment) =>
+          Number.isFinite(segment.start) &&
+          Number.isFinite(segment.end) &&
+          segment.end > segment.start &&
+          segment.text.length > 0,
+      );
+  }
+
+  private normalizeWhisperWords(words: WhisperWord[] | undefined): WhisperWord[] {
+    if (!Array.isArray(words)) {
+      return [];
+    }
+
+    return words
+      .map((word) => {
+        const text = typeof word.word === 'string' ? word.word.trim() : '';
+        const start = Number(word.start);
+        const end = Number(word.end);
+        const score = Number(word.score);
+        return {
+          word: text,
+          start,
+          end,
+          ...(Number.isFinite(score) ? { score } : {}),
+        };
+      })
+      .filter(
+        (word) =>
+          word.word.length > 0 &&
+          Number.isFinite(word.start) &&
+          Number.isFinite(word.end) &&
+          word.end > word.start,
+      );
   }
 
   /**

@@ -3,8 +3,16 @@ import { PrismaService } from '../prisma.service';
 import {
   RecordingTranscriptionResult,
   TranscriptionService,
+  WhisperWord,
   WhisperSegment,
 } from '../transcription/transcription.service';
+
+type TranscriptWord = {
+  word: string;
+  start: number;
+  end: number;
+  score?: number;
+};
 
 export type CanonicalConversationSegment = {
   id: number;
@@ -21,6 +29,8 @@ export type CanonicalConversationSegment = {
   endTime: number;
   durationSec: number;
   text: string | null;
+  sourceTranscriptSegments: Array<{ start: number; end: number; text: string }> | null;
+  wordsJson: TranscriptWord[] | null;
   speechScore: number | null;
   s3KeySegment: string | null;
 };
@@ -82,6 +92,12 @@ export class RecordingSegmentationService {
       );
       const directText = segment.transcription?.trim() || null;
       const text = directText ?? whisperEnrichment.text;
+      const sourceTranscriptSegments =
+        whisperEnrichment.sourceTranscriptSegments.length > 0
+          ? whisperEnrichment.sourceTranscriptSegments
+          : null;
+      const wordsJson =
+        whisperEnrichment.words.length > 0 ? whisperEnrichment.words : null;
       const speechScore =
         segment.speechScore ?? whisperEnrichment.speechScore ?? null;
       const hasSpeech =
@@ -111,6 +127,8 @@ export class RecordingSegmentationService {
         endTime: segment.endTime,
         durationSec: segment.durationSec,
         text,
+        sourceTranscriptSegments,
+        wordsJson,
         speechScore,
         s3KeySegment: segment.s3KeySegment,
         classificationReason: directText
@@ -173,6 +191,8 @@ export class RecordingSegmentationService {
         endTime: block.endTime,
         durationSec: block.endTime - block.startTime,
         text: block.text,
+        sourceTranscriptSegments: block.sourceTranscriptSegments,
+        wordsJson: block.words,
         speechScore: block.speechScore,
         classificationReason:
           'Segment fallback construit depuis Whisper, sans événement porte mobile.',
@@ -216,6 +236,8 @@ export class RecordingSegmentationService {
     startTime: number;
     endTime: number;
     text: string;
+    sourceTranscriptSegments: Array<{ start: number; end: number; text: string }>;
+    words: TranscriptWord[];
     speechScore: number;
   }> {
     const sorted = segments
@@ -223,6 +245,7 @@ export class RecordingSegmentationService {
         start: Number(segment.start),
         end: Number(segment.end),
         text: segment.text?.trim() ?? '',
+        words: this.normalizeWords(segment.words),
       }))
       .filter(
         (segment) =>
@@ -238,6 +261,8 @@ export class RecordingSegmentationService {
       endTime: number;
       textParts: string[];
       speechDuration: number;
+      sourceTranscriptSegments: Array<{ start: number; end: number; text: string }>;
+      words: TranscriptWord[];
     }> = [];
     const maxGapSec = 20;
     const maxBlockDurationSec = 180;
@@ -255,6 +280,10 @@ export class RecordingSegmentationService {
           endTime: segment.end,
           textParts: [segment.text],
           speechDuration: segment.end - segment.start,
+          sourceTranscriptSegments: [
+            { start: segment.start, end: segment.end, text: segment.text },
+          ],
+          words: segment.words,
         });
         continue;
       }
@@ -262,6 +291,12 @@ export class RecordingSegmentationService {
       current.endTime = Math.max(current.endTime, segment.end);
       current.textParts.push(segment.text);
       current.speechDuration += segment.end - segment.start;
+      current.sourceTranscriptSegments.push({
+        start: segment.start,
+        end: segment.end,
+        text: segment.text,
+      });
+      current.words.push(...segment.words);
     }
 
     return blocks.map((block) => {
@@ -270,6 +305,8 @@ export class RecordingSegmentationService {
         startTime: block.startTime,
         endTime: block.endTime,
         text: block.textParts.join(' ').trim(),
+        sourceTranscriptSegments: block.sourceTranscriptSegments,
+        words: this.dedupeWords(block.words),
         speechScore: Math.round(
           Math.min(100, (block.speechDuration / duration) * 100),
         ),
@@ -281,9 +318,19 @@ export class RecordingSegmentationService {
     segments: WhisperSegment[],
     windowStart: number,
     windowEnd: number,
-  ): { text: string | null; speechScore: number | null } {
+  ): {
+    text: string | null;
+    speechScore: number | null;
+    sourceTranscriptSegments: Array<{ start: number; end: number; text: string }>;
+    words: TranscriptWord[];
+  } {
     if (!Number.isFinite(windowStart) || !Number.isFinite(windowEnd)) {
-      return { text: null, speechScore: null };
+      return {
+        text: null,
+        speechScore: null,
+        sourceTranscriptSegments: [],
+        words: [],
+      };
     }
 
     const windowDuration = Math.max(0.001, windowEnd - windowStart);
@@ -292,12 +339,17 @@ export class RecordingSegmentationService {
         const start = Number(segment.start);
         const end = Number(segment.end);
         const text = segment.text?.trim() ?? '';
+        const words = this.extractWordsForWindow(
+          this.normalizeWords(segment.words),
+          windowStart,
+          windowEnd,
+        );
         const overlap = Math.max(
           0,
           Math.min(end, windowEnd) - Math.max(start, windowStart),
         );
         const segmentDuration = Math.max(0.001, end - start);
-        return { start, end, text, overlap, segmentDuration };
+        return { start, end, text, words, overlap, segmentDuration };
       })
       .filter(
         (segment) =>
@@ -311,7 +363,12 @@ export class RecordingSegmentationService {
       .sort((a, b) => a.start - b.start);
 
     if (matching.length === 0) {
-      return { text: null, speechScore: null };
+      return {
+        text: null,
+        speechScore: null,
+        sourceTranscriptSegments: [],
+        words: [],
+      };
     }
 
     const speechDuration = matching.reduce(
@@ -321,9 +378,75 @@ export class RecordingSegmentationService {
 
     return {
       text: matching.map((segment) => segment.text).join(' ').trim(),
+      sourceTranscriptSegments: matching.map((segment) => ({
+        start: segment.start,
+        end: segment.end,
+        text: segment.text,
+      })),
+      words: this.dedupeWords(matching.flatMap((segment) => segment.words)),
       speechScore: Math.round(
         Math.min(100, (speechDuration / windowDuration) * 100),
       ),
     };
+  }
+
+  private normalizeWords(words: WhisperWord[] | undefined): TranscriptWord[] {
+    if (!Array.isArray(words)) {
+      return [];
+    }
+
+    return words
+      .map((word) => {
+        const text = typeof word.word === 'string' ? word.word.trim() : '';
+        const start = Number(word.start);
+        const end = Number(word.end);
+        const score = Number(word.score);
+        return {
+          word: text,
+          start,
+          end,
+          ...(Number.isFinite(score) ? { score } : {}),
+        };
+      })
+      .filter(
+        (word) =>
+          word.word.length > 0 &&
+          Number.isFinite(word.start) &&
+          Number.isFinite(word.end) &&
+          word.end > word.start,
+      )
+      .sort((a, b) => a.start - b.start);
+  }
+
+  private extractWordsForWindow(
+    words: TranscriptWord[],
+    windowStart: number,
+    windowEnd: number,
+  ): TranscriptWord[] {
+    return words.filter((word) => {
+      const overlap = Math.max(
+        0,
+        Math.min(word.end, windowEnd) - Math.max(word.start, windowStart),
+      );
+      const center = (word.start + word.end) / 2;
+      return (
+        overlap > 0 ||
+        (center >= windowStart && center <= windowEnd)
+      );
+    });
+  }
+
+  private dedupeWords(words: TranscriptWord[]): TranscriptWord[] {
+    const seen = new Set<string>();
+    const output: TranscriptWord[] = [];
+    for (const word of words.sort((a, b) => a.start - b.start)) {
+      const key = `${word.start.toFixed(2)}:${word.end.toFixed(2)}:${word.word.toLowerCase()}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      output.push(word);
+    }
+    return output;
   }
 }

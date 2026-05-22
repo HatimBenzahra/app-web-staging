@@ -464,6 +464,13 @@ model CoachingConversationEvaluation {
   endTime                Float?
   transcriptText         String?
   readableTranscriptText String?
+  dialogueTurns          Json?
+  dialoguePromptVersion  String?
+  dialogueRawResponse    String?
+  conversationKind       String?
+  usableForScoring       Boolean?
+  scoreabilityReason     String?
+  dialogueQualityJson    Json?
   status                 CoachingConversationStatus @default(COMPLETED)
   reviewReason           String?
   overallScore           Int?
@@ -507,6 +514,10 @@ model CoachingCriterionEvidence {
   startTime                   Float?
   endTime                     Float?
   reason                      String?
+  evidenceCompleteness        String?
+  missingBecause              String?
+  scoreable                   Boolean                      @default(true)
+  sourceTurnIds               Json?
   reviewStatus                CoachingEvidenceReviewStatus @default(NOT_REQUIRED)
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
@@ -838,6 +849,8 @@ model RecordingConversationSegment {
   endTime            Float
   durationSec        Float
   text               String?
+  sourceTranscriptSegments Json?
+  wordsJson          Json?
   speechScore        Int?
   s3KeySegment       String?
   classificationReason String?

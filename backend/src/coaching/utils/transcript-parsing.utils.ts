@@ -5,7 +5,7 @@
 
 export type TranscriptSegment = { start: number; end: number; text: string };
 
-/** Parse "[mm:ss-mm:ss] text" lines into segments with absolute time in seconds. */
+/** Parse "[mm:ss-mm:ss] text" and "[mm:ss → mm:ss] text" lines. */
 export function parseTimestampedTranscript(
   transcriptText: string,
 ): TranscriptSegment[] {
@@ -13,7 +13,7 @@ export function parseTimestampedTranscript(
     .split('\n')
     .map((line) => {
       const match = line.match(
-        /^\[(\d{1,3}):(\d{2})-(\d{1,3}):(\d{2})\]\s*(.*)$/,
+        /^\[(\d{1,3}):(\d{2})\s*(?:-|→|->)\s*(\d{1,3}):(\d{2})\]\s*(.*)$/,
       );
       if (!match) {
         return null;

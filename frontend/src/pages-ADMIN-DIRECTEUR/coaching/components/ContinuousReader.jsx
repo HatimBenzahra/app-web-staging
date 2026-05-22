@@ -4,10 +4,11 @@ import { PauseCircle, PlayCircle } from 'lucide-react'
 import { CONVERSATION_LABELS } from '../coaching.constants'
 import { formatSeconds, numberOrZero } from '../coaching.utils'
 import { InlineEmptyState, ToneBadge } from './CoachingShared'
+import ChatTranscript from './ChatTranscript'
 
 /**
- * Single-scroll layout that stacks every conversation transcript with sticky
- * "Conversation N · MM:SS → MM:SS" headers.
+ * Single-scroll layout that stacks every candidate window transcript with sticky
+ * "Fenêtre candidate N · MM:SS → MM:SS" headers.
  *
  * @param {Object} props
  * @param {Array} props.conversations
@@ -25,7 +26,7 @@ function ContinuousReader({
 }) {
   if (!conversations || conversations.length === 0) {
     return (
-      <InlineEmptyState text="Aucune conversation séparée n’a encore été produite pour cette session." />
+      <InlineEmptyState text="Aucune fenêtre candidate n’a encore été produite pour cette session." />
     )
   }
 
@@ -37,7 +38,6 @@ function ContinuousReader({
         const canPlay =
           audioAvailable && conversation.startTime !== null && conversation.startTime !== undefined
         const transcript = conversation.readableTranscriptText || conversation.transcriptText || ''
-        const lines = transcript.split('\n').filter(Boolean)
 
         return (
           <section
@@ -57,7 +57,7 @@ function ContinuousReader({
                   {conversation.ordre}
                 </span>
                 <h3 id={`continuous-conv-${conversation.id}`} className="text-sm font-semibold">
-                  {conversation.title || `Conversation ${conversation.ordre}`}
+                  {conversation.title || `Fenêtre candidate ${conversation.ordre}`}
                 </h3>
                 <ToneBadge status={conversation.status}>
                   {CONVERSATION_LABELS[conversation.status] || conversation.status}
@@ -91,20 +91,19 @@ function ContinuousReader({
                 </p>
               ) : null}
 
-              {lines.length > 0 ? (
-                <div className="divide-y divide-border/60 rounded-md border border-border/70 bg-muted/15 text-sm leading-7">
-                  {lines.map((line, index) => (
-                    <p
-                      key={`${conversation.id}-${index}-${line.slice(0, 16)}`}
-                      className="whitespace-pre-wrap px-4 py-3"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
+              {transcript || conversation.dialogueTurns?.length > 0 ? (
+                <ChatTranscript
+                  transcript={transcript}
+                  dialogueTurns={conversation.dialogueTurns || []}
+                  audioAvailable={audioAvailable}
+                  playingRangeId={playingRangeId}
+                  isAudioPlaying={isAudioPlaying}
+                  onToggleRange={onToggleRange}
+                  rangeIdPrefix={`dialogue-${conversation.id}`}
+                />
               ) : (
                 <InlineEmptyState
-                  text="Transcription indisponible pour cette conversation."
+                  text="Transcription indisponible pour cette fenêtre candidate."
                   compact
                 />
               )}
