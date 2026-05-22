@@ -82,4 +82,31 @@ export class ImmeubleResolver {
   removeEtageFromImmeuble(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
     return this.immeubleService.removeEtage(id, user.id, user.role);
   }
+
+  @Mutation(() => Immeuble)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  createImmeubleEmpty(
+    @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
+  ) {
+    return this.immeubleService.createEmpty(createImmeubleInput);
+  }
+
+  @Mutation(() => Immeuble)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  addEtageEmpty(
+    @Args('immeubleId', { type: () => Int }) immeubleId: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.immeubleService.addEtageEmpty(immeubleId, user.id, user.role);
+  }
+
+  @Mutation(() => Immeuble)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  addPorteToEtageCapped(
+    @Args('immeubleId', { type: () => Int }) immeubleId: number,
+    @Args('etage', { type: () => Int }) etage: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.immeubleService.addPorteToEtageCapped(immeubleId, etage, user.id, user.role);
+  }
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -494,6 +495,30 @@ export class PorteService {
   /**
    * Récupère l'historique des statuts d'un immeuble
    */
+  async createCapped(createPorteInput: CreatePorteInput) {
+    const immeuble = await this.prisma.immeuble.findUnique({
+      where: { id: createPorteInput.immeubleId },
+      select: { id: true, nbPortesParEtage: true, nbEtages: true },
+    });
+    if (!immeuble) {
+      throw new NotFoundException(`Immeuble ${createPorteInput.immeubleId} introuvable`);
+    }
+    if (createPorteInput.etage < 1 || createPorteInput.etage > immeuble.nbEtages) {
+      throw new BadRequestException(
+        `Étage ${createPorteInput.etage} invalide (1 à ${immeuble.nbEtages}).`,
+      );
+    }
+    const count = await this.prisma.porte.count({
+      where: { immeubleId: createPorteInput.immeubleId, etage: createPorteInput.etage },
+    });
+    if (count >= immeuble.nbPortesParEtage) {
+      throw new BadRequestException(
+        `L'étage ${createPorteInput.etage} a déjà atteint sa capacité (${immeuble.nbPortesParEtage} portes).`,
+      );
+    }
+    return this.prisma.porte.create({ data: createPorteInput });
+  }
+
   async getStatusHistoriqueByImmeuble(immeubleId: number) {
     return this.prisma.statusHistorique.findMany({
       where: {

@@ -65,6 +65,12 @@ export class PorteResolver {
     return this.porteService.remove(id, user.id, user.role);
   }
 
+  @Mutation(() => Porte)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  createPorteCapped(@Args('createPorteInput') createPorteInput: CreatePorteInput) {
+    return this.porteService.createCapped(createPorteInput);
+  }
+
   @Mutation(() => Boolean)
   @Roles('admin', 'directeur', 'manager', 'commercial')
   async createPortesForImmeuble(

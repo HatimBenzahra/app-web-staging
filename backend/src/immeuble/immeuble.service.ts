@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -405,6 +406,83 @@ export class ImmeubleService {
     }
 
     return updatedImmeuble;
+  }
+
+  async createEmpty(data: CreateImmeubleInput) {
+    let zoneId = data.zoneId;
+    if (!zoneId && data.commercialId) {
+      const zec = await this.prisma.zoneEnCours.findUnique({
+        where: { userId_userType: { userId: data.commercialId, userType: 'COMMERCIAL' } },
+      });
+      if (zec) zoneId = zec.zoneId;
+    }
+    if (!zoneId && data.managerId) {
+      const zec = await this.prisma.zoneEnCours.findUnique({
+        where: { userId_userType: { userId: data.managerId, userType: 'MANAGER' } },
+      });
+      if (zec) zoneId = zec.zoneId;
+    }
+    return this.prisma.immeuble.create({
+      data: {
+        adresse: data.adresse,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        nbEtages: data.nbEtages,
+        nbPortesParEtage: data.nbPortesParEtage,
+        ascenseurPresent: data.ascenseurPresent,
+        digitalCode: data.digitalCode,
+        commercialId: data.commercialId,
+        managerId: data.managerId,
+        zoneId,
+      },
+    });
+  }
+
+  async addEtageEmpty(immeubleId: number, userId: number, userRole: string) {
+    const immeuble = await this.ensureImmeubleAccess(immeubleId, userId, userRole);
+    const nouvelEtage = immeuble.nbEtages + 1;
+    return this.prisma.immeuble.update({
+      where: { id: immeubleId },
+      data: { nbEtages: nouvelEtage },
+    });
+  }
+
+  async addPorteToEtageCapped(
+    immeubleId: number,
+    etage: number,
+    userId: number,
+    userRole: string,
+  ) {
+    const immeuble = await this.ensureImmeubleAccess(immeubleId, userId, userRole);
+    if (etage < 1 || etage > immeuble.nbEtages) {
+      throw new BadRequestException(`Étage ${etage} invalide (1 à ${immeuble.nbEtages}).`);
+    }
+    const portesEtage = await this.prisma.porte.findMany({
+      where: { immeubleId, etage },
+      orderBy: { numero: 'desc' },
+    });
+    if (portesEtage.length >= immeuble.nbPortesParEtage) {
+      throw new BadRequestException(
+        `L'étage ${etage} a déjà atteint sa capacité maximale (${immeuble.nbPortesParEtage} portes).`,
+      );
+    }
+    let nouveauNumeroPorte = etage * 100 + 1;
+    if (portesEtage.length > 0) {
+      const numeros = portesEtage
+        .map((p) => parseInt(p.numero, 10))
+        .filter((n) => !Number.isNaN(n));
+      if (numeros.length > 0) nouveauNumeroPorte = Math.max(...numeros) + 1;
+    }
+    await this.prisma.porte.create({
+      data: {
+        numero: String(nouveauNumeroPorte),
+        etage,
+        immeubleId,
+        statut: 'NON_VISITE',
+        nbRepassages: 0,
+      },
+    });
+    return immeuble;
   }
 
   async removeEtage(
