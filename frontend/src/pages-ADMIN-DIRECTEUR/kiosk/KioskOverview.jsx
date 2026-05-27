@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useKioskHealth, useKioskDevices, useKioskLogs } from '@/hooks/metier/api/kiosk'
+import { isBatteryKnown, clampBattery } from './batteryUtils'
 import OverviewTab from './components/OverviewTab'
 import KioskErrorState from './components/KioskErrorState'
 
@@ -13,7 +14,10 @@ export default function KioskOverview() {
   const onlineDevices = useMemo(() => devices.filter(device => device.online).length, [devices])
   const offlineDevices = useMemo(() => devices.filter(device => !device.online).length, [devices])
   const lowBatteryDevices = useMemo(
-    () => devices.filter(device => Number(device.batteryLevel) < 20).length,
+    () =>
+      devices.filter(
+        device => isBatteryKnown(device.batteryLevel) && clampBattery(device.batteryLevel) < 20
+      ).length,
     [devices]
   )
   const recentLogs = useMemo(() => (logsQuery.data?.logs || []).slice(0, 10), [logsQuery.data])

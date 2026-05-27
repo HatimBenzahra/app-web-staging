@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatBattery, clampBattery, isBatteryKnown, getBatteryHexColor } from '../batteryUtils'
 import {
   Table,
   TableHeader,
@@ -67,20 +68,6 @@ const getRelativeTimeColor = value => {
   if (diffMin < 5) return 'text-chart-2'
   if (diffMin < 60) return 'text-chart-5'
   return 'text-muted-foreground'
-}
-
-const batteryBarColor = level => {
-  const value = Number(level) || 0
-  if (value > 50) return 'bg-chart-2'
-  if (value > 20) return 'bg-chart-5'
-  return 'bg-destructive'
-}
-
-const batteryTextColor = level => {
-  const value = Number(level) || 0
-  if (value > 50) return 'text-chart-2'
-  if (value > 20) return 'text-chart-5'
-  return 'text-destructive'
 }
 
 const NetworkIcon = ({ networkType }) => {
@@ -223,7 +210,7 @@ export default function DevicesTab({
               </TableHeader>
               <TableBody>
                 {filteredDevices.map(device => {
-                  const batteryLevel = Number(device.batteryLevel) || 0
+                  const batteryLevel = device.batteryLevel
                   const commercialName = getCommercialName(device)
 
                   return (
@@ -283,12 +270,24 @@ export default function DevicesTab({
                           <div className="flex items-center gap-1.5">
                             <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-500 ${batteryBarColor(batteryLevel)}`}
-                                style={{ width: `${Math.min(100, Math.max(0, batteryLevel))}%` }}
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${clampBattery(batteryLevel)}%`,
+                                  backgroundColor: isBatteryKnown(batteryLevel)
+                                    ? getBatteryHexColor(batteryLevel)
+                                    : 'transparent',
+                                }}
                               />
                             </div>
-                            <span className={`text-xs font-medium tabular-nums ${batteryTextColor(batteryLevel)}`}>
-                              {batteryLevel}%
+                            <span
+                              className="text-xs font-medium tabular-nums"
+                              style={{
+                                color: isBatteryKnown(batteryLevel)
+                                  ? getBatteryHexColor(batteryLevel)
+                                  : undefined,
+                              }}
+                            >
+                              {formatBattery(batteryLevel)}
                             </span>
                           </div>
                         </div>

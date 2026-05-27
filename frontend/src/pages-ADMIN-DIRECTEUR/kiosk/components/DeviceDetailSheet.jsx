@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { formatBattery, clampBattery, isBatteryKnown, getBatteryHexColor } from '../batteryUtils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,20 +53,6 @@ const formatRelativeTime = value => {
   if (diffHour < 24) return `il y a ${diffHour} h`
   if (diffDay < 7) return `il y a ${diffDay} j`
   return date.toLocaleDateString('fr-FR')
-}
-
-const batteryFillColor = level => {
-  const v = Number(level) || 0
-  if (v > 50) return 'bg-chart-2'
-  if (v > 20) return 'bg-chart-5'
-  return 'bg-destructive'
-}
-
-const batteryTextColor = level => {
-  const v = Number(level) || 0
-  if (v > 50) return 'text-chart-2'
-  if (v > 20) return 'text-chart-5'
-  return 'text-destructive'
 }
 
 const SectionCard = ({ icon: Icon, title, borderColor = 'border-primary', children }) => (
@@ -147,8 +134,8 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
   const { getCommercialName } = useDeviceCommercialNames()
   const [commandDialogOpen, setCommandDialogOpen] = useState(false)
   const [commandPending, setCommandPending] = useState(false)
-  const batteryLevel = Number(device?.batteryLevel) || 0
-  const batteryWidth = Math.min(100, Math.max(0, batteryLevel))
+  const batteryLevel = device?.batteryLevel
+  const batteryWidth = clampBattery(batteryLevel)
   const pendingCount = device?.pendingCommands?.length || 0
   const commercialName = getCommercialName(device)
 
@@ -209,9 +196,14 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
                     )}
                     <Battery className="h-3.5 w-3.5 text-muted-foreground" />
                     <span
-                      className={`text-sm font-bold tabular-nums ${batteryTextColor(batteryLevel)}`}
+                      className="text-sm font-bold tabular-nums"
+                      style={{
+                        color: isBatteryKnown(batteryLevel)
+                          ? getBatteryHexColor(batteryLevel)
+                          : undefined,
+                      }}
                     >
-                      {batteryLevel}%
+                      {formatBattery(batteryLevel)}
                     </span>
                   </div>
                   <span className="text-xs text-muted-foreground">
@@ -220,8 +212,13 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
                 </div>
                 <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-700 ${batteryFillColor(batteryLevel)}`}
-                    style={{ width: `${batteryWidth}%` }}
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${batteryWidth}%`,
+                      backgroundColor: isBatteryKnown(batteryLevel)
+                        ? getBatteryHexColor(batteryLevel)
+                        : 'transparent',
+                    }}
                   />
                 </div>
               </div>

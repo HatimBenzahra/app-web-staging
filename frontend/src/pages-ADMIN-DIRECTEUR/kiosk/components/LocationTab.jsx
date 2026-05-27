@@ -8,14 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   MapPin,
   Wifi,
-  Battery,
-  BatteryLow,
-  BatteryMedium,
-  BatteryFull,
   Info,
   Route,
   Clock,
-  Calendar,
   ChevronRight,
   ChevronLeft,
   Navigation2,
@@ -23,6 +18,14 @@ import {
   Users,
 } from 'lucide-react'
 import MapToolbar from './MapToolbar'
+import {
+  formatBattery,
+  getBatteryIcon,
+  getBatteryColor,
+  getBatteryHexColor,
+  isBatteryKnown,
+  clampBattery,
+} from '../batteryUtils'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
@@ -192,25 +195,6 @@ const formatRelativeTime = value => {
   return date.toLocaleDateString('fr-FR')
 }
 
-const getBatteryIcon = level => {
-  if (!level || level < 20) return BatteryLow
-  if (level < 50) return Battery
-  if (level < 80) return BatteryMedium
-  return BatteryFull
-}
-
-const getBatteryColor = level => {
-  if (!level || level < 20) return 'text-destructive'
-  if (level < 50) return 'text-chart-5'
-  return 'text-chart-2'
-}
-
-const getBatteryHexColor = level => {
-  if (!level || level < 20) return '#ef4444'
-  if (level < 50) return '#f97316'
-  return '#22c55e'
-}
-
 const formatTime = dateStr =>
   new Date(dateStr).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
@@ -290,6 +274,12 @@ export default function LocationTab({
       ),
     [devices]
   )
+
+  // En mode Live on ne montre que les tablettes actuellement en ligne :
+  // afficher la dernière position d'une tablette hors ligne est trompeur pour
+  // une vue « temps réel ». Le Trajet, lui, continue d'utiliser devicesWithGps
+  // (on doit pouvoir consulter l'historique d'une tablette même hors ligne).
+  const liveDevices = useMemo(() => devicesWithGps.filter(d => d.online), [devicesWithGps])
 
   const selectedDevice = useMemo(
     () => devicesWithGps.find(d => d.deviceId === selectedDeviceId) || null,
@@ -560,9 +550,10 @@ export default function LocationTab({
         return
       }
     }
-    if (!devicesWithGps.length) return
+    const centerSet = mode === 'live' ? liveDevices : devicesWithGps
+    if (!centerSet.length) return
     const bounds = new mapboxgl.LngLatBounds()
-    for (const d of devicesWithGps) {
+    for (const d of centerSet) {
       bounds.extend([d.longitude, d.latitude])
     }
     try {
@@ -570,7 +561,7 @@ export default function LocationTab({
     } catch (error) {
       void error
     }
-  }, [devicesWithGps, mode, routePositionsByDevice, selectedDeviceId])
+  }, [devicesWithGps, liveDevices, mode, routePositionsByDevice, selectedDeviceId])
 
   const handleCardClick = useCallback(
     device => {
@@ -689,7 +680,7 @@ export default function LocationTab({
                   >
                     Tous
                   </button>
-                  {devicesWithGps.map(device => {
+                  {liveDevices.map(device => {
                     const active = selectedDeviceId === device.deviceId
                     return (
                       <button
@@ -721,8 +712,7 @@ export default function LocationTab({
             <div className="space-y-2">
               <div className="rounded-xl border border-border/50 bg-muted/15 p-2.5 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  P{'\u00e9'}riode
+                  <Clock className="h-3.5 w-3.5" />P{'\u00e9'}riode
                 </div>
                 <div className="flex items-center gap-1.5">
                   {TRAJET_QUICK_FILTERS.map(opt => {
@@ -861,7 +851,7 @@ export default function LocationTab({
           style={{ scrollbarWidth: 'thin' }}
         >
           {mode === 'live' ? (
-            devicesWithGps.length === 0 ? (
+            liveDevices.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-muted-foreground">
                 <div className="rounded-full bg-muted/40 p-4">
                   <MapPin className="h-7 w-7 text-muted-foreground/30" />
@@ -870,7 +860,7 @@ export default function LocationTab({
               </div>
             ) : (
               <div className="divide-y divide-border/40">
-                {devicesWithGps.map((device, index) => {
+                {liveDevices.map((device, index) => {
                   const isSelected = device.deviceId === selectedDeviceId
                   const BattIcon = getBatteryIcon(device.batteryLevel)
                   const battColor = getBatteryColor(device.batteryLevel)
@@ -908,7 +898,7 @@ export default function LocationTab({
                             <div className="flex items-center gap-1.5">
                               <BattIcon className={`h-3 w-3 ${battColor}`} />
                               <span className={`text-[11px] font-medium tabular-nums ${battColor}`}>
-                                {device.batteryLevel || 0}%
+                                {formatBattery(device.batteryLevel)}
                               </span>
                             </div>
                             <Button
@@ -1340,7 +1330,7 @@ export default function LocationTab({
             ))}
 
           {mode === 'live' &&
-            devicesWithGps.map(device => {
+            liveDevices.map(device => {
               const isOnline = device.online
               const isSelected = device.deviceId === selectedDeviceId
               return (
@@ -1419,18 +1409,17 @@ export default function LocationTab({
                     <div className="flex items-center gap-1.5 flex-1 justify-end">
                       <div className="flex-1 max-w-[80px] bg-muted/50 rounded-full h-1.5 overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all ${
-                            (selectedDevice.batteryLevel || 0) < 20
-                              ? 'bg-destructive'
-                              : (selectedDevice.batteryLevel || 0) < 50
-                                ? 'bg-chart-5'
-                                : 'bg-chart-2'
-                          }`}
-                          style={{ width: `${selectedDevice.batteryLevel || 0}%` }}
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${clampBattery(selectedDevice.batteryLevel)}%`,
+                            backgroundColor: isBatteryKnown(selectedDevice.batteryLevel)
+                              ? getBatteryHexColor(selectedDevice.batteryLevel)
+                              : 'transparent',
+                          }}
                         />
                       </div>
                       <span className="text-[11px] font-medium tabular-nums">
-                        {selectedDevice.batteryLevel || 0}%
+                        {formatBattery(selectedDevice.batteryLevel)}
                       </span>
                     </div>
                   </div>
@@ -1481,7 +1470,7 @@ export default function LocationTab({
                     })}
                   </span>
                 </div>
-                {trajetPopupPos.batteryLevel != null && (
+                {isBatteryKnown(trajetPopupPos.batteryLevel) && (
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-muted-foreground">Batterie</span>
                     <div className="flex items-center gap-1.5">
@@ -1489,13 +1478,13 @@ export default function LocationTab({
                         <div
                           className="h-full rounded-full"
                           style={{
-                            width: `${trajetPopupPos.batteryLevel}%`,
+                            width: `${clampBattery(trajetPopupPos.batteryLevel)}%`,
                             backgroundColor: getBatteryHexColor(trajetPopupPos.batteryLevel),
                           }}
                         />
                       </div>
                       <span className="text-[11px] font-medium tabular-nums">
-                        {trajetPopupPos.batteryLevel}%
+                        {formatBattery(trajetPopupPos.batteryLevel)}
                       </span>
                     </div>
                   </div>
