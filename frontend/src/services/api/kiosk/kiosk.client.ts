@@ -188,3 +188,15 @@ export const kioskClient = new KioskApiClient(
   import.meta.env.VITE_KIOSK_API_USER || '',
   import.meta.env.VITE_KIOSK_API_PASS || ''
 )
+
+// Kiosk secondaire optionnel (ex: staging) : utilisé uniquement pour agréger les
+// tablettes/positions dans la Localisation (une tablette installée par erreur sur
+// un autre kiosk reste visible). null si VITE_KIOSK_API_URL_2 non défini.
+const SECONDARY_KIOSK_URL = import.meta.env.VITE_KIOSK_API_URL_2 || ''
+export const secondaryKioskClient = SECONDARY_KIOSK_URL
+  ? new KioskApiClient(
+      SECONDARY_KIOSK_URL,
+      import.meta.env.VITE_KIOSK_API_USER_2 || import.meta.env.VITE_KIOSK_API_USER || '',
+      import.meta.env.VITE_KIOSK_API_PASS_2 || import.meta.env.VITE_KIOSK_API_PASS || ''
+    )
+  : null

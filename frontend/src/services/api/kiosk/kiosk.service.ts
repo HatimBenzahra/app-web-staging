@@ -1,4 +1,4 @@
-import { kioskClient } from './kiosk.client'
+import { kioskClient, secondaryKioskClient } from './kiosk.client'
 import type {
   KioskHealthResponse,
   KioskDevice,
@@ -14,14 +14,40 @@ import type {
   KioskSuccessResponse,
 } from './kiosk.types'
 
+// Fusionne les devices de plusieurs kiosks en dédoublonnant par tablette
+// (serialNumber sinon deviceId). Une tablette physique garde le même identifiant
+// sur tous les kiosks ; on conserve la remontée la plus fraîche (lastSeen).
+function mergeKioskDevices(...sources: KioskDevice[][]): KioskDevice[] {
+  const byDevice = new Map<string, KioskDevice>()
+  for (const list of sources) {
+    for (const d of list) {
+      const key = d.serialNumber || d.deviceId
+      const existing = byDevice.get(key)
+      const tNew = d.lastSeen ? new Date(d.lastSeen).getTime() : 0
+      const tOld = existing?.lastSeen ? new Date(existing.lastSeen).getTime() : 0
+      if (!existing || tNew >= tOld) byDevice.set(key, d)
+    }
+  }
+  return Array.from(byDevice.values())
+}
+
 export const kioskApi = {
   // ── Read ───────────────────────────────────────────────────────────────────
 
   getHealth: () =>
     kioskClient.get<KioskHealthResponse>('/api/health'),
 
-  getDevices: () =>
-    kioskClient.get<KioskDevice[]>('/api/devices'),
+  getDevices: async (): Promise<KioskDevice[]> => {
+    const primary = await kioskClient.get<KioskDevice[]>('/api/devices')
+    if (!secondaryKioskClient) return primary
+    let secondary: KioskDevice[] = []
+    try {
+      secondary = await secondaryKioskClient.get<KioskDevice[]>('/api/devices')
+    } catch {
+      // Kiosk secondaire optionnel : son indisponibilité ne doit pas casser la vue.
+    }
+    return mergeKioskDevices(primary, secondary)
+  },
 
   getReleases: () =>
     kioskClient.get<KioskRelease[]>('/api/releases'),
