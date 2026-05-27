@@ -19,6 +19,13 @@ build/
 .claude/
 .idea/
 
+# OMC : etat runtime volatile (ne pas versionner)
+.omc/
+
+# Backups manuels de config
+*.bak
+*.staging-bak
+
 
 # OS
 .DS_Store
