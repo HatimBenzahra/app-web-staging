@@ -3,7 +3,7 @@
  * Handles login, logout, token management and session state notifications.
  */
 
-import { graphqlClient } from '../core/graphql'
+import { ErrorType, GraphQLClientError, graphqlClient } from '../core/graphql'
 import { clearAllAppStorage } from '../core/cache'
 import { LoginCredentials, AuthResponse, ALLOWED_GROUPS, GROUP_TO_ROLE_MAP } from './auth.types'
 import { decodeToken } from './token.utils'
@@ -160,8 +160,8 @@ export class AuthService {
 
   /**
    * Point d'entrée unique pour les clients API après un 401/auth error.
-   * Ne déconnecte jamais automatiquement: il tente de récupérer la session,
-   * puis laisse l'état central en degraded si la récupération échoue.
+   * Tente de récupérer la session; un refresh token refusé par Keycloak
+   * nettoie la session locale, tandis qu'une erreur temporaire reste degraded.
    */
   async handleAuthenticationChallenge(): Promise<boolean> {
     if (!this.hasSession()) return false
@@ -287,12 +287,14 @@ export class AuthService {
       this.setSessionStatus('refreshing')
       this.refreshToken()
         .then(result => {
+          if (!this.hasSession()) return
           if (!result) {
             this.setSessionStatus('degraded')
             this.scheduleRefreshRetry()
           }
         })
         .catch(() => {
+          if (!this.hasSession()) return
           this.setSessionStatus('degraded')
           this.scheduleRefreshRetry()
         })
@@ -345,6 +347,11 @@ export class AuthService {
     } catch (error) {
       console.error('Refresh token failed:', error)
       if (this.authGeneration === refreshGeneration) {
+        if (this.isUnrecoverableRefreshError(error)) {
+          this.clearExpiredSession()
+          return null
+        }
+
         this.setSessionStatus('degraded')
       }
       return null
@@ -354,6 +361,41 @@ export class AuthService {
         this.notifySessionChanged()
       }
     }
+  }
+
+  private isUnrecoverableRefreshError(error: unknown): boolean {
+    if (error instanceof GraphQLClientError) {
+      if ([ErrorType.AUTHENTICATION, ErrorType.AUTHORIZATION].includes(error.type)) {
+        return true
+      }
+
+      if ([ErrorType.NETWORK, ErrorType.SERVER].includes(error.type)) {
+        return false
+      }
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+    const unrecoverablePatterns = [
+      'invalid_grant',
+      'session not active',
+      'token is not active',
+      'token refresh failed',
+      'refresh token',
+      'unauthorized',
+      'forbidden',
+    ]
+
+    return unrecoverablePatterns.some(pattern => message.includes(pattern))
+  }
+
+  private clearExpiredSession(): void {
+    this.clearAuthData({ notify: false })
+    graphqlClient.clearAuthToken()
+    clearAllAppStorage()
+    this._refreshPromise = null
+    this._isRefreshing = false
+    this.refreshRetryCount = 0
+    this.setSessionStatus('anonymous')
   }
 
   private applyAuthenticatedSession(authResponse: AuthResponse): void {
@@ -399,6 +441,7 @@ export class AuthService {
     this.refreshTimerId = setTimeout(async () => {
       const result = await this.refreshToken()
       if (this.authGeneration !== scheduledGeneration) return
+      if (!this.hasSession()) return
       if (!result) {
         this.setSessionStatus('degraded')
         this.scheduleRefreshRetry()
@@ -421,6 +464,7 @@ export class AuthService {
     this.refreshTimerId = setTimeout(async () => {
       const retryResult = await this.refreshToken()
       if (this.authGeneration !== scheduledGeneration) return
+      if (!this.hasSession()) return
       if (!retryResult) {
         this.setSessionStatus('degraded')
         this.scheduleRefreshRetry()

@@ -121,22 +121,29 @@ export class ErrorHandler {
     const firstError = errors[0]
     const message = firstError.message || 'Erreur GraphQL'
 
-    // Check for specific error patterns
+    const normalizedMessage = message.toLowerCase()
     let errorType = ErrorType.GRAPHQL
 
-    if (
-      message.toLowerCase().includes('unauthorized') ||
-      message.toLowerCase().includes('not authenticated')
-    ) {
+    const authenticationPatterns = [
+      'unauthorized',
+      'not authenticated',
+      'invalid_grant',
+      'session not active',
+      'token is not active',
+      'token refresh failed',
+      'refresh token',
+    ]
+
+    if (authenticationPatterns.some(pattern => normalizedMessage.includes(pattern))) {
       errorType = ErrorType.AUTHENTICATION
     } else if (
-      message.toLowerCase().includes('forbidden') ||
-      message.toLowerCase().includes('not authorized')
+      normalizedMessage.includes('forbidden') ||
+      normalizedMessage.includes('not authorized')
     ) {
       errorType = ErrorType.AUTHORIZATION
-    } else if (message.toLowerCase().includes('not found')) {
+    } else if (normalizedMessage.includes('not found')) {
       errorType = ErrorType.NOT_FOUND
-    } else if (message.toLowerCase().includes('validation')) {
+    } else if (normalizedMessage.includes('validation')) {
       errorType = ErrorType.VALIDATION
     }
 

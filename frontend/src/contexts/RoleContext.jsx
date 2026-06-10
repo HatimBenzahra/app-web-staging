@@ -59,7 +59,11 @@ export const RoleProvider = ({ children }) => {
     return authService.subscribe(snapshot => {
       setSessionStatus(snapshot.status)
       setCurrentRole(snapshot.role)
-      setIsAuthenticated(snapshot.hasSession)
+      setIsAuthenticated(
+        snapshot.isAuthenticated ||
+          snapshot.status === 'refreshing' ||
+          snapshot.status === 'degraded'
+      )
 
       if (snapshot.status === 'anonymous') {
         setCurrentUserId(null)

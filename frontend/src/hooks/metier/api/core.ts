@@ -6,6 +6,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CACHE_INVALIDATION_MAP, offlineQueue } from '../../../services/core'
+import { getErrorMessage } from '../../../services/core/graphql'
 
 // =============================================================================
 // Base Hook Types
@@ -56,12 +57,7 @@ export function useApiCall<T>(
     await query.refetch()
   }, [query])
 
-  const errorMessage =
-    query.error instanceof Error
-      ? query.error.message
-      : query.error
-        ? 'Unknown error occurred'
-        : null
+  const errorMessage = query.error ? getErrorMessage(query.error) : null
 
   return {
     data: query.data ?? null,
@@ -143,14 +139,7 @@ export function useApiMutation<TInput, TOutput, TOptimistic = unknown>(
 
         return result
       } catch (err) {
-        let message = 'Unknown error occurred'
-        if (err instanceof Error) {
-          message = err.message
-        } else if (typeof err === 'object' && err !== null) {
-          if ('message' in err && typeof err.message === 'string') {
-            message = err.message
-          }
-        }
+        const message = getErrorMessage(err)
 
         try {
           rollback?.()
