@@ -36,6 +36,9 @@ logs/
 *.log
 npm-debug.log*
 
+# Local agent memory
+.agent-changelog.md
+
 # TypeScript
 *.tsbuildinfo
 
