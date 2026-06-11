@@ -77,6 +77,7 @@ export default function Enregistrement() {
     setStatusFilter,
     statusFilterOptions,
     recentRecordings,
+    recentRecordingsTotalCount,
     loadingRecentRecordings,
     recentRecordingsError,
     sortConfig,
@@ -321,9 +322,14 @@ export default function Enregistrement() {
                 })}
               </div>
             </div>
-            <Badge variant="outline" className="h-6 px-2 shrink-0">
-              {filteredRecentRecordings.length}
-            </Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="h-6 px-2">
+                {filteredRecentRecordings.length}
+                {recentRecordingsTotalCount > filteredRecentRecordings.length
+                  ? ` / ${recentRecordingsTotalCount}`
+                  : ''}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">

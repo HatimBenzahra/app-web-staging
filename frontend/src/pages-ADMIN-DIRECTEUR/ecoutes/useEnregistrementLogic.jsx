@@ -11,6 +11,8 @@ import {
   sortRecordings,
 } from './ecoutes-utils'
 
+const RECENT_RECORDINGS_LIMIT = 60
+
 export function useEnregistrementLogic() {
   const { allUsers, loading, error, refetch } = useEcoutesUsers()
   const { showSuccess, showError } = useErrorToast()
@@ -22,6 +24,7 @@ export function useEnregistrementLogic() {
   const [playingRecording, setPlayingRecording] = useState(null)
   const [statusFilter, setStatusFilter] = useState('ACTIF')
   const [recentRecordings, setRecentRecordings] = useState([])
+  const [recentRecordingsTotalCount, setRecentRecordingsTotalCount] = useState(0)
   const [loadingRecentRecordings, setLoadingRecentRecordings] = useState(false)
   const [recentRecordingsError, setRecentRecordingsError] = useState(null)
   const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' })
@@ -50,119 +53,41 @@ export function useEnregistrementLogic() {
     )
   }, [allUsers, statusFilter])
 
-  useEffect(() => {
+  const loadRecentRecordings = useCallback(async () => {
     if (!allUsers || allUsers.length === 0) {
       setRecentRecordings([])
-      setRecentRecordingsError(null)
-      setLoadingRecentRecordings(false)
+      setRecentRecordingsTotalCount(0)
       return
     }
 
-    let isActive = true
+    setLoadingRecentRecordings(true)
+    setRecentRecordingsError(null)
 
-    const loadRecentRecordings = async () => {
-      setLoadingRecentRecordings(true)
-      setRecentRecordingsError(null)
-
-      const roomNames = allUsers.map(
-        user => `room:${(user.userType || '').toLowerCase()}:${user.id}`
-      )
+    try {
       const userLookup = buildUserLookup(allUsers)
-
-      const { items } = await RecordingService.getAllRecentRecordings(roomNames)
-
-      if (!isActive) return
-
+      const { items, totalCount } = await RecordingService.getRecentRecordings(RECENT_RECORDINGS_LIMIT)
       const enriched = items.map(recording =>
         enrichRecordingWithUser(recording, userLookup, RecordingService.formatFileSize)
       )
 
       setRecentRecordings(enriched)
+      setRecentRecordingsTotalCount(totalCount)
+      setProcessedKeys(new Set(enriched.filter(r => r.hasConversation).map(r => r.key)))
       setRecentRecordingsError(null)
-      setLoadingRecentRecordings(false)
-    }
-
-    loadRecentRecordings().catch(loadError => {
-      if (!isActive) return
+    } catch (loadError) {
       console.warn('Erreur chargement enregistrements récents:', loadError)
       setRecentRecordings([])
+      setRecentRecordingsTotalCount(0)
       setRecentRecordingsError('Impossible de charger les enregistrements récents')
+    } finally {
       setLoadingRecentRecordings(false)
-    })
-
-    return () => {
-      isActive = false
     }
   }, [allUsers])
 
   useEffect(() => {
-    if (!recentRecordings.length) return
-    let active = true
-
-    const keys = recentRecordings.map(r => r.key)
-    RecordingService.getProcessedKeys(keys).then(processed => {
-      if (active) setProcessedKeys(processed)
-    })
-
-    return () => { active = false }
-  }, [recentRecordings])
-
-  useEffect(() => {
-    const allKeys = [
-      ...recentRecordings.map(r => r.key),
-      ...recordings.map(r => r.key),
-    ].filter(Boolean)
-    const uniqueKeys = [...new Set(allKeys)]
-    if (!uniqueKeys.length) return
-
-    let active = true
-    let timerId
-
-    const fetchScores = async () => {
-      if (!active) return
-
-      const currentScores = speechScoresRef.current
-      const keysToFetch = uniqueKeys.filter(k => {
-        const cached = currentScores.get(k)
-        return !cached || cached.status !== 'ready'
-      })
-
-      if (!keysToFetch.length) return
-
-      try {
-        const results = await RecordingService.getSpeechScores(keysToFetch)
-        if (!active) return
-        setSpeechScores(prev => {
-          let changed = false
-          for (const r of results) {
-            const existing = prev.get(r.key)
-            if (!existing || existing.status !== r.status || existing.score !== r.score) {
-              changed = true
-              break
-            }
-          }
-          if (!changed) return prev
-
-          const next = new Map(prev)
-          results.forEach(r => { next.set(r.key, r) })
-          return next
-        })
-        const hasUnready = results.some(r => r.status !== 'ready')
-        if (hasUnready && active) {
-          timerId = setTimeout(fetchScores, 4000)
-        }
-      } catch {
-        void 0
-      }
-    }
-
-    fetchScores()
-
-    return () => {
-      active = false
-      clearTimeout(timerId)
-    }
-  }, [recentRecordings, recordings])
+    if (!allUsers) return
+    loadRecentRecordings()
+  }, [allUsers, loadRecentRecordings])
 
   const handleSort = useCallback(key => {
     setSortConfig(prev => ({
@@ -203,6 +128,19 @@ export function useEnregistrementLogic() {
       const userType = commercial.userType
       const recordingsData = await RecordingService.getRecordingsForUser(commercial.id, userType)
       setRecordings(recordingsData)
+      setProcessedKeys(prev => {
+        const next = new Set(prev)
+        let changed = false
+        recordingsData
+          .filter(recording => recording.hasConversation)
+          .forEach(recording => {
+            if (!next.has(recording.key)) {
+              next.add(recording.key)
+              changed = true
+            }
+          })
+        return changed ? next : prev
+      })
       showSuccess(
         `${recordingsData.length} enregistrement(s) chargé(s) pour ${commercial.prenom} ${commercial.nom}`
       )
@@ -237,6 +175,92 @@ export function useEnregistrementLogic() {
     hasNextPage,
     hasPreviousPage,
   } = usePagination(sortedRecordings, 20)
+
+  useEffect(() => {
+    const keys = currentRecordings
+      .filter(r => !r.hasConversation && !processedKeys.has(r.key))
+      .map(r => r.key)
+      .filter(Boolean)
+
+    if (!keys.length) return
+
+    let active = true
+
+    RecordingService.getProcessedKeys(keys).then(processed => {
+      if (!active) return
+      if (!processed.size) return
+      setProcessedKeys(prev => {
+        const next = new Set(prev)
+        let changed = false
+        processed.forEach(key => {
+          if (!next.has(key)) {
+            next.add(key)
+            changed = true
+          }
+        })
+        return changed ? next : prev
+      })
+    })
+
+    return () => { active = false }
+  }, [currentRecordings, processedKeys])
+
+  useEffect(() => {
+    const allKeys = [
+      ...recentRecordings.map(r => r.key),
+      ...currentRecordings.map(r => r.key),
+    ].filter(Boolean)
+    const uniqueKeys = [...new Set(allKeys)]
+    if (!uniqueKeys.length) return
+
+    let active = true
+    let timerId
+
+    const fetchScores = async () => {
+      if (!active) return
+
+      const currentScores = speechScoresRef.current
+      const keysToFetch = uniqueKeys.filter(k => {
+        const cached = currentScores.get(k)
+        return !cached || cached.status === 'pending' || cached.status === 'analyzing'
+      })
+
+      if (!keysToFetch.length) return
+
+      try {
+        const results = await RecordingService.getSpeechScores(keysToFetch)
+        if (!active) return
+        setSpeechScores(prev => {
+          let changed = false
+          for (const r of results) {
+            const existing = prev.get(r.key)
+            if (!existing || existing.status !== r.status || existing.score !== r.score) {
+              changed = true
+              break
+            }
+          }
+          if (!changed) return prev
+
+          const next = new Map(prev)
+          results.forEach(r => { next.set(r.key, r) })
+          return next
+        })
+        const hasInProgress = results.some(r => r.status === 'pending' || r.status === 'analyzing')
+        if (hasInProgress && active) {
+          timerId = setTimeout(fetchScores, 4000)
+        }
+      } catch {
+        void 0
+      }
+    }
+
+    fetchScores()
+
+    return () => {
+      active = false
+      clearTimeout(timerId)
+    }
+  }, [recentRecordings, currentRecordings])
 
   const selectableCurrentRecordings = useMemo(
     () => currentRecordings.filter(recording => !processedKeys.has(recording.key)),
@@ -579,6 +603,7 @@ export function useEnregistrementLogic() {
     setStatusFilter,
     statusFilterOptions,
     recentRecordings,
+    recentRecordingsTotalCount,
     loadingRecentRecordings,
     recentRecordingsError,
     sortConfig,

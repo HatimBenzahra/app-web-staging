@@ -144,9 +144,6 @@ export const RecordingCard = React.memo(function RecordingCard({ recording, onPl
             {speechScore?.status === 'ready' && typeof speechScore.score === 'number' && (
               <SpeechScoreBar score={speechScore.score} />
             )}
-            {(speechScore?.status === 'analyzing' || speechScore?.status === 'pending') && (
-              <div className="w-10 h-1.5 animate-pulse bg-muted rounded-full" />
-            )}
             <RecordingStatusBadge lastModified={recording.lastModified} />
             {isProcessed && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600">

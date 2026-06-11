@@ -33,11 +33,15 @@ import {
   RequestRecordingUploadInput,
   RecordingUploadDetails,
   ConfirmRecordingUploadInput,
+  ListRecentRecordingsInput,
+  BackfillRecordingsInput,
+  BackfillRecordingsResult,
   RecordingSegmentDto,
 } from './recording.dto';
 import { PrismaService } from '../prisma.service';
 import { TranscriptionService } from '../transcription/transcription.service';
 import { SpeechAnalysisService } from '../transcription/speech-analysis.service';
+import { S3DiagnosticsService } from '../s3-diagnostics/s3-diagnostics.service';
 
 type RoomTarget = {
   type: 'COMMERCIAL' | 'MANAGER';
@@ -82,13 +86,20 @@ export class RecordingService {
     return roomName.replace(/[:]/g, '_');
   }
 
+  private roomNameFor(userId: number, userType: 'COMMERCIAL' | 'MANAGER') {
+    return `room:${userType.toLowerCase()}:${userId}`;
+  }
+
   private urlCache = new Map<string, { url: string; expiry: number }>();
 
   constructor(
     private prisma: PrismaService,
     private transcription: TranscriptionService,
     private speechAnalysis: SpeechAnalysisService,
-  ) {}
+    private s3Diagnostics: S3DiagnosticsService,
+  ) {
+    this.s3Diagnostics.instrument(this.s3, RecordingService.name);
+  }
 
   private getStartOfToday(): Date {
     const startOfDay = new Date();
@@ -241,6 +252,72 @@ export class RecordingService {
     }
     const immeubleId = Number(match[1]);
     return Number.isFinite(immeubleId) ? immeubleId : undefined;
+  }
+
+  private async upsertRecordingIndex(
+    s3Key: string,
+    metadata: {
+      size?: number;
+      lastModified?: Date;
+      hasConversation?: boolean;
+    } = {},
+  ): Promise<void> {
+    const roomName = this.extractRoomFromKey(s3Key);
+    const target = roomName ? this.parseRoomIdentifier(roomName) : null;
+
+    if (!roomName || !target) {
+      return;
+    }
+
+    const optionalData = {
+      ...(metadata.size === undefined ? {} : { size: BigInt(metadata.size) }),
+      ...(metadata.lastModified === undefined
+        ? {}
+        : { lastModified: metadata.lastModified }),
+      ...(metadata.hasConversation === undefined
+        ? {}
+        : { hasConversation: metadata.hasConversation }),
+    };
+
+    const data = {
+      roomName,
+      userType: target.type as any,
+      commercialId: target.type === 'COMMERCIAL' ? target.id : null,
+      managerId: target.type === 'MANAGER' ? target.id : null,
+      immeubleId: this.extractImmeubleIdFromKey(s3Key) ?? null,
+      ...optionalData,
+    };
+
+    await this.prisma.recording.upsert({
+      where: { s3Key },
+      create: {
+        s3Key,
+        hasConversation: metadata.hasConversation ?? false,
+        ...data,
+      },
+      update: {
+        ...data,
+      },
+    });
+  }
+
+  private toRecordingItemSize(
+    size: bigint | number | null | undefined,
+  ): number | undefined {
+    if (size == null) return undefined;
+    const value = typeof size === 'bigint' ? Number(size) : size;
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  private async markRecordingHasConversation(s3Key: string): Promise<void> {
+    try {
+      await this.prisma.recording.update({
+        where: { s3Key },
+        data: { hasConversation: true },
+      });
+    } catch {
+      await this.upsertRecordingIndex(s3Key, { hasConversation: true });
+    }
   }
 
   private buildSegmentKey(
@@ -425,11 +502,15 @@ export class RecordingService {
 
     const out: RecordingItem[] = [];
 
-    const resp = await this.s3.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: prefix,
-      }),
+    const resp = await this.s3Diagnostics.runWithOperation(
+      'RecordingService.listRecordings',
+      () =>
+        this.s3.send(
+          new ListObjectsV2Command({
+            Bucket: this.bucket,
+            Prefix: prefix,
+          }),
+        ),
     );
 
     for (const obj of resp.Contents || []) {
@@ -536,13 +617,22 @@ export class RecordingService {
       throw new ForbiddenException('Unknown recording key');
     }
 
-    const head = await this.s3.send(
-      new HeadObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+    const head = await this.s3Diagnostics.runWithOperation(
+      'RecordingService.confirmRecordingUpload',
+      () =>
+        this.s3.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+        ),
     );
 
     this.logger.log(
       `Upload confirmed: key=${s3Key} size=${head.ContentLength} user=${currentUser.role}-${currentUser.id} duration=${duration ?? 'unknown'}`,
     );
+
+    await this.upsertRecordingIndex(s3Key, {
+      size: head.ContentLength,
+      lastModified: head.LastModified,
+    });
 
     const validSegments =
       doorSegments?.filter(
@@ -1104,6 +1194,7 @@ export class RecordingService {
           if (cut) {
             const convKey = originalS3Key.replace(/\.mp4$/i, '_conv.mp4');
             await this.transcription.uploadToS3(convFile, convKey);
+            await this.markRecordingHasConversation(originalS3Key);
             this.logger.log(`_conv.mp4 generated for ${originalS3Key}`);
           }
         }
@@ -1136,8 +1227,12 @@ export class RecordingService {
     outputPath: string,
   ): Promise<boolean> {
     try {
-      const resp = await this.s3.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+      const resp = await this.s3Diagnostics.runWithOperation(
+        'RecordingService.downloadFromS3',
+        () =>
+          this.s3.send(
+            new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+          ),
       );
 
       if (!resp.Body) {
@@ -1162,14 +1257,18 @@ export class RecordingService {
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
 
-    await this.s3.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: s3Key,
-        Body: stream,
-        ContentType: 'audio/mp4',
-        ContentLength: stat.size,
-      }),
+    await this.s3Diagnostics.runWithOperation(
+      'RecordingService.uploadSegmentToS3',
+      () =>
+        this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: s3Key,
+            Body: stream,
+            ContentType: 'audio/mp4',
+            ContentLength: stat.size,
+          }),
+        ),
     );
   }
 
@@ -1223,8 +1322,12 @@ export class RecordingService {
     const convKey = key.replace(/\.mp4$/i, '_conv.mp4');
 
     try {
-      await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
+      await this.s3Diagnostics.runWithOperation(
+        'RecordingService.triggerConversationExtraction',
+        () =>
+          this.s3.send(
+            new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
+          ),
       );
       return false;
     } catch {
@@ -1271,8 +1374,12 @@ export class RecordingService {
 
       const convKey = key.replace(/\.mp4$/i, '_conv.mp4');
       try {
-        await this.s3.send(
-          new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
+        await this.s3Diagnostics.runWithOperation(
+          'RecordingService.triggerBatchExtraction',
+          () =>
+            this.s3.send(
+              new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
+            ),
         );
         continue;
       } catch {
@@ -1296,21 +1403,18 @@ export class RecordingService {
   }
 
   async getProcessedKeys(keys: string[]): Promise<string[]> {
-    const results = await Promise.allSettled(
-      keys.map(async (key) => {
-        const convKey = key.replace(/\.mp4$/i, '_conv.mp4');
-        await this.s3.send(
-          new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
-        );
-        return key;
-      }),
-    );
+    const uniqueKeys = [...new Set(keys.filter(Boolean))];
+    if (!uniqueKeys.length) return [];
 
-    return results
-      .filter(
-        (r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled',
-      )
-      .map((r) => r.value);
+    const recordings = await this.prisma.recording.findMany({
+      where: {
+        s3Key: { in: uniqueKeys },
+        hasConversation: true,
+      },
+      select: { s3Key: true },
+    });
+
+    return recordings.map((recording) => recording.s3Key);
   }
 
   async getConversationStreamingUrl(
@@ -1324,15 +1428,16 @@ export class RecordingService {
       throw new ForbiddenException('Unknown recording key');
     }
 
-    const convKey = key.replace(/\.mp4$/i, '_conv.mp4');
+    const recording = await this.prisma.recording.findUnique({
+      where: { s3Key: key },
+      select: { hasConversation: true },
+    });
 
-    try {
-      await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: convKey }),
-      );
-    } catch {
+    if (!recording?.hasConversation) {
       return null;
     }
+
+    const convKey = key.replace(/\.mp4$/i, '_conv.mp4');
 
     try {
       const command = new GetObjectCommand({
@@ -1350,73 +1455,205 @@ export class RecordingService {
     }
   }
 
+  async listRecentRecordings(
+    input: ListRecentRecordingsInput,
+    currentUser: { id: number; role: string },
+  ): Promise<{ items: RecordingItem[]; totalCount: number }> {
+    const requestedLimit = input.limit ?? 60;
+    const limit = Math.min(Math.max(requestedLimit, 1), 100);
+
+    const baseWhere = { lastModified: { not: null } };
+    const where =
+      currentUser.role === 'directeur'
+        ? {
+            AND: [
+              baseWhere,
+              {
+                OR: [
+                  { commercial: { directeurId: currentUser.id } },
+                  { manager: { directeurId: currentUser.id } },
+                ],
+              },
+            ],
+          }
+        : baseWhere;
+
+    const [items, totalCount] = await this.prisma.$transaction([
+      this.prisma.recording.findMany({
+        where,
+        orderBy: [{ lastModified: 'desc' }, { createdAt: 'desc' }],
+        take: limit,
+      }),
+      this.prisma.recording.count({ where }),
+    ]);
+
+    return {
+      items: items.map((item) => ({
+        key: item.s3Key,
+        size: this.toRecordingItemSize(item.size),
+        lastModified: item.lastModified ?? undefined,
+        hasConversation: item.hasConversation,
+      })),
+      totalCount,
+    };
+  }
+
+  async backfillRecordingsIndex(
+    input: BackfillRecordingsInput,
+  ): Promise<BackfillRecordingsResult> {
+    const maxObjects = Math.min(Math.max(input.maxObjects ?? 5000, 1), 20000);
+    const users = await this.getRecordingBackfillRooms();
+
+    let scannedObjects = 0;
+    let indexed = 0;
+    let skipped = 0;
+
+    for (const roomName of users) {
+      if (scannedObjects >= maxObjects) break;
+
+      const safe = this.safeRoom(roomName);
+      const prefix = `${this.prefix}${safe}/`;
+
+      const resp = await this.s3Diagnostics.runWithOperation(
+        'RecordingService.backfillRecordingsIndex',
+        () =>
+          this.s3.send(
+            new ListObjectsV2Command({
+              Bucket: this.bucket,
+              Prefix: prefix,
+            }),
+          ),
+      );
+
+      for (const obj of resp.Contents || []) {
+        if (scannedObjects >= maxObjects) break;
+        scannedObjects++;
+
+        if (!obj.Key || !obj.Key.toLowerCase().endsWith('.mp4')) {
+          skipped++;
+          continue;
+        }
+        if (obj.Key.endsWith('_conv.mp4') || obj.Key.includes('_porte_')) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          await this.upsertRecordingIndex(obj.Key, {
+            size: obj.Size,
+            lastModified: obj.LastModified,
+          });
+          indexed++;
+        } catch (error) {
+          skipped++;
+          this.logger.warn(
+            `backfillRecordingsIndex skipped key=${obj.Key}: ${error?.message || error}`,
+          );
+        }
+      }
+    }
+
+    this.logger.log(
+      `backfillRecordingsIndex scannedRooms=${users.length} scannedObjects=${scannedObjects} indexed=${indexed} skipped=${skipped}`,
+    );
+
+    return {
+      scannedRooms: users.length,
+      scannedObjects,
+      indexed,
+      skipped,
+    };
+  }
+
+  private async getRecordingBackfillRooms(): Promise<string[]> {
+    const [commercials, managers] = await this.prisma.$transaction([
+      this.prisma.commercial.findMany({ select: { id: true } }),
+      this.prisma.manager.findMany({ select: { id: true } }),
+    ]);
+
+    return [
+      ...commercials.map((commercial) => this.roomNameFor(commercial.id, 'COMMERCIAL')),
+      ...managers.map((manager) => this.roomNameFor(manager.id, 'MANAGER')),
+    ];
+  }
+
   async listAllRecordings(
     roomNames: string[],
     currentUser: { id: number; role: string },
   ): Promise<{ items: RecordingItem[]; totalCount: number }> {
     const uniqueRooms = [...new Set(roomNames)];
 
-    const results = await Promise.allSettled(
-      uniqueRooms.map(async (roomName) => {
-        await this.ensureRoomAccess(roomName, currentUser.id, currentUser.role);
-
-        const safe = this.safeRoom(roomName);
-        const prefix = `${this.prefix}${safe}/`;
-
-        const resp = await this.s3.send(
-          new ListObjectsV2Command({
-            Bucket: this.bucket,
-            Prefix: prefix,
-          }),
-        );
-
-        const items: RecordingItem[] = [];
-        for (const obj of resp.Contents || []) {
-          if (!obj.Key) continue;
-          if (obj.Key.endsWith('_conv.mp4')) continue;
-          if (obj.Key.includes('_porte_')) continue;
-          items.push({
-            key: obj.Key,
-            size: obj.Size,
-            lastModified: obj.LastModified,
-          });
-        }
-        return items;
-      }),
+    this.logger.log(
+      `listAllRecordings legacy requestedRooms=${roomNames.length} uniqueRooms=${uniqueRooms.length} user=${currentUser.role}-${currentUser.id}`,
     );
 
-    const allItems: RecordingItem[] = [];
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        allItems.push(...result.value);
+    const allowedRooms: string[] = [];
+    for (const roomName of uniqueRooms) {
+      try {
+        await this.ensureRoomAccess(roomName, currentUser.id, currentUser.role);
+        allowedRooms.push(roomName);
+      } catch {
+        // Preserve old partial-success behavior without triggering S3 scans.
       }
     }
 
-    allItems.sort(
-      (a, b) =>
-        (b.lastModified?.getTime() || 0) - (a.lastModified?.getTime() || 0),
+    if (!allowedRooms.length) {
+      return { items: [], totalCount: 0 };
+    }
+
+    const [items, totalCount] = await this.prisma.$transaction([
+      this.prisma.recording.findMany({
+        where: {
+          roomName: { in: allowedRooms },
+          lastModified: { not: null },
+        },
+        orderBy: [{ lastModified: 'desc' }, { createdAt: 'desc' }],
+        take: 100,
+      }),
+      this.prisma.recording.count({
+        where: {
+          roomName: { in: allowedRooms },
+          lastModified: { not: null },
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `listAllRecordings legacy completed uniqueRooms=${uniqueRooms.length} allowedRooms=${allowedRooms.length} returnedItems=${items.length}`,
     );
 
-    return { items: allItems, totalCount: allItems.length };
+    return {
+      items: items.map((item) => ({
+        key: item.s3Key,
+        size: this.toRecordingItemSize(item.size),
+        lastModified: item.lastModified ?? undefined,
+        hasConversation: item.hasConversation,
+      })),
+      totalCount,
+    };
   }
 
-  getSpeechScores(keys: string[]): Array<{
+  async getSpeechScores(keys: string[]): Promise<Array<{
     key: string;
     score?: number;
     totalDurationSec?: number;
     speechDurationSec?: number;
     status: string;
-  }> {
+  }>> {
     const validKeys = keys.filter((k) => !k.endsWith('_conv.mp4'));
 
+    const stored = await this.speechAnalysis.getStoredScores(validKeys);
     const cached = this.speechAnalysis.getCachedScores(validKeys);
 
-    const uncachedKeys = validKeys.filter(
-      (k) => !cached.has(k) && !this.speechAnalysis.isAnalyzing(k),
+    const keysToAnalyze = validKeys.filter(
+      (key) =>
+        !cached.has(key) &&
+        !this.speechAnalysis.isAnalyzing(key) &&
+        (!stored.has(key) || stored.get(key)?.status === 'pending'),
     );
 
-    if (uncachedKeys.length > 0) {
-      this.speechAnalysis.triggerBatchAnalysis(uncachedKeys);
+    if (keysToAnalyze.length > 0) {
+      await this.speechAnalysis.triggerBatchAnalysis(keysToAnalyze);
     }
 
     return validKeys.map((key) => {
@@ -1428,6 +1665,17 @@ export class RecordingService {
           totalDurationSec: score.totalDurationSec,
           speechDurationSec: score.speechDurationSec,
           status: 'ready',
+        };
+      }
+
+      const storedScore = stored.get(key);
+      if (storedScore) {
+        return {
+          key,
+          score: storedScore.score,
+          totalDurationSec: storedScore.totalDurationSec,
+          speechDurationSec: storedScore.speechDurationSec,
+          status: storedScore.status,
         };
       }
 

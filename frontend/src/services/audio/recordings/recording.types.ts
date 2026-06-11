@@ -7,6 +7,7 @@ export interface RecordingData {
   size: number
   lastModified: string
   url?: string
+  hasConversation?: boolean
 }
 
 export interface EnrichedRecording {

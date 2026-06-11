@@ -51,6 +51,7 @@ model Manager {
   rankSnapshots    RankSnapshot[]
   contratsValides  ContratValide[]
   commercialBadges CommercialBadge[]
+  recordings        Recording[]
 }
 
 model Commercial {
@@ -75,6 +76,7 @@ model Commercial {
   badges           CommercialBadge[]
   rankSnapshots    RankSnapshot[]
   contratsValides  ContratValide[]
+  recordings       Recording[]
   }
 
 model Zone {
@@ -186,6 +188,13 @@ enum UserStatus {
   ACTIF
   CONTRAT_FINIE
   UTILISATEUR_TEST
+}
+
+enum RecordingAnalysisStatus {
+  PENDING
+  ANALYZING
+  READY
+  FAILED
 }
 
 model ZoneEnCours {
@@ -438,6 +447,51 @@ model RecordingSegment {
   @@index([immeubleId])
   @@index([s3KeyOriginal])
   @@index([status])
+}
+
+model Recording {
+  id              Int      @id @default(autoincrement())
+  s3Key           String   @unique
+  roomName        String
+  userType        UserType
+  commercialId    Int?
+  managerId       Int?
+  immeubleId      Int?
+  size            BigInt?
+  lastModified    DateTime?
+  hasConversation Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  commercial Commercial? @relation(fields: [commercialId], references: [id], onDelete: SetNull)
+  manager    Manager?    @relation(fields: [managerId], references: [id], onDelete: SetNull)
+  analysis   RecordingAnalysis?
+
+  @@index([lastModified])
+  @@index([roomName])
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([hasConversation])
+  @@index([userType, lastModified])
+}
+
+model RecordingAnalysis {
+  id                Int                     @id @default(autoincrement())
+  recordingId       Int                     @unique
+  s3Key             String                  @unique
+  status            RecordingAnalysisStatus @default(PENDING)
+  score             Int?
+  totalDurationSec  Float?
+  speechDurationSec Float?
+  analyzedAt        DateTime?
+  error             String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([s3Key])
 }
 
 model GpsPosition {

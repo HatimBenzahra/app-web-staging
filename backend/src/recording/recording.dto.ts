@@ -15,6 +15,7 @@ export class RecordingItem {
   @Field({ nullable: true }) url?: string;
   @Field({ nullable: true }) size?: number;
   @Field({ nullable: true }) lastModified?: Date;
+  @Field({ nullable: true }) hasConversation?: boolean;
 }
 
 @ObjectType()
@@ -79,6 +80,26 @@ export class ConfirmRecordingUploadInput {
 
   @Field(() => [DoorSegmentInput], { nullable: true })
   doorSegments?: DoorSegmentInput[];
+}
+
+@InputType()
+export class ListRecentRecordingsInput {
+  @Field(() => Int, { nullable: true, defaultValue: 60 })
+  limit?: number;
+}
+
+@InputType()
+export class BackfillRecordingsInput {
+  @Field(() => Int, { nullable: true, defaultValue: 5000 })
+  maxObjects?: number;
+}
+
+@ObjectType()
+export class BackfillRecordingsResult {
+  @Field(() => Int) scannedRooms: number;
+  @Field(() => Int) scannedObjects: number;
+  @Field(() => Int) indexed: number;
+  @Field(() => Int) skipped: number;
 }
 
 @InputType()

@@ -15,6 +15,8 @@ import { Readable } from 'stream';
 const execFileAsync = promisify(execFile);
 
 import { SpeechAnalysisService } from './speech-analysis.service';
+import { S3DiagnosticsService } from '../s3-diagnostics/s3-diagnostics.service';
+import { PrismaService } from '../prisma.service';
 
 const FFMPEG_MAX_BUFFER = 10 * 1024 * 1024;
 
@@ -42,7 +44,13 @@ export interface ExtractionProgress {
 export class TranscriptionService implements OnModuleDestroy {
   private readonly logger = new Logger(TranscriptionService.name);
 
-  constructor(private readonly speechAnalysis: SpeechAnalysisService) {}
+  constructor(
+    private readonly speechAnalysis: SpeechAnalysisService,
+    private readonly s3Diagnostics: S3DiagnosticsService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.s3Diagnostics.instrument(this.s3, TranscriptionService.name);
+  }
 
   private readonly whisperUrl = process.env.WHISPER_API_URL;
   private readonly whisperTimeoutMs = this.resolveWhisperTimeout();
@@ -221,6 +229,7 @@ export class TranscriptionService implements OnModuleDestroy {
         this.failProgress(s3Key);
         return;
       }
+      await this.markRecordingHasConversation(s3Key);
 
       const originalSize = fs.statSync(originalFile).size;
       const convSize = fs.statSync(convFile).size;
@@ -253,8 +262,12 @@ export class TranscriptionService implements OnModuleDestroy {
     destPath: string,
   ): Promise<boolean> {
     try {
-      const resp = await this.s3.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+      const resp = await this.s3Diagnostics.runWithOperation(
+        'TranscriptionService.downloadFromS3',
+        () =>
+          this.s3.send(
+            new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+          ),
       );
 
       if (!resp.Body) {
@@ -456,14 +469,18 @@ export class TranscriptionService implements OnModuleDestroy {
       const stat = fs.statSync(filePath);
       const stream = fs.createReadStream(filePath);
 
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: s3Key,
-          Body: stream,
-          ContentType: 'audio/mp4',
-          ContentLength: stat.size,
-        }),
+      await this.s3Diagnostics.runWithOperation(
+        'TranscriptionService.uploadToS3',
+        () =>
+          this.s3.send(
+            new PutObjectCommand({
+              Bucket: this.bucket,
+              Key: s3Key,
+              Body: stream,
+              ContentType: 'audio/mp4',
+              ContentLength: stat.size,
+            }),
+          ),
       );
 
       this.logger.debug(`Uploadé ${s3Key} (${stat.size} bytes)`);
@@ -471,6 +488,18 @@ export class TranscriptionService implements OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Échec upload S3 ${s3Key}: ${error?.message || error}`);
       return false;
+    }
+  }
+
+  private async markRecordingHasConversation(s3Key: string): Promise<void> {
+    try {
+      await this.prisma.recording.update({
+        where: { s3Key },
+        data: { hasConversation: true },
+      });
+    } catch {
+      // The original object may predate the DB index; a later confirmation or
+      // backfill can create the row without blocking extraction.
     }
   }
 

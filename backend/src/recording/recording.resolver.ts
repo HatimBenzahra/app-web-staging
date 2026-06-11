@@ -12,6 +12,9 @@ import {
   ConfirmRecordingUploadInput,
   ExtractionProgressDto,
   ExtractionQueueItemDto,
+  ListRecentRecordingsInput,
+  BackfillRecordingsInput,
+  BackfillRecordingsResult,
   SpeechScoreDto,
   PaginatedRecordingsResult,
   RecordingSegmentDto,
@@ -139,11 +142,28 @@ export class RecordingResolver {
     return this.svc.getProcessedKeys(keys);
   }
 
+  @Query(() => PaginatedRecordingsResult)
+  @Roles('admin', 'directeur')
+  async listRecentRecordings(
+    @Args('input') input: ListRecentRecordingsInput,
+    @CurrentUser() user: any,
+  ): Promise<PaginatedRecordingsResult> {
+    return this.svc.listRecentRecordings(input, user);
+  }
+
+  @Mutation(() => BackfillRecordingsResult)
+  @Roles('admin')
+  async backfillRecordingsIndex(
+    @Args('input') input: BackfillRecordingsInput,
+  ): Promise<BackfillRecordingsResult> {
+    return this.svc.backfillRecordingsIndex(input);
+  }
+
   @Query(() => [SpeechScoreDto])
   @Roles('admin', 'directeur')
-  getRecordingSpeechScores(
+  async getRecordingSpeechScores(
     @Args({ name: 'keys', type: () => [String] }) keys: string[],
-  ): SpeechScoreDto[] {
+  ): Promise<SpeechScoreDto[]> {
     return this.svc.getSpeechScores(keys);
   }
 

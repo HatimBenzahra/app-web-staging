@@ -11,7 +11,9 @@ import * as path from 'path';
 import * as os from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { RecordingAnalysisStatus } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { S3DiagnosticsService } from '../s3-diagnostics/s3-diagnostics.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +21,15 @@ export interface SpeechScore {
   score: number; // 0–100
   totalDurationSec: number;
   speechDurationSec: number;
+}
+
+export interface StoredSpeechScore {
+  key: string;
+  score?: number;
+  totalDurationSec?: number;
+  speechDurationSec?: number;
+  status: 'pending' | 'analyzing' | 'ready' | 'failed';
+  error?: string;
 }
 
 @Injectable()
@@ -46,10 +57,13 @@ export class SpeechAnalysisService implements OnModuleDestroy {
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
   });
+  private readonly s3Diagnostics: S3DiagnosticsService;
 
   /** Silence detection thresholds tuned for compressed phone audio */
-  constructor(prisma: PrismaService) {
+  constructor(prisma: PrismaService, s3Diagnostics: S3DiagnosticsService) {
     this.prisma = prisma;
+    this.s3Diagnostics = s3Diagnostics;
+    s3Diagnostics.instrument(this.s3, SpeechAnalysisService.name);
   }
 
   private readonly noiseThresholdDb = -40;
@@ -95,6 +109,43 @@ export class SpeechAnalysisService implements OnModuleDestroy {
     return result;
   }
 
+  async getStoredScores(keys: string[]): Promise<Map<string, StoredSpeechScore>> {
+    const uniqueKeys = [...new Set(keys.filter(Boolean))];
+    const result = new Map<string, StoredSpeechScore>();
+    if (!uniqueKeys.length) return result;
+
+    const rows = await this.prisma.recordingAnalysis.findMany({
+      where: { s3Key: { in: uniqueKeys } },
+    });
+
+    for (const row of rows) {
+      const status = this.toPublicStatus(row.status);
+      if (
+        row.status === RecordingAnalysisStatus.READY &&
+        row.score != null &&
+        row.totalDurationSec != null &&
+        row.speechDurationSec != null
+      ) {
+        this.cache.set(row.s3Key, {
+          score: row.score,
+          totalDurationSec: row.totalDurationSec,
+          speechDurationSec: row.speechDurationSec,
+        });
+      }
+
+      result.set(row.s3Key, {
+        key: row.s3Key,
+        score: row.score ?? undefined,
+        totalDurationSec: row.totalDurationSec ?? undefined,
+        speechDurationSec: row.speechDurationSec ?? undefined,
+        status,
+        error: row.error ?? undefined,
+      });
+    }
+
+    return result;
+  }
+
   /** Check if analysis is currently running for a key */
   isAnalyzing(key: string): boolean {
     return this.analyzing.has(key);
@@ -121,6 +172,12 @@ export class SpeechAnalysisService implements OnModuleDestroy {
     );
 
     this.cache.set(key, { score, totalDurationSec, speechDurationSec });
+    void this.persistAnalysisResult(
+      key,
+      score,
+      totalDurationSec,
+      speechDurationSec,
+    );
 
     this.logger.debug(
       `Score Whisper pour ${key}: ${score}% (${speechDurationSec.toFixed(1)}s / ${totalDurationSec.toFixed(1)}s)`,
@@ -128,18 +185,63 @@ export class SpeechAnalysisService implements OnModuleDestroy {
   }
 
   /**
-   * Trigger background analysis for all uncached keys.
-   * Does NOT await — fire and forget. Frontend polls getCachedScores().
+   * Trigger background analysis for all non-ready keys.
+   * Does NOT await analysis completion — fire and forget.
    */
-  triggerBatchAnalysis(keys: string[]): number {
-    const toAnalyze = keys.filter(
-      (k) =>
-        !k.endsWith('_conv.mp4') &&
-        !this.cache.has(k) &&
-        !this.analyzing.has(k),
-    );
+  async triggerBatchAnalysis(keys: string[]): Promise<number> {
+    const requestedKeys = [
+      ...new Set(
+        keys.filter(
+          (k) => k && !k.endsWith('_conv.mp4') && !this.analyzing.has(k),
+        ),
+      ),
+    ];
+
+    if (requestedKeys.length === 0) return 0;
+
+    const existing = await this.prisma.recordingAnalysis.findMany({
+      where: { s3Key: { in: requestedKeys } },
+      select: { s3Key: true, status: true },
+    });
+    const existingByKey = new Map(existing.map((row) => [row.s3Key, row]));
+
+    const candidates = requestedKeys.filter((key) => {
+      if (this.cache.has(key)) return false;
+      const row = existingByKey.get(key);
+      if (!row) return true;
+      return row.status === RecordingAnalysisStatus.PENDING;
+    });
+
+    if (candidates.length === 0) return 0;
+
+    const recordings = await this.prisma.recording.findMany({
+      where: { s3Key: { in: candidates } },
+      select: { id: true, s3Key: true },
+    });
+
+    const toAnalyze: string[] = [];
+    for (const recording of recordings) {
+      await this.prisma.recordingAnalysis.upsert({
+        where: { s3Key: recording.s3Key },
+        create: {
+          recordingId: recording.id,
+          s3Key: recording.s3Key,
+          status: RecordingAnalysisStatus.ANALYZING,
+          error: null,
+        },
+        update: {
+          status: RecordingAnalysisStatus.ANALYZING,
+          error: null,
+        },
+      });
+      toAnalyze.push(recording.s3Key);
+    }
 
     if (toAnalyze.length === 0) return 0;
+
+    this.logger.log(
+      `recordingSpeechAnalysis triggered count=${toAnalyze.length} requested=${requestedKeys.length}`,
+    );
 
     for (const key of toAnalyze) {
       void this.analyzeRecording(key);
@@ -169,10 +271,30 @@ export class SpeechAnalysisService implements OnModuleDestroy {
     const filePath = path.join(tmpDir, 'audio.mp4');
 
     try {
+      const existing = await this.prisma.recordingAnalysis.findUnique({
+        where: { s3Key },
+      });
+      if (
+        existing?.status === RecordingAnalysisStatus.READY &&
+        existing.score != null &&
+        existing.totalDurationSec != null &&
+        existing.speechDurationSec != null
+      ) {
+        this.cache.set(s3Key, {
+          score: existing.score,
+          totalDurationSec: existing.totalDurationSec,
+          speechDurationSec: existing.speechDurationSec,
+        });
+        return;
+      }
+
       fs.mkdirSync(tmpDir, { recursive: true });
 
       const downloaded = await this.downloadFromS3(s3Key, filePath);
-      if (!downloaded) return;
+      if (!downloaded) {
+        await this.persistAnalysisFailure(s3Key, 'download_failed');
+        return;
+      }
 
       const [totalDuration, silences] = await Promise.all([
         this.getMediaDuration(filePath),
@@ -181,6 +303,7 @@ export class SpeechAnalysisService implements OnModuleDestroy {
 
       if (totalDuration <= 0) {
         this.logger.warn(`Durée invalide pour ${s3Key}: ${totalDuration}`);
+        await this.persistAnalysisFailure(s3Key, 'invalid_duration');
         return;
       }
 
@@ -199,12 +322,22 @@ export class SpeechAnalysisService implements OnModuleDestroy {
         speechDurationSec,
       });
 
+      await this.persistAnalysisResult(
+        s3Key,
+        score,
+        totalDuration,
+        speechDurationSec,
+      );
       await this.persistScore(s3Key, score);
 
       this.logger.debug(
         `Score silencedetect pour ${s3Key}: ${score}% (${speechDurationSec.toFixed(1)}s parole / ${totalDuration.toFixed(1)}s total)`,
       );
     } catch (error) {
+      await this.persistAnalysisFailure(
+        s3Key,
+        error?.message || String(error),
+      );
       this.logger.error(
         `Erreur analyse ${s3Key}: ${error?.message || error}`,
       );
@@ -223,6 +356,97 @@ export class SpeechAnalysisService implements OnModuleDestroy {
       });
     } catch {
       // Best-effort — segment may not exist for full recordings
+    }
+  }
+
+  private async persistAnalysisResult(
+    s3Key: string,
+    score: number,
+    totalDurationSec: number,
+    speechDurationSec: number,
+  ): Promise<void> {
+    try {
+      const recording = await this.prisma.recording.findUnique({
+        where: { s3Key },
+        select: { id: true },
+      });
+      if (!recording) {
+        this.logger.warn(`RecordingAnalysis skipped: no Recording for ${s3Key}`);
+        return;
+      }
+
+      await this.prisma.recordingAnalysis.upsert({
+        where: { s3Key },
+        create: {
+          recordingId: recording.id,
+          s3Key,
+          status: RecordingAnalysisStatus.READY,
+          score,
+          totalDurationSec,
+          speechDurationSec,
+          analyzedAt: new Date(),
+          error: null,
+        },
+        update: {
+          status: RecordingAnalysisStatus.READY,
+          score,
+          totalDurationSec,
+          speechDurationSec,
+          analyzedAt: new Date(),
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `RecordingAnalysis persist failed for ${s3Key}: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private async persistAnalysisFailure(
+    s3Key: string,
+    errorMessage: string,
+  ): Promise<void> {
+    try {
+      const recording = await this.prisma.recording.findUnique({
+        where: { s3Key },
+        select: { id: true },
+      });
+      if (!recording) return;
+
+      await this.prisma.recordingAnalysis.upsert({
+        where: { s3Key },
+        create: {
+          recordingId: recording.id,
+          s3Key,
+          status: RecordingAnalysisStatus.FAILED,
+          error: errorMessage.slice(0, 500),
+        },
+        update: {
+          status: RecordingAnalysisStatus.FAILED,
+          error: errorMessage.slice(0, 500),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `RecordingAnalysis failure persist failed for ${s3Key}: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private toPublicStatus(
+    status: RecordingAnalysisStatus,
+  ): StoredSpeechScore['status'] {
+    switch (status) {
+      case RecordingAnalysisStatus.ANALYZING:
+        return 'analyzing';
+      case RecordingAnalysisStatus.READY:
+        return 'ready';
+      case RecordingAnalysisStatus.FAILED:
+        return 'failed';
+      case RecordingAnalysisStatus.PENDING:
+      default:
+        return 'pending';
     }
   }
 
@@ -331,8 +555,12 @@ export class SpeechAnalysisService implements OnModuleDestroy {
     destPath: string,
   ): Promise<boolean> {
     try {
-      const resp = await this.s3.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+      const resp = await this.s3Diagnostics.runWithOperation(
+        'SpeechAnalysisService.downloadFromS3',
+        () =>
+          this.s3.send(
+            new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+          ),
       );
 
       if (!resp.Body) {

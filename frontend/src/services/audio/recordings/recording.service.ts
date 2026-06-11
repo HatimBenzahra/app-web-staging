@@ -87,13 +87,14 @@ const GET_PROCESSED_KEYS = `
   }
 `
 
-const LIST_ALL_RECORDINGS = `
-  query ListAllRecordings($roomNames: [String!]!) {
-    listAllRecordings(roomNames: $roomNames) {
+const LIST_RECENT_RECORDINGS = `
+  query ListRecentRecordings($input: ListRecentRecordingsInput!) {
+    listRecentRecordings(input: $input) {
       items {
         key
         size
         lastModified
+        hasConversation
       }
       totalCount
     }
@@ -336,18 +337,20 @@ export class RecordingService {
     }
   }
 
-  static async getAllRecentRecordings(
-    roomNames: string[]
+  static async getRecentRecordings(
+    limit = 60
   ): Promise<{ items: RecordingData[]; totalCount: number }> {
     try {
-      const data = await graphqlClient.request(LIST_ALL_RECORDINGS, { roomNames })
-      const result = data.listAllRecordings
+      const data = await graphqlClient.request(LIST_RECENT_RECORDINGS, {
+        input: { limit },
+      })
+      const result = data.listRecentRecordings
       const filteredItems = (result.items || []).filter(
         (r: RecordingData) => r.key && r.key.toLowerCase().endsWith('.mp4')
       )
-      return { items: filteredItems, totalCount: filteredItems.length }
+      return { items: filteredItems, totalCount: result.totalCount || filteredItems.length }
     } catch (error) {
-      console.error('Erreur récupération enregistrements agrégés:', error)
+      console.error('Erreur récupération enregistrements récents:', error)
       throw error
     }
   }
