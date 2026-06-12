@@ -116,7 +116,7 @@ export default function Enregistrement() {
   const [recentModalIndex, setRecentModalIndex] = useState(null)
   const [smartFilters, setSmartFilters] = useState({
     commercial: null,
-    period: null,
+    period: 'today',
     searchText: '',
   })
 
@@ -134,11 +134,11 @@ export default function Enregistrement() {
   }, [smartFilters.commercial, filteredUsers, handleUserSelection])
 
   const recentPeriodOptions = [
-    { value: 'all', label: 'Tous' },
     { value: 'today', label: "Aujourd'hui" },
     { value: 'yesterday', label: 'Hier' },
     { value: 'week', label: 'Cette semaine' },
     { value: 'month', label: 'Ce mois' },
+    { value: 'all', label: 'Tous' },
   ]
 
   const filteredRecentRecordings = useMemo(() => {
