@@ -19,6 +19,7 @@ const Commerciaux = lazy(() => import('@/pages-ADMIN-DIRECTEUR/commercial/Commer
 const Managers = lazy(() => import('@/pages-ADMIN-DIRECTEUR/managers/Managers'))
 const Directeurs = lazy(() => import('@/pages-ADMIN-DIRECTEUR/directeurs/Directeurs'))
 const Immeubles = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/Immeubles'))
+const AdressesAcquiscan = lazy(() => import('@/pages-ADMIN-DIRECTEUR/adresses/AdressesAcquiscan'))
 const Zones = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/Zones'))
 const HistoriqueZones = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/HistoriqueZones'))
 const AssignationsEnCours = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/AssignationsEnCours'))
@@ -75,6 +76,7 @@ function AdminLayout() {
     managers: { label: 'Managers', href: '/managers' },
     directeurs: { label: 'Directeurs', href: '/directeurs' },
     immeubles: { label: 'Immeubles', href: '/immeubles' },
+    adresses: { label: 'Adresses Acquiscan', href: '/adresses' },
     portes: { label: 'Porte', href: '' },
     zones: { label: 'Zones', href: '/zones' },
     gestion: { label: 'Gestion', href: '/gestion' },
@@ -232,6 +234,14 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <Immeubles />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/adresses"
+                    element={
+                      <SectionErrorBoundary>
+                        <AdressesAcquiscan />
                       </SectionErrorBoundary>
                     }
                   />

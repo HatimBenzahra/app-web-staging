@@ -120,6 +120,27 @@ model Immeuble {
   portes            Porte[]
 }
 
+model AcquiscanAddressCoordinate {
+  id              Int      @id @default(autoincrement())
+  immeubleId      String   @unique @map("immeuble_id")
+  dept            String
+  codeInsee       String?  @map("code_insee")
+  imbCode         String?  @map("imb_code")
+  addrCode        String?  @map("addr_code")
+  addrNumero      String?  @map("addr_numero")
+  addrNomVoie     String?  @map("addr_nom_voie")
+  addrNomCommune  String?  @map("addr_nom_commune")
+  imbX            Float?   @map("imb_x")
+  imbY            Float?   @map("imb_y")
+  longitude       Float?
+  latitude        Float?
+  importedAt      DateTime @default(now()) @map("imported_at")
+
+  @@index([dept])
+  @@index([codeInsee])
+  @@map("acquiscan_address_coordinates")
+}
+
 model Statistic {
   id                    Int      @id @default(autoincrement())
   commercialId          Int?

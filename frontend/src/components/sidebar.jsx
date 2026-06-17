@@ -57,6 +57,7 @@ const teamItems = [
 
 const prospectionItems = [
   { title: 'Immeubles', url: '/immeubles', icon: Building2, entity: 'immeubles' },
+  { title: 'Adresses', url: '/adresses', icon: MapPin, entity: 'immeubles' },
   {
     title: 'Zones',
     url: '/zones',
