@@ -20,10 +20,16 @@ import { PrismaService } from '../prisma.service';
 
 const FFMPEG_MAX_BUFFER = 10 * 1024 * 1024;
 
-interface WhisperSegment {
+export interface WhisperSegment {
   start: number;
   end: number;
   text: string;
+}
+
+export interface TranscriptionResult {
+  text: string;
+  segments: WhisperSegment[];
+  duration: number;
 }
 
 interface WhisperResponse {
@@ -249,6 +255,64 @@ export class TranscriptionService implements OnModuleDestroy {
       this.cleanupDir(tmpDir);
       this.inFlight.delete(s3Key);
       this.releaseSlot();
+    }
+  }
+
+  async transcribeRecordingFromS3(
+    s3Key: string,
+  ): Promise<TranscriptionResult | null> {
+    if (s3Key.endsWith('_conv.mp4')) {
+      return null;
+    }
+
+    if (!this.whisperUrl) {
+      this.logger.warn(`WHISPER_API_URL absent, transcription ignorée pour ${s3Key}`);
+      return null;
+    }
+
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `coaching-transcription-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    const originalFile = path.join(tmpDir, 'original.mp4');
+
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const downloaded = await this.downloadFromS3(s3Key, originalFile);
+      if (!downloaded) {
+        return null;
+      }
+
+      const whisperResult = await this.transcribeFile(originalFile);
+      if (!whisperResult || whisperResult.segments.length === 0) {
+        return null;
+      }
+
+      if (whisperResult.duration > 0) {
+        this.speechAnalysis.cacheFromWhisperSegments(
+          s3Key,
+          whisperResult.segments,
+          whisperResult.duration,
+        );
+      }
+
+      return {
+        text: whisperResult.segments
+          .map((segment) => segment.text?.trim())
+          .filter(Boolean)
+          .join(' ')
+          .trim(),
+        segments: whisperResult.segments,
+        duration: whisperResult.duration,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Échec transcription coaching ${s3Key}: ${error?.message || error}`,
+      );
+      return null;
+    } finally {
+      this.cleanupDir(tmpDir);
     }
   }
 
