@@ -527,6 +527,8 @@ model CoachingSession {
   status             CoachingSessionStatus @default(PENDING)
   score              Int?
   summary            String?
+  conversationReading Json?
+  criterionResults   Json?
   strengths          Json?
   improvements       Json?
   recommendations    Json?
@@ -566,6 +568,8 @@ model CoachingConversationEvaluation {
   status                 CoachingSessionStatus @default(READY)
   score                  Int?
   summary                String?
+  conversationReading    Json?
+  criterionResults       Json?
   strengths              Json?
   improvements           Json?
   recommendations        Json?
