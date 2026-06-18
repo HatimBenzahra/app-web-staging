@@ -59,6 +59,26 @@ const boundsAround = (longitude, latitude, delta = 0.025) => ({
   north: Math.min(90, latitude + delta),
 })
 
+const hasValidCoordinates = suggestion => (
+  Number.isFinite(suggestion?.longitude)
+  && Number.isFinite(suggestion?.latitude)
+  && suggestion.longitude >= -180
+  && suggestion.longitude <= 180
+  && suggestion.latitude >= -90
+  && suggestion.latitude <= 90
+)
+
+const formatSuggestionError = error => {
+  const message = error instanceof Error ? error.message : String(error || '')
+  if (/timeout|temps|ECONNABORTED/i.test(message)) {
+    return 'Recherche temporairement lente. Réessaie en ajoutant la ville.'
+  }
+  if (/service unavailable|503/i.test(message)) {
+    return 'Recherche adresse temporairement indisponible.'
+  }
+  return message || 'Erreur de recherche adresse'
+}
+
 export function useAdressesAcquiscanLogic() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [addressQuery, setAddressQuery] = useState('')
@@ -109,7 +129,7 @@ export function useAdressesAcquiscanLogic() {
       const result = await api.acquiscan.getAddressSuggestions({ query: trimmed, limit: 20 })
       setSuggestions(result)
     } catch (err) {
-      setSuggestionsError(err instanceof Error ? err.message : 'Erreur de recherche adresse')
+      setSuggestionsError(formatSuggestionError(err))
       setSuggestions([])
     } finally {
       setSuggestionsLoading(false)
@@ -208,6 +228,10 @@ export function useAdressesAcquiscanLogic() {
   }, [])
 
   const selectSuggestion = useCallback(suggestion => {
+    if (!hasValidCoordinates(suggestion)) {
+      setSuggestionsError('Coordonnées invalides pour cette adresse.')
+      return
+    }
     setSelectedSuggestion(suggestion)
     setAddressQuery(suggestion.label)
     setSuggestions([])

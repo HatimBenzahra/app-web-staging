@@ -87,6 +87,10 @@ type AcquiscanAutocompleteResponse = {
   suggestions?: unknown;
 };
 
+type BanAddressFeatureCollection = {
+  features?: unknown[];
+};
+
 type CsvCoordinateRow = {
   immeubleId: string;
   dept: string;
@@ -119,22 +123,22 @@ export class AcquiscanService {
   async searchAddressSuggestions(input: AcquiscanAddressSearchInput): Promise<AcquiscanAddressSuggestion[]> {
     const query = input.query.trim();
     if (query.length < 2) return [];
+    const limit = Math.min(input.limit ?? 8, 20);
+
+    const banItems = await this.fetchBanAddressSuggestions(query, limit);
+    if (banItems.length) {
+      return this.mergeAddressSuggestions(banItems).slice(0, limit);
+    }
 
     const params = new URLSearchParams({
       q: query,
-      limit: String(Math.min(input.limit ?? 8, 20)),
+      limit: String(limit),
     });
+    const acquiscanItems = await this.fetchAcquiscanAddressSuggestions(params);
 
-    const response = await axios.get<AcquiscanAutocompleteResponse>(
-      `${this.getApiBaseUrl()}/api/v1/search/autocomplete?${params.toString()}`,
-      { timeout: 15000 },
-    );
-
-    const rawItems = this.extractAutocompleteItems(response.data);
-    return rawItems
-      .map((item, index) => this.mapAddressSuggestion(item, index))
+    return this.mergeAddressSuggestions(acquiscanItems)
       .filter((item): item is AcquiscanAddressSuggestion => Boolean(item))
-      .slice(0, Math.min(input.limit ?? 8, 20));
+      .slice(0, limit);
   }
 
   async findDepartmentOpportunities(): Promise<AcquiscanDepartmentOpportunitiesPage> {
@@ -770,6 +774,53 @@ export class AcquiscanService {
     return [];
   }
 
+  private async fetchAcquiscanAddressSuggestions(params: URLSearchParams): Promise<AcquiscanAddressSuggestion[]> {
+    try {
+      const response = await axios.get<AcquiscanAutocompleteResponse>(
+        `${this.getApiBaseUrl()}/api/v1/search/autocomplete?${params.toString()}`,
+        { timeout: 2500 },
+      );
+      return this.extractAutocompleteItems(response.data)
+        .map((item, index) => this.mapAddressSuggestion(item, index))
+        .filter((item): item is AcquiscanAddressSuggestion => Boolean(item));
+    } catch (error) {
+      this.logger.warn(`Acquiscan autocomplete ignore: ${(error as Error).message?.substring(0, 120)}`);
+      return [];
+    }
+  }
+
+  private async fetchBanAddressSuggestions(query: string, limit: number): Promise<AcquiscanAddressSuggestion[]> {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(Math.min(limit, 10)),
+      autocomplete: '1',
+    });
+
+    try {
+      const response = await axios.get<BanAddressFeatureCollection>(
+        `${this.getBanAddressApiBaseUrl()}/search/?${params.toString()}`,
+        { timeout: 8000 },
+      );
+      return (response.data.features ?? [])
+        .map((item, index) => this.mapAddressSuggestion(item, index))
+        .filter((item): item is AcquiscanAddressSuggestion => Boolean(item));
+    } catch (error) {
+      this.logger.warn(`BAN autocomplete indisponible: ${(error as Error).message?.substring(0, 120)}`);
+      return [];
+    }
+  }
+
+  private mergeAddressSuggestions(items: AcquiscanAddressSuggestion[]) {
+    const seen = new Set<string>();
+    return items
+      .filter(item => {
+        const key = item.id || `${item.latitude}:${item.longitude}:${item.label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
   private extractAutocompleteItems(payload: AcquiscanAutocompleteResponse): unknown[] {
     const data = payload.data;
     if (Array.isArray(data)) return data;
@@ -795,10 +846,20 @@ export class AcquiscanService {
       ? record.geometry
       : {}) as Record<string, unknown>;
     const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : null;
-    const longitude = this.pickNumber(record, properties, ['longitude', 'lon', 'lng', 'x'])
-      ?? (coordinates ? this.toNullableNumber(coordinates[0] as number | string) : null);
-    const latitude = this.pickNumber(record, properties, ['latitude', 'lat', 'y'])
-      ?? (coordinates ? this.toNullableNumber(coordinates[1] as number | string) : null);
+    const geometryLongitude = coordinates ? this.toNullableNumber(coordinates[0] as number | string) : null;
+    const geometryLatitude = coordinates ? this.toNullableNumber(coordinates[1] as number | string) : null;
+    const namedLongitude = this.pickNumber(record, properties, ['longitude', 'lon', 'lng']);
+    const namedLatitude = this.pickNumber(record, properties, ['latitude', 'lat']);
+    const xyLongitude = this.pickNumber(record, properties, ['x']);
+    const xyLatitude = this.pickNumber(record, properties, ['y']);
+    const longitude = this.isValidLongitude(geometryLongitude) ? geometryLongitude
+      : this.isValidLongitude(namedLongitude) ? namedLongitude
+        : this.isValidLongitude(xyLongitude) ? xyLongitude
+          : null;
+    const latitude = this.isValidLatitude(geometryLatitude) ? geometryLatitude
+      : this.isValidLatitude(namedLatitude) ? namedLatitude
+        : this.isValidLatitude(xyLatitude) ? xyLatitude
+          : null;
     if (latitude == null || longitude == null) return null;
 
     const label = this.pickString(record, properties, ['label', 'display_name', 'displayName', 'name', 'adresse', 'address', 'value'])
@@ -1107,6 +1168,14 @@ export class AcquiscanService {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  private isValidLongitude(value: number | null): value is number {
+    return value !== null && value >= -180 && value <= 180;
+  }
+
+  private isValidLatitude(value: number | null): value is number {
+    return value !== null && value >= -90 && value <= 90;
+  }
+
   private toNullableInt(value?: string | number | null): number | null {
     const parsed = this.toNullableNumber(value);
     return parsed === null ? null : Math.trunc(parsed);
@@ -1135,6 +1204,10 @@ export class AcquiscanService {
 
   private getApiBaseUrl() {
     return (process.env.ACQUISCAN_API_BASE_URL || 'https://api.acquiscan.com').replace(/\/+$/, '');
+  }
+
+  private getBanAddressApiBaseUrl() {
+    return (process.env.BAN_ADDRESS_API_BASE_URL || 'https://api-adresse.data.gouv.fr').replace(/\/+$/, '');
   }
 
   private getKeycloakHttpsAgent(issuer: string) {

@@ -330,7 +330,9 @@ export default function AdressesAcquiscan() {
     })
   }, [selectedSuggestion])
 
-  const showSuggestions = searchFocused && (suggestions.length > 0 || suggestionsLoading || suggestionsError)
+  const hasSearchQuery = addressQuery.trim().length >= 2
+  const searchHasPostcode = /\b\d{5}\b/.test(addressQuery)
+  const showSuggestions = searchFocused && hasSearchQuery
 
   return (
     <div className="space-y-3">
@@ -443,7 +445,7 @@ export default function AdressesAcquiscan() {
                   onChange={event => setAddressQuery(event.target.value)}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-                  placeholder="Rechercher une adresse exacte"
+                  placeholder="Rechercher une adresse"
                   className="h-9 pl-9 text-sm"
                 />
                 {showSuggestions && (
@@ -456,6 +458,13 @@ export default function AdressesAcquiscan() {
                     )}
                     {suggestionsError && (
                       <div className="px-3 py-2 text-sm text-destructive">{suggestionsError}</div>
+                    )}
+                    {!suggestionsLoading && !suggestionsError && suggestions.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        {searchHasPostcode
+                          ? 'Aucune adresse trouvée pour cette saisie.'
+                          : 'Aucune adresse trouvée. Ajoute la ville si la voie existe dans plusieurs communes.'}
+                      </div>
                     )}
                     {!suggestionsLoading && !suggestionsError && suggestions.map(suggestion => (
                       <button
@@ -586,18 +595,6 @@ export default function AdressesAcquiscan() {
             <MiniStat icon={Zap} label="Cuivre" value={fmtInt(stats.shutdownCount)} />
           </div>
         </div>
-
-        {selectedSuggestion && (
-          <div className="pointer-events-none absolute left-3 top-[104px] z-20 max-w-[calc(100%-1.5rem)] rounded-md border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur animate-in fade-in-0 slide-in-from-top-2 md:left-4 md:top-[190px] md:max-w-[calc(100%-2rem)] xl:top-[132px]">
-            <div className="flex items-center gap-2">
-              <Crosshair className="h-4 w-4 text-emerald-600" />
-              <span className="truncate font-medium">{selectedSuggestion.label}</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Adresses Acquiscan proches affichées selon les coordonnées disponibles.
-            </p>
-          </div>
-        )}
 
         {loading && mapLoaded && (
           <Badge className="absolute bottom-4 right-4 z-20 gap-2 shadow-lg" variant="secondary">
