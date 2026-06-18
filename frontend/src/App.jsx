@@ -76,7 +76,7 @@ function AdminLayout() {
     managers: { label: 'Managers', href: '/managers' },
     directeurs: { label: 'Directeurs', href: '/directeurs' },
     immeubles: { label: 'Immeubles', href: '/immeubles' },
-    adresses: { label: 'Adresses Acquiscan', href: '/adresses' },
+    adresses: { label: 'Opportunités terrain', href: '/adresses' },
     portes: { label: 'Porte', href: '' },
     zones: { label: 'Zones', href: '/zones' },
     gestion: { label: 'Gestion', href: '/gestion' },
@@ -123,6 +123,7 @@ function AdminLayout() {
   }
 
   const breadcrumbs = buildBreadcrumbs()
+  const isWideMapPage = location.pathname === '/adresses'
 
   return (
     <ErrorBoundary>
@@ -170,7 +171,13 @@ function AdminLayout() {
                 <ThemeToggle />
               </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-6 pt-6 overflow-x-hidden mx-auto w-11/12 max-w-[1400px] animate-fade-in-content">
+            <div
+              className={`flex flex-1 flex-col gap-4 overflow-x-hidden animate-fade-in-content ${
+                isWideMapPage
+                  ? 'w-full px-4 py-4'
+                  : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
+              }`}
+            >
               <Suspense fallback={null}>
                 <Routes>
                   <Route

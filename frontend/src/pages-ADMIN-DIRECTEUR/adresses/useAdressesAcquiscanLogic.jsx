@@ -1,154 +1,290 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/services'
 
+const INITIAL_VIEW_STATE = {
+  longitude: 2.2137,
+  latitude: 46.2276,
+  zoom: 5,
+}
+
+const INITIAL_BOUNDS = {
+  west: -5.6,
+  south: 41,
+  east: 9.8,
+  north: 51.5,
+}
+
+const ADDRESS_LIMIT = 500
+
 const DEFAULT_FILTERS = {
-  dept: '75',
+  dept: '',
   commune: '',
   annee: 'all',
-  search: '',
   fiber: 'all',
   coverage4g: 'all',
   coverage5g: 'all',
   segment: 'all',
-  limit: 100,
 }
 
 const normalizeFilters = filters => ({
-  dept: filters.dept.trim().toUpperCase(),
+  dept: filters.dept.trim().toUpperCase() || undefined,
   commune: filters.commune.trim() || undefined,
   annee: filters.annee,
-  search: filters.search.trim() || undefined,
   fiber: filters.fiber,
   coverage4g: filters.coverage4g,
   coverage5g: filters.coverage5g,
   segment: filters.segment,
-  limit: Number(filters.limit) || 100,
+  limit: ADDRESS_LIMIT,
 })
 
-const hasCoordinates = row =>
-  typeof row.coordinates?.latitude === 'number' && typeof row.coordinates?.longitude === 'number'
+const normalizeBounds = bounds => ({
+  west: Number(bounds.west.toFixed(6)),
+  south: Number(bounds.south.toFixed(6)),
+  east: Number(bounds.east.toFixed(6)),
+  north: Number(bounds.north.toFixed(6)),
+})
+
+const mapPointToAddress = point => ({
+  ...point,
+  coordinates: {
+    latitude: point.latitude,
+    longitude: point.longitude,
+  },
+})
+
+const boundsAround = (longitude, latitude, delta = 0.025) => ({
+  west: Math.max(-180, longitude - delta),
+  south: Math.max(-90, latitude - delta),
+  east: Math.min(180, longitude + delta),
+  north: Math.min(90, latitude + delta),
+})
 
 export function useAdressesAcquiscanLogic() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
-  const [page, setPage] = useState(0)
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [error, setError] = useState(null)
-  const [importError, setImportError] = useState(null)
+  const [addressQuery, setAddressQuery] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [suggestionsError, setSuggestionsError] = useState(null)
+  const [selectedSuggestion, setSelectedSuggestion] = useState(null)
+  const [mapQuery, setMapQuery] = useState({
+    bounds: INITIAL_BOUNDS,
+    zoom: INITIAL_VIEW_STATE.zoom,
+  })
+  const [mapData, setMapData] = useState(null)
+  const [listData, setListData] = useState(null)
+  const [mapLoading, setMapLoading] = useState(false)
+  const [listLoading, setListLoading] = useState(false)
+  const [mapError, setMapError] = useState(null)
+  const [listError, setListError] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
 
-  const offset = page * Number(filters.limit || 100)
-
-  const queryInput = useMemo(
-    () => ({
-      ...normalizeFilters(filters),
-      offset,
-      enrichCoordinates: false,
-    }),
-    [filters, offset]
-  )
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await api.acquiscan.getAddresses(queryInput)
-      setData(result)
-      setSelectedId(currentId =>
-        result.rows.length && !result.rows.some(row => row.immeubleId === currentId)
-          ? result.rows[0].immeubleId
-          : currentId
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de chargement Acquiscan')
-    } finally {
-      setLoading(false)
+  const mapInput = useMemo(() => {
+    const normalized = normalizeFilters(filters)
+    return {
+      bounds: mapQuery.bounds,
+      zoom: mapQuery.zoom,
+      dept: normalized.dept,
+      commune: normalized.commune,
+      annee: normalized.annee,
+      fiber: normalized.fiber,
+      coverage4g: normalized.coverage4g,
+      coverage5g: normalized.coverage5g,
+      segment: normalized.segment,
+      limit: normalized.limit,
+      cluster: mapQuery.zoom < 10,
     }
-  }, [queryInput])
+  }, [filters, mapQuery])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const loadSuggestions = useCallback(async query => {
+    const trimmed = query.trim()
+    if (trimmed.length < 2) {
+      setSuggestions([])
+      setSuggestionsError(null)
+      return
+    }
 
-  const updateFilter = useCallback((key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }))
-    setPage(0)
+    setSuggestionsLoading(true)
+    setSuggestionsError(null)
+    try {
+      const result = await api.acquiscan.getAddressSuggestions({ query: trimmed, limit: 20 })
+      setSuggestions(result)
+    } catch (err) {
+      setSuggestionsError(err instanceof Error ? err.message : 'Erreur de recherche adresse')
+      setSuggestions([])
+    } finally {
+      setSuggestionsLoading(false)
+    }
   }, [])
 
-  const importCoordinates = useCallback(async () => {
-    const dept = normalizeFilters(filters).dept
-    setImporting(true)
-    setImportError(null)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadSuggestions(addressQuery)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [addressQuery, loadSuggestions])
+
+  const loadMap = useCallback(async () => {
+    setMapLoading(true)
+    setMapError(null)
     try {
-      await api.acquiscan.importCoordinates(dept)
-      await load()
+      const result = await api.acquiscan.getMapAddresses(mapInput)
+      setMapData(result)
+      setSelectedId(current => {
+        if (!result.points.length) return null
+        return result.points.some(point => point.immeubleId === current) ? current : null
+      })
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Erreur import coordonnées Acquiscan')
+      setMapError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
     } finally {
-      setImporting(false)
+      setMapLoading(false)
     }
-  }, [filters, load])
+  }, [mapInput])
 
-  const rows = data?.rows || []
-  const rowsWithCoordinates = useMemo(() => rows.filter(hasCoordinates), [rows])
+  const listInput = useMemo(() => {
+    const normalized = normalizeFilters(filters)
+    if (!normalized.dept) return null
+    return {
+      dept: normalized.dept,
+      commune: normalized.commune,
+      annee: normalized.annee,
+      fiber: normalized.fiber,
+      coverage4g: normalized.coverage4g,
+      coverage5g: normalized.coverage5g,
+      segment: normalized.segment,
+      limit: Math.min(normalized.limit, 500),
+      offset: 0,
+    }
+  }, [filters])
 
+  const loadList = useCallback(async () => {
+    if (!listInput) {
+      setListData(null)
+      setListError(null)
+      return
+    }
+
+    setListLoading(true)
+    setListError(null)
+    try {
+      const result = await api.acquiscan.getCopperBuildings(listInput)
+      setListData(result)
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
+    } finally {
+      setListLoading(false)
+    }
+  }, [listInput])
+
+  useEffect(() => {
+    loadMap()
+  }, [loadMap])
+
+  useEffect(() => {
+    loadList()
+  }, [loadList])
+
+  const updateFilter = useCallback((key, value) => {
+    setFilters(prev => {
+      const next = { ...prev, [key]: value }
+      if (key === 'dept') next.commune = ''
+      return next
+    })
+  }, [])
+
+  const updateMapViewport = useCallback((bounds, zoom) => {
+    if (!bounds) return
+    setMapQuery({
+      bounds: normalizeBounds(bounds),
+      zoom: Number(zoom.toFixed(2)),
+    })
+  }, [])
+
+  const resetFilters = useCallback(() => {
+    setFilters(DEFAULT_FILTERS)
+    setAddressQuery('')
+    setSuggestions([])
+    setSelectedSuggestion(null)
+    setSelectedId(null)
+  }, [])
+
+  const selectSuggestion = useCallback(suggestion => {
+    setSelectedSuggestion(suggestion)
+    setAddressQuery(suggestion.label)
+    setSuggestions([])
+    setSelectedId(null)
+    setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+    setMapQuery({
+      bounds: boundsAround(suggestion.longitude, suggestion.latitude),
+      zoom: 15,
+    })
+  }, [])
+
+  const rows = useMemo(() => (mapData?.points || []).map(mapPointToAddress), [mapData?.points])
+  const listRows = useMemo(
+    () => (listData?.rows?.length ? listData.rows : rows),
+    [listData?.rows, rows]
+  )
+  const clusters = mapData?.clusters || []
+  const coverage = mapData?.coverage || []
   const selectedAddress = useMemo(
-    () => rows.find(row => row.immeubleId === selectedId) || rows[0] || null,
-    [rows, selectedId]
+    () => rows.find(row => row.immeubleId === selectedId)
+      || listRows.find(row => row.immeubleId === selectedId && row.coordinates?.latitude && row.coordinates?.longitude)
+      || null,
+    [listRows, rows, selectedId]
   )
 
   const stats = useMemo(() => {
-    const fiberCount = rows.filter(row => row.eligFo === '1').length
     const shutdownCount = rows.filter(
-      row =>
-        row.fermetureTechnique === '1' ||
-        row.fermetureComAddr === '1' ||
-        row.fermetureComZone === '1'
+      row => row.fermetureTechnique === '1' || row.fermetureComAddr === '1' || row.fermetureComZone === '1'
     ).length
+    const fiberCount = rows.filter(row => row.eligFo === '1').length
     return {
-      total: data?.total || 0,
-      shown: rows.length,
-      geocoded: rowsWithCoordinates.length,
-      fiberCount,
+      total: mapData?.totalInBounds || 0,
+      shown: mapData?.returnedCount || rows.length,
+      rows: rows.length,
+      listRows: listRows.length,
+      clusters: clusters.length,
       shutdownCount,
+      fiberCount,
+      departments: coverage.length,
+      listTotal: listData?.total || mapData?.totalInBounds || 0,
     }
-  }, [data?.total, rows, rowsWithCoordinates.length])
-
-  const mapCenter = useMemo(() => {
-    if (!rowsWithCoordinates.length) {
-      return { longitude: 2.3522, latitude: 48.8566, zoom: 5 }
-    }
-
-    const avgLatitude =
-      rowsWithCoordinates.reduce((sum, row) => sum + row.coordinates.latitude, 0) /
-      rowsWithCoordinates.length
-    const avgLongitude =
-      rowsWithCoordinates.reduce((sum, row) => sum + row.coordinates.longitude, 0) /
-      rowsWithCoordinates.length
-    return { longitude: avgLongitude, latitude: avgLatitude, zoom: rowsWithCoordinates.length > 1 ? 11 : 15 }
-  }, [rowsWithCoordinates])
+  }, [clusters.length, coverage.length, listData?.total, listRows.length, mapData?.returnedCount, mapData?.totalInBounds, rows])
 
   return {
     filters,
     updateFilter,
-    page,
-    setPage,
-    data,
+    resetFilters,
+    addressQuery,
+    setAddressQuery,
+    suggestions,
+    suggestionsLoading,
+    suggestionsError,
+    selectedSuggestion,
+    selectSuggestion,
+    initialViewState: INITIAL_VIEW_STATE,
+    updateMapViewport,
     rows,
-    rowsWithCoordinates,
+    listRows,
+    rowsWithCoordinates: rows,
+    clusters,
+    coverage,
     selectedAddress,
     selectedId,
     setSelectedId,
     stats,
-    mapCenter,
-    loading,
-    importing,
-    error,
-    importError,
-    refetch: load,
-    importCoordinates,
-    hasPreviousPage: page > 0,
-    hasNextPage: offset + rows.length < (data?.total || 0),
+    mapData,
+    loading: mapLoading || listLoading,
+    mapLoading,
+    listLoading,
+    error: mapError || listError,
+    mapError,
+    listError,
+    refetch: () => {
+      loadMap()
+      loadList()
+    },
+    tooManyResults: Boolean(mapData?.tooManyResults),
+    clustered: Boolean(mapData?.clustered),
   }
 }

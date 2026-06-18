@@ -5,7 +5,27 @@ import * as https from 'https';
 import * as readline from 'readline';
 import * as zlib from 'zlib';
 import { PrismaService } from '../prisma.service';
-import { AcquiscanAddress, AcquiscanAddressesInput, AcquiscanAddressesPage, AcquiscanImportStatus } from './acquiscan.dto';
+import {
+  AcquiscanAddress,
+  AcquiscanAddressSearchInput,
+  AcquiscanAddressSuggestion,
+  AcquiscanAddressesInput,
+  AcquiscanAddressesPage,
+  AcquiscanBoundsInput,
+  AcquiscanCommuneOpportunitiesInput,
+  AcquiscanCommuneOpportunitiesPage,
+  AcquiscanCommuneOpportunity,
+  AcquiscanCopperBuildingOpportunity,
+  AcquiscanCopperBuildingsInput,
+  AcquiscanCopperBuildingsPage,
+  AcquiscanDepartmentOpportunitiesPage,
+  AcquiscanDepartmentOpportunity,
+  AcquiscanMapInput,
+  AcquiscanMapPoint,
+  AcquiscanMapResult,
+  AcquiscanImportStatus,
+  AcquiscanOpportunitySummary,
+} from './acquiscan.dto';
 
 type AcquiscanTokenResponse = {
   access_token: string;
@@ -38,6 +58,35 @@ type AcquiscanCopperBuildingsResponse = {
   };
 };
 
+type AcquiscanTerritoryStats = {
+  code_dept: string;
+  code_insee?: string | null;
+  nom_commune?: string | null;
+  total_buildings?: number | string | null;
+  fiber_buildings?: number | string | null;
+  copper_buildings?: number | string | null;
+  copper_shutdown?: number | string | null;
+  fiber_rate?: number | string | null;
+  copper_shutdown_rate?: number | string | null;
+  closest_shutdown_year?: number | string | null;
+  sites_4g?: number | string | null;
+  sites_5g?: number | string | null;
+  sites_total?: number | string | null;
+};
+
+type AcquiscanStatsResponse = {
+  data?: AcquiscanTerritoryStats[] | {
+    rows?: AcquiscanTerritoryStats[];
+    data?: AcquiscanTerritoryStats[];
+  };
+};
+
+type AcquiscanAutocompleteResponse = {
+  data?: unknown;
+  results?: unknown;
+  suggestions?: unknown;
+};
+
 type CsvCoordinateRow = {
   immeubleId: string;
   dept: string;
@@ -54,6 +103,10 @@ type CsvCoordinateRow = {
 };
 
 const WEB_MERCATOR_RADIUS = 6378137;
+const MAP_DETAIL_ZOOM = 10;
+const MAP_DEFAULT_LIMIT = 500;
+const MAP_MAX_POINTS = 500;
+const MAP_MAX_CLUSTERS = 300;
 
 @Injectable()
 export class AcquiscanService {
@@ -62,6 +115,68 @@ export class AcquiscanService {
   private readonly activeImports = new Map<string, Promise<AcquiscanImportStatus>>();
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async searchAddressSuggestions(input: AcquiscanAddressSearchInput): Promise<AcquiscanAddressSuggestion[]> {
+    const query = input.query.trim();
+    if (query.length < 2) return [];
+
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(Math.min(input.limit ?? 8, 20)),
+    });
+
+    const response = await axios.get<AcquiscanAutocompleteResponse>(
+      `${this.getApiBaseUrl()}/api/v1/search/autocomplete?${params.toString()}`,
+      { timeout: 15000 },
+    );
+
+    const rawItems = this.extractAutocompleteItems(response.data);
+    return rawItems
+      .map((item, index) => this.mapAddressSuggestion(item, index))
+      .filter((item): item is AcquiscanAddressSuggestion => Boolean(item))
+      .slice(0, Math.min(input.limit ?? 8, 20));
+  }
+
+  async findDepartmentOpportunities(): Promise<AcquiscanDepartmentOpportunitiesPage> {
+    const rows = await this.fetchTerritoryStats('/api/v1/map/departments');
+    const mappedRows = rows
+      .map(row => this.mapDepartmentOpportunity(row))
+      .sort((a, b) => b.summary.opportunityScore - a.summary.opportunityScore);
+
+    return {
+      rows: mappedRows,
+      summary: this.buildAggregateSummary(mappedRows.map(row => row.summary)),
+    };
+  }
+
+  async findCommuneOpportunities(input: AcquiscanCommuneOpportunitiesInput): Promise<AcquiscanCommuneOpportunitiesPage> {
+    const dept = this.normalizeDept(input.dept);
+    const params = new URLSearchParams({ dept });
+    const rows = await this.fetchTerritoryStats(`/api/v1/map/communes?${params.toString()}`);
+    const mappedRows = rows
+      .map(row => this.mapCommuneOpportunity(row, dept))
+      .sort((a, b) => b.summary.opportunityScore - a.summary.opportunityScore);
+
+    return {
+      rows: mappedRows,
+      summary: this.buildAggregateSummary(mappedRows.map(row => row.summary)),
+    };
+  }
+
+  async findCopperBuildingOpportunities(input: AcquiscanCopperBuildingsInput): Promise<AcquiscanCopperBuildingsPage> {
+    const dept = this.normalizeDept(input.dept);
+    const limit = Math.min(input.limit ?? 100, 500);
+    const offset = input.offset ?? 0;
+    const copperPage = await this.fetchCopperBuildings({ ...input, dept, limit, offset });
+    const coordinatesById = await this.findCoordinatesForCopperRows(copperPage.rows);
+
+    return {
+      rows: copperPage.rows.map(row => this.mapCopperBuildingOpportunity(row, coordinatesById.get(row.immeuble_id) || null)),
+      total: copperPage.total,
+      limit,
+      offset,
+    };
+  }
 
   async findAddresses(input: AcquiscanAddressesInput): Promise<AcquiscanAddressesPage> {
     const dept = this.normalizeDept(input.dept);
@@ -144,6 +259,121 @@ export class AcquiscanService {
     return existing;
   }
 
+  async findMapAddresses(input: AcquiscanMapInput): Promise<AcquiscanMapResult> {
+    const bounds = this.validateBounds(input.bounds);
+    const zoom = this.validateZoom(input.zoom);
+    const limit = Math.min(input.limit ?? MAP_DEFAULT_LIMIT, MAP_MAX_POINTS);
+    const dept = input.dept ? this.normalizeDept(input.dept) : undefined;
+    const where = this.buildMapCoordinateWhere({ ...input, dept, bounds });
+    const shouldCluster = input.cluster ?? zoom < MAP_DETAIL_ZOOM;
+    const hasBusinessFilters = this.hasBusinessMapFilters(input);
+
+    const [totalInBounds, coverage] = await Promise.all([
+      this.prisma.acquiscanAddressCoordinate.count({ where }),
+      this.getMapCoverage(where),
+    ]);
+    const effectiveFilteredDept = dept ?? (hasBusinessFilters && coverage.length === 1 ? coverage[0].dept : undefined);
+
+    if (effectiveFilteredDept && hasBusinessFilters) {
+      const filteredMap = await this.findFilteredDepartmentMapPoints(input, bounds, effectiveFilteredDept, MAP_MAX_POINTS);
+      if (shouldCluster) {
+        const clusters = this.clusterMapPoints(filteredMap.points, bounds, zoom);
+        return {
+          points: [],
+          clusters,
+          totalInBounds: filteredMap.points.length,
+          returnedCount: clusters.length,
+          tooManyResults: filteredMap.total > filteredMap.points.length,
+          clustered: true,
+          coverage,
+        };
+      }
+
+      return {
+        points: filteredMap.points.slice(0, limit),
+        clusters: [],
+        totalInBounds: filteredMap.points.length,
+        returnedCount: Math.min(filteredMap.points.length, limit),
+        tooManyResults: filteredMap.total > filteredMap.points.length || filteredMap.points.length > limit,
+        clustered: false,
+        coverage,
+      };
+    }
+
+    if (shouldCluster) {
+      const clusters = await this.findMapClusters({
+        bounds,
+        zoom,
+        dept,
+        commune: input.commune,
+        search: input.search,
+      });
+
+      return {
+        points: [],
+        clusters,
+        totalInBounds,
+        returnedCount: clusters.length,
+        tooManyResults: totalInBounds > clusters.reduce((sum, cluster) => sum + cluster.count, 0),
+        clustered: true,
+        coverage,
+      };
+    }
+
+    if (dept) {
+      const enrichedPoints = await this.findDepartmentMapPoints(input, bounds, dept, limit);
+      return {
+        points: enrichedPoints,
+        clusters: [],
+        totalInBounds,
+        returnedCount: enrichedPoints.length,
+        tooManyResults: totalInBounds > enrichedPoints.length,
+        clustered: false,
+        coverage,
+      };
+    }
+
+    const rows = await this.prisma.acquiscanAddressCoordinate.findMany({
+      where,
+      orderBy: [{ dept: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+
+    const points = rows
+      .filter(row => row.latitude !== null && row.longitude !== null)
+      .map(row => ({
+        id: String(row.id),
+        immeubleId: row.immeubleId,
+        imbCode: row.imbCode,
+        addrNumero: row.addrNumero,
+        addrNomVoie: row.addrNomVoie,
+        addrNomCommune: row.addrNomCommune,
+        codeInsee: row.codeInsee,
+        nbrLogements: null,
+        fermetureTechnique: null,
+        fermetureComZone: null,
+        fermetureComAddr: null,
+        eligFo: null,
+        anneeFt: null,
+        sites4g: null,
+        sites5g: null,
+        sitesTotal: null,
+        dept: row.dept,
+        latitude: row.latitude as number,
+        longitude: row.longitude as number,
+      }));
+
+    return {
+      points,
+      clusters: [],
+      totalInBounds,
+      returnedCount: points.length,
+      tooManyResults: totalInBounds > points.length,
+      clustered: false,
+      coverage,
+    };
+  }
+
   private async downloadAndImportDepartment(dept: string): Promise<AcquiscanImportStatus> {
     const url = `${this.getArcepBaseImbBaseUrl()}/base_imb_${dept}.csv.gz`;
     this.logger.log(`Import coordonnées ARCEP ${dept}: ${url}`);
@@ -195,6 +425,272 @@ export class AcquiscanService {
       skipDuplicates: true,
     });
     return batch.length;
+  }
+
+  private buildMapCoordinateWhere(input: AcquiscanMapInput & { dept?: string; bounds: AcquiscanBoundsInput }): Prisma.AcquiscanAddressCoordinateWhereInput {
+    const where: Prisma.AcquiscanAddressCoordinateWhereInput = {
+      latitude: { not: null, gte: input.bounds.south, lte: input.bounds.north },
+      longitude: { not: null, gte: input.bounds.west, lte: input.bounds.east },
+    };
+
+    if (input.dept) {
+      where.dept = input.dept;
+    }
+
+    if (input.commune) {
+      where.codeInsee = input.commune;
+    }
+
+    const search = input.search?.trim();
+    if (search) {
+      where.OR = [
+        { immeubleId: { contains: search, mode: 'insensitive' } },
+        { imbCode: { contains: search, mode: 'insensitive' } },
+        { addrNumero: { contains: search, mode: 'insensitive' } },
+        { addrNomVoie: { contains: search, mode: 'insensitive' } },
+        { addrNomCommune: { contains: search, mode: 'insensitive' } },
+        { codeInsee: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    return where;
+  }
+
+  private async findDepartmentMapPoints(
+    input: AcquiscanMapInput,
+    bounds: AcquiscanBoundsInput,
+    dept: string,
+    limit: number,
+  ) {
+    return (await this.findFilteredDepartmentMapPoints(input, bounds, dept, limit)).points;
+  }
+
+  private async findFilteredDepartmentMapPoints(
+    input: AcquiscanMapInput,
+    bounds: AcquiscanBoundsInput,
+    dept: string,
+    limit: number,
+  ): Promise<{ points: AcquiscanMapPoint[]; total: number }> {
+    const copperPage = await this.fetchCopperBuildings({
+      ...input,
+      dept,
+      limit,
+      offset: 0,
+    });
+    const rows = copperPage.rows;
+    const ids = rows.map(row => row.immeuble_id).filter(Boolean);
+    const imbCodes = rows.map(row => row.imb_code).filter((code): code is string => Boolean(code));
+    const coordinateWhere: Prisma.AcquiscanAddressCoordinateWhereInput[] = [];
+    if (ids.length) coordinateWhere.push({ immeubleId: { in: ids } });
+    if (imbCodes.length) coordinateWhere.push({ imbCode: { in: imbCodes } });
+    if (!coordinateWhere.length) return { points: [], total: copperPage.total };
+
+    const coordinates = await this.prisma.acquiscanAddressCoordinate.findMany({
+      where: { OR: coordinateWhere },
+    });
+    const coordinatesById = new Map(coordinates.map(item => [item.immeubleId, item]));
+    const coordinatesByImbCode = new Map(
+      coordinates
+        .filter(item => item.imbCode)
+        .map(item => [item.imbCode, item]),
+    );
+
+    const points = rows.flatMap(row => {
+      const coordinate = coordinatesById.get(row.immeuble_id) || (row.imb_code ? coordinatesByImbCode.get(row.imb_code) : null);
+      if (!coordinate?.latitude || !coordinate.longitude) return [];
+      if (
+        coordinate.latitude < bounds.south ||
+        coordinate.latitude > bounds.north ||
+        coordinate.longitude < bounds.west ||
+        coordinate.longitude > bounds.east
+      ) {
+        return [];
+      }
+
+      return [{
+        id: String(coordinate.id),
+        immeubleId: row.immeuble_id,
+        imbCode: row.imb_code,
+        addrNumero: row.addr_numero,
+        addrNomVoie: row.addr_nom_voie,
+        addrNomCommune: row.addr_nom_commune,
+        codeInsee: row.code_insee,
+        nbrLogements: row.nbr_logements,
+        fermetureTechnique: row.fermeture_technique,
+        fermetureComZone: row.fermeture_com_zone,
+        fermetureComAddr: row.fermeture_com_addr,
+        eligFo: row.elig_fo,
+        anneeFt: row.annee_ft,
+        sites4g: this.toNullableInt(row.sites_4g),
+        sites5g: this.toNullableInt(row.sites_5g),
+        sitesTotal: this.toNullableInt(row.sites_total),
+        dept: coordinate.dept,
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+      }];
+    });
+
+    return { points, total: copperPage.total };
+  }
+
+  private hasBusinessMapFilters(input: AcquiscanMapInput) {
+    return Boolean(
+      (input.segment && input.segment !== 'all')
+        || (input.fiber && input.fiber !== 'all')
+        || (input.annee && input.annee !== 'all')
+        || (input.coverage4g && input.coverage4g !== 'all')
+        || (input.coverage5g && input.coverage5g !== 'all'),
+    );
+  }
+
+  private clusterMapPoints(points: AcquiscanMapPoint[], bounds: AcquiscanBoundsInput, zoom: number) {
+    const cellSize = this.getClusterCellSize(zoom);
+    const buckets = new Map<string, { latBucket: number; lngBucket: number; latitude: number; longitude: number; count: number }>();
+
+    points.forEach(point => {
+      const latBucket = Math.floor((point.latitude - bounds.south) / cellSize);
+      const lngBucket = Math.floor((point.longitude - bounds.west) / cellSize);
+      const key = `${latBucket}:${lngBucket}`;
+      const current = buckets.get(key);
+      if (current) {
+        current.latitude += point.latitude;
+        current.longitude += point.longitude;
+        current.count += 1;
+        return;
+      }
+
+      buckets.set(key, {
+        latBucket,
+        lngBucket,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        count: 1,
+      });
+    });
+
+    return Array.from(buckets.values())
+      .map(bucket => ({
+        id: `${bucket.latBucket}:${bucket.lngBucket}`,
+        latitude: bucket.latitude / bucket.count,
+        longitude: bucket.longitude / bucket.count,
+        count: bucket.count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, MAP_MAX_CLUSTERS);
+  }
+
+  private async getMapCoverage(where: Prisma.AcquiscanAddressCoordinateWhereInput) {
+    const coverage = await this.prisma.acquiscanAddressCoordinate.groupBy({
+      by: ['dept'],
+      where,
+      _count: { _all: true },
+      _max: { importedAt: true },
+      orderBy: { dept: 'asc' },
+      take: 80,
+    });
+
+    return coverage.map(item => ({
+      dept: item.dept,
+      importedCount: item._count._all,
+      importedAt: item._max.importedAt,
+    }));
+  }
+
+  private async findMapClusters(input: {
+    bounds: AcquiscanBoundsInput;
+    zoom: number;
+    dept?: string;
+    commune?: string;
+    search?: string;
+  }) {
+    const cellSize = this.getClusterCellSize(input.zoom);
+    const clauses: Prisma.Sql[] = [
+      Prisma.sql`"latitude" IS NOT NULL`,
+      Prisma.sql`"longitude" IS NOT NULL`,
+      Prisma.sql`"latitude" BETWEEN ${input.bounds.south} AND ${input.bounds.north}`,
+      Prisma.sql`"longitude" BETWEEN ${input.bounds.west} AND ${input.bounds.east}`,
+    ];
+
+    if (input.dept) {
+      clauses.push(Prisma.sql`"dept" = ${input.dept}`);
+    }
+
+    if (input.commune) {
+      clauses.push(Prisma.sql`"code_insee" = ${input.commune}`);
+    }
+
+    const search = input.search?.trim();
+    if (search) {
+      const like = `%${search}%`;
+      clauses.push(Prisma.sql`(
+        "immeuble_id" ILIKE ${like}
+        OR "imb_code" ILIKE ${like}
+        OR "addr_numero" ILIKE ${like}
+        OR "addr_nom_voie" ILIKE ${like}
+        OR "addr_nom_commune" ILIKE ${like}
+        OR "code_insee" ILIKE ${like}
+      )`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        lat_bucket: number;
+        lng_bucket: number;
+        latitude: number;
+        longitude: number;
+        count: number;
+      }>
+    >(Prisma.sql`
+      SELECT
+        FLOOR(("latitude" - ${input.bounds.south}) / ${cellSize})::int AS "lat_bucket",
+        FLOOR(("longitude" - ${input.bounds.west}) / ${cellSize})::int AS "lng_bucket",
+        AVG("latitude")::float AS "latitude",
+        AVG("longitude")::float AS "longitude",
+        COUNT(*)::int AS "count"
+      FROM "acquiscan_address_coordinates"
+      WHERE ${Prisma.join(clauses, ' AND ')}
+      GROUP BY "lat_bucket", "lng_bucket"
+      ORDER BY "count" DESC
+      LIMIT ${MAP_MAX_CLUSTERS}
+    `);
+
+    return rows.map(row => ({
+      id: `${row.lat_bucket}:${row.lng_bucket}`,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      count: Number(row.count),
+    }));
+  }
+
+  private validateBounds(bounds: AcquiscanBoundsInput): AcquiscanBoundsInput {
+    const values = [bounds.west, bounds.south, bounds.east, bounds.north];
+    if (values.some(value => !Number.isFinite(value))) {
+      throw new BadRequestException('Bounds Acquiscan invalides');
+    }
+
+    if (bounds.south < -90 || bounds.north > 90 || bounds.west < -180 || bounds.east > 180) {
+      throw new BadRequestException('Bounds Acquiscan hors limites');
+    }
+
+    if (bounds.south >= bounds.north || bounds.west >= bounds.east) {
+      throw new BadRequestException('Bounds Acquiscan incohérents');
+    }
+
+    return bounds;
+  }
+
+  private validateZoom(zoom: number): number {
+    if (!Number.isFinite(zoom) || zoom < 0 || zoom > 22) {
+      throw new BadRequestException('Zoom Acquiscan invalide');
+    }
+    return zoom;
+  }
+
+  private getClusterCellSize(zoom: number) {
+    if (zoom < 6) return 0.8;
+    if (zoom < 8) return 0.35;
+    if (zoom < MAP_DETAIL_ZOOM) return 0.12;
+    return 0.04;
   }
 
   private mapBaseImbRecord(headers: string[], values: string[], dept: string): CsvCoordinateRow | null {
@@ -255,6 +751,261 @@ export class AcquiscanService {
       rows: response.data.data?.rows ?? [],
       total: response.data.data?.total ?? 0,
     };
+  }
+
+  private async fetchTerritoryStats(path: string): Promise<AcquiscanTerritoryStats[]> {
+    const token = await this.getAccessToken();
+    const response = await axios.get<AcquiscanStatsResponse>(
+      `${this.getApiBaseUrl()}${path}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000,
+      },
+    );
+
+    const payload = response.data.data;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.rows)) return payload.rows;
+    if (Array.isArray(payload?.data)) return payload.data;
+    return [];
+  }
+
+  private extractAutocompleteItems(payload: AcquiscanAutocompleteResponse): unknown[] {
+    const data = payload.data;
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(payload.results)) return payload.results;
+    if (Array.isArray(payload.suggestions)) return payload.suggestions;
+    if (data && typeof data === 'object') {
+      const maybeData = data as Record<string, unknown>;
+      if (Array.isArray(maybeData.results)) return maybeData.results;
+      if (Array.isArray(maybeData.suggestions)) return maybeData.suggestions;
+      if (Array.isArray(maybeData.rows)) return maybeData.rows;
+      if (Array.isArray(maybeData.features)) return maybeData.features;
+    }
+    return [];
+  }
+
+  private mapAddressSuggestion(item: unknown, index: number): AcquiscanAddressSuggestion | null {
+    if (!item || typeof item !== 'object') return null;
+    const record = item as Record<string, unknown>;
+    const properties = (record.properties && typeof record.properties === 'object'
+      ? record.properties
+      : {}) as Record<string, unknown>;
+    const geometry = (record.geometry && typeof record.geometry === 'object'
+      ? record.geometry
+      : {}) as Record<string, unknown>;
+    const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : null;
+    const longitude = this.pickNumber(record, properties, ['longitude', 'lon', 'lng', 'x'])
+      ?? (coordinates ? this.toNullableNumber(coordinates[0] as number | string) : null);
+    const latitude = this.pickNumber(record, properties, ['latitude', 'lat', 'y'])
+      ?? (coordinates ? this.toNullableNumber(coordinates[1] as number | string) : null);
+    if (latitude == null || longitude == null) return null;
+
+    const label = this.pickString(record, properties, ['label', 'display_name', 'displayName', 'name', 'adresse', 'address', 'value'])
+      || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    const id = this.pickString(record, properties, ['id', 'id_ban_adresse', 'idBanAdresse', 'banId'])
+      || `${label}-${index}`;
+
+    return {
+      id,
+      label,
+      city: this.pickString(record, properties, ['city', 'municipality', 'commune', 'nom_commune']) ?? null,
+      postcode: this.pickString(record, properties, ['postcode', 'postalCode', 'code_postal']) ?? null,
+      codeInsee: this.pickString(record, properties, ['citycode', 'codeInsee', 'code_insee']) ?? null,
+      latitude,
+      longitude,
+      score: this.pickNumber(record, properties, ['score']) ?? null,
+    };
+  }
+
+  private pickString(primary: Record<string, unknown>, secondary: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+      const value = primary[key] ?? secondary[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (typeof value === 'number') return String(value);
+    }
+    return null;
+  }
+
+  private pickNumber(primary: Record<string, unknown>, secondary: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+      const value = primary[key] ?? secondary[key];
+      const parsed = this.toNullableNumber(value as string | number | null | undefined);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  }
+
+  private mapDepartmentOpportunity(row: AcquiscanTerritoryStats): AcquiscanDepartmentOpportunity {
+    return {
+      codeDept: this.normalizeDept(row.code_dept),
+      summary: this.mapOpportunitySummary(row),
+    };
+  }
+
+  private mapCommuneOpportunity(row: AcquiscanTerritoryStats, dept: string): AcquiscanCommuneOpportunity {
+    return {
+      codeInsee: row.code_insee || '',
+      nomCommune: row.nom_commune ?? null,
+      codeDept: this.normalizeDept(row.code_dept || dept),
+      summary: this.mapOpportunitySummary(row),
+    };
+  }
+
+  private mapOpportunitySummary(row: AcquiscanTerritoryStats): AcquiscanOpportunitySummary {
+    const totalBuildings = this.toSafeInt(row.total_buildings);
+    const fiberBuildings = this.toSafeInt(row.fiber_buildings);
+    const copperBuildings = this.toSafeInt(row.copper_buildings);
+    const copperShutdown = this.toSafeInt(row.copper_shutdown);
+    const fiberRate = this.toSafeFloat(row.fiber_rate);
+    const copperShutdownRate = this.toSafeFloat(row.copper_shutdown_rate);
+    const closestShutdownYear = this.toNullableInt(row.closest_shutdown_year);
+    const sites4g = this.toSafeInt(row.sites_4g);
+    const sites5g = this.toSafeInt(row.sites_5g);
+    const sitesTotal = this.toSafeInt(row.sites_total);
+
+    return {
+      totalBuildings,
+      fiberBuildings,
+      copperBuildings,
+      copperShutdown,
+      fiberRate,
+      copperShutdownRate,
+      closestShutdownYear,
+      sites4g,
+      sites5g,
+      sitesTotal,
+      opportunityScore: this.scoreTerritoryOpportunity({
+        totalBuildings,
+        copperShutdownRate,
+        fiberRate,
+        closestShutdownYear,
+      }),
+    };
+  }
+
+  private buildAggregateSummary(items: AcquiscanOpportunitySummary[]): AcquiscanOpportunitySummary {
+    const totals = items.reduce(
+      (sum, item) => ({
+        totalBuildings: sum.totalBuildings + item.totalBuildings,
+        fiberBuildings: sum.fiberBuildings + item.fiberBuildings,
+        copperBuildings: sum.copperBuildings + item.copperBuildings,
+        copperShutdown: sum.copperShutdown + item.copperShutdown,
+        sites4g: sum.sites4g + item.sites4g,
+        sites5g: sum.sites5g + item.sites5g,
+        sitesTotal: sum.sitesTotal + item.sitesTotal,
+      }),
+      { totalBuildings: 0, fiberBuildings: 0, copperBuildings: 0, copperShutdown: 0, sites4g: 0, sites5g: 0, sitesTotal: 0 },
+    );
+    const closestShutdownYear = items
+      .map(item => item.closestShutdownYear)
+      .filter((year): year is number => year != null)
+      .sort((a, b) => a - b)[0] ?? null;
+    const fiberRate = totals.totalBuildings > 0 ? (totals.fiberBuildings / totals.totalBuildings) * 100 : 0;
+    const copperShutdownRate = totals.totalBuildings > 0 ? (totals.copperShutdown / totals.totalBuildings) * 100 : 0;
+
+    return {
+      ...totals,
+      fiberRate,
+      copperShutdownRate,
+      closestShutdownYear,
+      opportunityScore: this.scoreTerritoryOpportunity({
+        totalBuildings: totals.totalBuildings,
+        copperShutdownRate,
+        fiberRate,
+        closestShutdownYear,
+      }),
+    };
+  }
+
+  private async findCoordinatesForCopperRows(rows: AcquiscanCopperBuilding[]) {
+    const ids = rows.map(row => row.immeuble_id).filter(Boolean);
+    const imbCodes = rows.map(row => row.imb_code).filter((code): code is string => Boolean(code));
+    const coordinateWhere: Prisma.AcquiscanAddressCoordinateWhereInput[] = [];
+    if (ids.length) coordinateWhere.push({ immeubleId: { in: ids } });
+    if (imbCodes.length) coordinateWhere.push({ imbCode: { in: imbCodes } });
+    if (!coordinateWhere.length) return new Map<string, Prisma.AcquiscanAddressCoordinateGetPayload<object>>();
+
+    const coordinates = await this.prisma.acquiscanAddressCoordinate.findMany({
+      where: { OR: coordinateWhere },
+    });
+    const coordinatesById = new Map(coordinates.map(item => [item.immeubleId, item]));
+    coordinates
+      .filter(item => item.imbCode)
+      .forEach(item => {
+        if (item.imbCode && !coordinatesById.has(item.imbCode)) {
+          coordinatesById.set(item.imbCode, item);
+        }
+      });
+
+    rows.forEach(row => {
+      if (!coordinatesById.has(row.immeuble_id) && row.imb_code && coordinatesById.has(row.imb_code)) {
+        coordinatesById.set(row.immeuble_id, coordinatesById.get(row.imb_code)!);
+      }
+    });
+
+    return coordinatesById;
+  }
+
+  private mapCopperBuildingOpportunity(
+    row: AcquiscanCopperBuilding,
+    coordinate?: Prisma.AcquiscanAddressCoordinateGetPayload<object> | null,
+  ): AcquiscanCopperBuildingOpportunity {
+    const opportunityScore = this.scoreBuildingOpportunity(row);
+    return {
+      immeubleId: row.immeuble_id,
+      imbCode: row.imb_code,
+      addrNumero: row.addr_numero,
+      addrNomVoie: row.addr_nom_voie,
+      addrNomCommune: row.addr_nom_commune,
+      codeInsee: row.code_insee,
+      nbrLogements: row.nbr_logements,
+      fermetureTechnique: row.fermeture_technique,
+      fermetureComZone: row.fermeture_com_zone,
+      fermetureComAddr: row.fermeture_com_addr,
+      eligFo: row.elig_fo,
+      anneeFt: row.annee_ft,
+      sites4g: this.toNullableInt(row.sites_4g),
+      sites5g: this.toNullableInt(row.sites_5g),
+      sitesTotal: this.toNullableInt(row.sites_total),
+      coordinates: coordinate
+        ? {
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            imbX: coordinate.imbX,
+            imbY: coordinate.imbY,
+          }
+        : null,
+      opportunityScore,
+      opportunityLabel: this.opportunityLabel(opportunityScore),
+    };
+  }
+
+  private scoreTerritoryOpportunity(input: {
+    totalBuildings: number;
+    copperShutdownRate: number;
+    fiberRate: number;
+    closestShutdownYear?: number | null;
+  }) {
+    const densityScore = Math.min(25, Math.log10(Math.max(input.totalBuildings, 1)) * 7);
+    const copperScore = Math.min(40, input.copperShutdownRate * 0.4);
+    const fiberScore = Math.min(20, input.fiberRate * 0.2);
+    const timingScore = input.closestShutdownYear && input.closestShutdownYear <= new Date().getFullYear() + 1 ? 15 : 5;
+    return Math.round(Math.min(100, densityScore + copperScore + fiberScore + timingScore));
+  }
+
+  private scoreBuildingOpportunity(row: AcquiscanCopperBuilding) {
+    const logements = this.toSafeInt(row.nbr_logements);
+    const hasCopperSignal = row.fermeture_technique === '1' || row.fermeture_com_addr === '1' || row.fermeture_com_zone === '1';
+    const fiberAvailable = row.elig_fo === '1';
+    const timingScore = row.fermeture_technique === '1' ? 30 : row.fermeture_com_addr === '1' ? 24 : row.fermeture_com_zone === '1' ? 16 : 6;
+    return Math.round(Math.min(100, 25 + timingScore + (fiberAvailable ? 15 : 0) + Math.min(logements, 30) + (hasCopperSignal ? 0 : -5)));
+  }
+
+  private opportunityLabel(score: number) {
+    if (score >= 75) return 'Priorité haute';
+    if (score >= 55) return 'Priorité moyenne';
+    return 'À qualifier';
   }
 
   private async getAccessToken(): Promise<string> {
@@ -359,6 +1110,14 @@ export class AcquiscanService {
   private toNullableInt(value?: string | number | null): number | null {
     const parsed = this.toNullableNumber(value);
     return parsed === null ? null : Math.trunc(parsed);
+  }
+
+  private toSafeInt(value?: string | number | null): number {
+    return this.toNullableInt(value) ?? 0;
+  }
+
+  private toSafeFloat(value?: string | number | null): number {
+    return this.toNullableNumber(value) ?? 0;
   }
 
   private webMercatorToLngLat(x: number, y: number) {
