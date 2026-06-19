@@ -129,6 +129,33 @@ export interface TeamLastStatusActivity {
   immeubleAdresse?: string | null
 }
 
+export interface TimelinePoint {
+  date: string
+  rdvPris: number
+  portesProspectees: number
+  contratsSignes: number
+  refus: number
+  absents: number
+  argumentes: number
+  repassages: number
+}
+
+export interface OwnerActivityStatistic {
+  userId: number
+  userType: 'commercial' | 'manager'
+  userName: string
+  contratsSignes: number
+  rendezVousPris: number
+  refus: number
+  absents: number
+  argumentes: number
+  repassages: number
+  nbPortesProspectes: number
+  tauxConversion: number
+  points: number
+  lastActivityAt?: string | null
+}
+
 /* Ces unemarations sont pour classifier les utilisateurs d'un utilisateur actif a celui non actif et aussi de separer les comptes de testes */
 export enum UserStatus {
   ACTIF = 'ACTIF',

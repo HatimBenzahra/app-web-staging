@@ -7,17 +7,18 @@ import {
   useManagers,
   useZoneStatistics,
   useTeamLastStatusActivities,
+  useStatsTimeline,
+  useStatsActivityByOwner,
 } from '@/services'
 import { useRoleBasedData } from '@/hooks/metier/permissions/useRoleBasedData'
-import { Clock, Calendar } from 'lucide-react'
+import { Clock, CalendarDays } from 'lucide-react'
 
-// Options de filtres temporels
 export const TIME_FILTERS = [
-  { value: '7d', label: '7 derniers jours', icon: Clock, days: 7 },
-  { value: '30d', label: '30 derniers jours', icon: Calendar, days: 30 },
-  { value: '90d', label: '3 derniers mois', icon: Calendar, days: 90 },
-  { value: '1y', label: 'Cette année', icon: Calendar, days: 365 },
-  { value: 'all', label: 'Toute la période', icon: Calendar, days: null },
+  { value: '7d', label: '7 derniers jours', shortLabel: '7j', icon: Clock },
+  { value: '30d', label: '30 derniers jours', shortLabel: '30j', icon: CalendarDays },
+  { value: '90d', label: '3 derniers mois', shortLabel: '90j', icon: CalendarDays },
+  { value: '1y', label: 'Cette année', shortLabel: 'Année', icon: CalendarDays },
+  { value: 'all', label: 'Toute la période', shortLabel: 'Tout', icon: CalendarDays },
 ]
 
 export const SCOPE_FILTERS = [
@@ -32,6 +33,7 @@ const STATUS_LABELS = {
   refus: 'Refus',
   absents: 'Absents',
   argumentes: 'Argumentés',
+  repassages: 'Repassages',
 }
 
 export const ACTIVITY_STATUS_LABELS = {
@@ -46,68 +48,198 @@ export const ACTIVITY_STATUS_LABELS = {
 
 const roundRate = value => Math.round(value * 10) / 10
 
-const sumStats = stats =>
-  stats.reduce(
+const emptyTotals = {
+  contratsSignes: 0,
+  rendezVousPris: 0,
+  refus: 0,
+  absents: 0,
+  argumentes: 0,
+  repassages: 0,
+  nbImmeubles: 0,
+  nbImmeublesProspectes: 0,
+  nbPortesProspectes: 0,
+}
+
+const startOfDay = date => {
+  const value = new Date(date)
+  value.setHours(0, 0, 0, 0)
+  return value
+}
+
+const endOfDay = date => {
+  const value = new Date(date)
+  value.setHours(23, 59, 59, 999)
+  return value
+}
+
+const addDays = (date, days) => {
+  const value = new Date(date)
+  value.setDate(value.getDate() + days)
+  return value
+}
+
+const getDateRange = period => {
+  const now = new Date()
+  const end = endOfDay(now)
+
+  if (period === 'all') {
+    return { startDate: null, endDate: null, daysToShow: 365 }
+  }
+
+  if (period === '1y') {
+    return {
+      startDate: startOfDay(new Date(now.getFullYear(), 0, 1)),
+      endDate: end,
+      daysToShow: Math.max(
+        1,
+        Math.ceil(
+          (end.getTime() - startOfDay(new Date(now.getFullYear(), 0, 1)).getTime()) / 86400000
+        )
+      ),
+    }
+  }
+
+  const days = period === '7d' ? 7 : period === '90d' ? 90 : 30
+  return {
+    startDate: startOfDay(addDays(now, -(days - 1))),
+    endDate: end,
+    daysToShow: days,
+  }
+}
+
+const toIsoOrUndefined = date => (date ? date.toISOString() : undefined)
+
+const parseOwnerSelection = selectedOwner => {
+  if (!selectedOwner || selectedOwner === 'all') {
+    return { ownerType: undefined, ownerId: undefined }
+  }
+
+  const [type, rawId] = selectedOwner.split(':')
+  const ownerId = Number(rawId)
+  if (!Number.isFinite(ownerId)) {
+    return { ownerType: undefined, ownerId: undefined }
+  }
+
+  return { ownerType: type, ownerId }
+}
+
+const sumAggregateStats = stats =>
+  (stats || []).reduce(
     (acc, stat) => ({
       contratsSignes: acc.contratsSignes + (stat.contratsSignes || 0),
       rendezVousPris: acc.rendezVousPris + (stat.rendezVousPris || 0),
       refus: acc.refus + (stat.refus || 0),
       absents: acc.absents + (stat.absents || 0),
       argumentes: acc.argumentes + (stat.argumentes || 0),
+      repassages: acc.repassages,
       nbImmeubles: acc.nbImmeubles + (stat.immeublesVisites || 0),
       nbImmeublesProspectes: acc.nbImmeublesProspectes + (stat.nbImmeublesProspectes || 0),
       nbPortesProspectes: acc.nbPortesProspectes + (stat.nbPortesProspectes || 0),
     }),
-    {
-      contratsSignes: 0,
-      rendezVousPris: 0,
-      refus: 0,
-      absents: 0,
-      argumentes: 0,
-      nbImmeubles: 0,
-      nbImmeublesProspectes: 0,
-      nbPortesProspectes: 0,
-    }
+    { ...emptyTotals }
   )
 
-// Fonction pour filtrer les statistiques par période
-const filterStatisticsByPeriod = (statistics, period) => {
-  if (!statistics?.length) return []
+const sumActivityStats = activityStats =>
+  (activityStats || []).reduce(
+    (acc, stat) => ({
+      contratsSignes: acc.contratsSignes + (stat.contratsSignes || 0),
+      rendezVousPris: acc.rendezVousPris + (stat.rendezVousPris || 0),
+      refus: acc.refus + (stat.refus || 0),
+      absents: acc.absents + (stat.absents || 0),
+      argumentes: acc.argumentes + (stat.argumentes || 0),
+      repassages: acc.repassages + (stat.repassages || 0),
+      nbImmeubles: acc.nbImmeubles,
+      nbImmeublesProspectes: acc.nbImmeublesProspectes,
+      nbPortesProspectes: acc.nbPortesProspectes + (stat.nbPortesProspectes || 0),
+    }),
+    { ...emptyTotals }
+  )
 
-  const now = new Date()
-  let startDate
+const buildMetrics = (totals, context) => {
+  const opportunities = totals.contratsSignes + totals.rendezVousPris + totals.refus
+  const contacted = totals.contratsSignes + totals.rendezVousPris + totals.refus + totals.argumentes
+  const actionsTerrain =
+    totals.contratsSignes +
+    totals.rendezVousPris +
+    totals.refus +
+    totals.absents +
+    totals.argumentes +
+    totals.repassages
 
-  switch (period) {
-    case '7d':
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      break
-    case '30d':
-      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      break
-    case '90d':
-      startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-      break
-    case '1y':
-      startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
-      break
-    case 'all':
-    default:
-      return statistics
+  return {
+    ...totals,
+    ...context,
+    actionsTerrain,
+    tauxConversion:
+      opportunities > 0 ? roundRate((totals.contratsSignes / opportunities) * 100) : 0,
+    tauxContact:
+      totals.nbPortesProspectes > 0 ? roundRate((contacted / totals.nbPortesProspectes) * 100) : 0,
+    tauxRdv:
+      totals.nbPortesProspectes > 0
+        ? roundRate((totals.rendezVousPris / totals.nbPortesProspectes) * 100)
+        : 0,
+  }
+}
+
+const buildTimelineData = (timeline, timePeriod, dateRange) => {
+  const safeTimeline = timeline || []
+  const byDay = new Map(
+    safeTimeline.map(point => [new Date(point.date).toISOString().slice(0, 10), point])
+  )
+  const count = Math.min(dateRange.daysToShow || 365, 365)
+  const end = dateRange.endDate || endOfDay(new Date())
+  const start = dateRange.startDate || startOfDay(addDays(end, -(count - 1)))
+  const days = []
+
+  for (let i = 0; i < count; i++) {
+    const date = addDays(start, i)
+    const key = date.toISOString().slice(0, 10)
+    const point = byDay.get(key)
+
+    days.push({
+      key,
+      label:
+        timePeriod === '1y' || timePeriod === 'all'
+          ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+          : date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      contratsSignes: point?.contratsSignes || 0,
+      rendezVousPris: point?.rdvPris || 0,
+      refus: point?.refus || 0,
+      absents: point?.absents || 0,
+      argumentes: point?.argumentes || 0,
+      repassages: point?.repassages || 0,
+      portesProspectees: point?.portesProspectees || 0,
+    })
   }
 
-  return statistics.filter(stat => {
-    const statDate = new Date(stat.updatedAt || stat.createdAt || stat.date)
-    return statDate >= startDate
-  })
+  return days
 }
 
 export function useStatistiquesLogic() {
   const { currentRole } = useRole()
-  const [timePeriod, setTimePeriod] = useState('all')
+  const [timePeriod, setTimePeriod] = useState('30d')
   const [scopeType, setScopeType] = useState('all')
   const [selectedOwner, setSelectedOwner] = useState('all')
 
-  // Chargement des données depuis les APIs
+  const dateRange = useMemo(() => getDateRange(timePeriod), [timePeriod])
+  const ownerSelection = useMemo(() => parseOwnerSelection(selectedOwner), [selectedOwner])
+  const activityFilters = useMemo(
+    () => ({
+      scopeType,
+      ownerType: ownerSelection.ownerType,
+      ownerId: ownerSelection.ownerId,
+      startDate: toIsoOrUndefined(dateRange.startDate),
+      endDate: toIsoOrUndefined(dateRange.endDate),
+    }),
+    [
+      dateRange.endDate,
+      dateRange.startDate,
+      ownerSelection.ownerId,
+      ownerSelection.ownerType,
+      scopeType,
+    ]
+  )
+
   const {
     data: rawStatistics,
     loading: statisticsLoading,
@@ -140,31 +272,43 @@ export function useStatistiquesLogic() {
     error: lastActivitiesError,
   } = useTeamLastStatusActivities()
 
-  // États de chargement et d'erreur combinés
+  const {
+    data: statsTimeline,
+    loading: timelineLoading,
+    error: timelineError,
+  } = useStatsTimeline(activityFilters)
+
+  const {
+    data: ownerActivityStats,
+    loading: ownerActivityLoading,
+    error: ownerActivityError,
+  } = useStatsActivityByOwner(activityFilters)
+
   const loading =
     statisticsLoading ||
     commercialsLoading ||
     directeursLoading ||
     managersLoading ||
     zoneStatsLoading ||
-    lastActivitiesLoading
+    lastActivitiesLoading ||
+    timelineLoading ||
+    ownerActivityLoading
+
   const error =
     statisticsError ||
     commercialsError ||
     directeursError ||
     managersError ||
     zoneStatsError ||
-    lastActivitiesError
+    lastActivitiesError ||
+    timelineError ||
+    ownerActivityError
 
-  // Calculs des statistiques filtrées avec le hook unifié
   const filteredStatistics = useRoleBasedData('statistics', rawStatistics, {
     commercials: rawCommercials,
   })
-
   const filteredCommercials = useRoleBasedData('commerciaux', rawCommercials)
-
   const filteredDirecteurs = useRoleBasedData('directeurs', rawDirecteurs)
-
   const filteredManagers = useRoleBasedData('managers', rawManagers)
 
   const ownerOptions = useMemo(() => {
@@ -186,8 +330,7 @@ export function useStatistiquesLogic() {
       ;(filteredManagers || []).forEach(manager => {
         options.push({
           value: `manager:${manager.id}`,
-          label:
-            `${manager.prenom || ''} ${manager.nom || ''}`.trim() || `Manager #${manager.id}`,
+          label: `${manager.prenom || ''} ${manager.nom || ''}`.trim() || `Manager #${manager.id}`,
           type: 'manager',
         })
       })
@@ -203,13 +346,8 @@ export function useStatistiquesLogic() {
     }
   }, [ownerOptions, selectedOwner])
 
-  // Appliquer le filtre temporel aux statistiques
-  const timeFilteredStatistics = useMemo(() => {
-    return filterStatisticsByPeriod(filteredStatistics, timePeriod)
-  }, [filteredStatistics, timePeriod])
-
   const scopedProductionStats = useMemo(() => {
-    return timeFilteredStatistics.filter(stat => {
+    return (filteredStatistics || []).filter(stat => {
       const isCommercialStat = Boolean(stat.commercialId)
       const isManagerStat = Boolean(stat.managerId)
 
@@ -229,14 +367,16 @@ export function useStatistiquesLogic() {
 
       return ownerKey === selectedOwner
     })
-  }, [scopeType, selectedOwner, timeFilteredStatistics])
+  }, [filteredStatistics, scopeType, selectedOwner])
 
   const scopedCommercials = useMemo(() => {
     if (scopeType === 'managers') return []
     if (selectedOwner.startsWith('manager:')) return []
     if (selectedOwner.startsWith('commercial:')) {
       const commercialId = selectedOwner.replace('commercial:', '')
-      return (filteredCommercials || []).filter(commercial => String(commercial.id) === commercialId)
+      return (filteredCommercials || []).filter(
+        commercial => String(commercial.id) === commercialId
+      )
     }
     return filteredCommercials || []
   }, [filteredCommercials, scopeType, selectedOwner])
@@ -256,10 +396,84 @@ export function useStatistiquesLogic() {
     [filteredDirecteurs, scopeType, selectedOwner]
   )
 
-  const scopedTimeFilteredStatistics = useMemo(() => {
-    if (scopeType === 'all' && selectedOwner === 'all') return timeFilteredStatistics
-    return scopedProductionStats
-  }, [scopeType, scopedProductionStats, selectedOwner, timeFilteredStatistics])
+  const aggregateTotals = useMemo(
+    () => sumAggregateStats(scopedProductionStats),
+    [scopedProductionStats]
+  )
+  const activityTotals = useMemo(() => sumActivityStats(ownerActivityStats), [ownerActivityStats])
+  const hasPeriodActivity = Boolean(
+    (ownerActivityStats || []).length || (statsTimeline || []).length
+  )
+  const useAggregateFallback = timePeriod === 'all' && !hasPeriodActivity
+  const sourceTotals = useAggregateFallback ? aggregateTotals : activityTotals
+
+  const metrics = useMemo(
+    () =>
+      buildMetrics(sourceTotals, {
+        nbCommerciaux: scopedCommercials?.length || 0,
+        nbManagers: scopedManagers?.length || 0,
+        nbIntervenants: (scopedCommercials?.length || 0) + (scopedManagers?.length || 0),
+        nbImmeubles: aggregateTotals.nbImmeubles,
+        nbImmeublesProspectes: aggregateTotals.nbImmeublesProspectes,
+        dataMode: useAggregateFallback ? 'consolidated' : 'activity',
+      }),
+    [aggregateTotals, scopedCommercials, scopedManagers, sourceTotals, useAggregateFallback]
+  )
+
+  const timelineData = useMemo(
+    () => buildTimelineData(statsTimeline, timePeriod, dateRange),
+    [dateRange, statsTimeline, timePeriod]
+  )
+
+  const statusBreakdown = useMemo(() => {
+    const total =
+      metrics.contratsSignes +
+      metrics.rendezVousPris +
+      metrics.refus +
+      metrics.absents +
+      metrics.argumentes +
+      metrics.repassages
+
+    return Object.entries(STATUS_LABELS).map(([key, label]) => ({
+      key,
+      label,
+      value: metrics[key] || 0,
+      percentage: total > 0 ? roundRate(((metrics[key] || 0) / total) * 100) : 0,
+    }))
+  }, [metrics])
+
+  const funnelData = useMemo(() => {
+    const base = Math.max(metrics.nbPortesProspectes, 1)
+    const contacts =
+      metrics.contratsSignes + metrics.rendezVousPris + metrics.refus + metrics.argumentes
+
+    return [
+      {
+        key: 'portes',
+        label: 'Portes prospectées',
+        value: metrics.nbPortesProspectes,
+        percentage: metrics.nbPortesProspectes > 0 ? 100 : 0,
+      },
+      {
+        key: 'contacts',
+        label: 'Contacts qualifiés',
+        value: contacts,
+        percentage: roundRate((contacts / base) * 100),
+      },
+      {
+        key: 'rdv',
+        label: 'Rendez-vous',
+        value: metrics.rendezVousPris,
+        percentage: roundRate((metrics.rendezVousPris / base) * 100),
+      },
+      {
+        key: 'contrats',
+        label: 'Contrats signés',
+        value: metrics.contratsSignes,
+        percentage: roundRate((metrics.contratsSignes / base) * 100),
+      },
+    ]
+  }, [metrics])
 
   const lastStatusActivities = useMemo(() => {
     return (rawLastStatusActivities || []).filter(activity => {
@@ -281,116 +495,31 @@ export function useStatistiquesLogic() {
     )
   }, [lastStatusActivities])
 
-  // Pour le graphique, on exclut les statistiques des directeurs car ce sont des agrégats
-  // On ne garde que la production réelle (commerciaux et managers)
-  const chartStatistics = useMemo(() => {
-    return scopedProductionStats
-  }, [scopedProductionStats])
-
-  const productionStats = scopedProductionStats
-
-  const metrics = useMemo(() => {
-    const totals = sumStats(productionStats)
-    const opportunities = totals.contratsSignes + totals.rendezVousPris + totals.refus
-    const contacted =
-      totals.contratsSignes + totals.rendezVousPris + totals.refus + totals.argumentes
-
-    return {
-      ...totals,
-      nbCommerciaux: scopedCommercials?.length || 0,
-      nbManagers: scopedManagers?.length || 0,
-      actionsTerrain:
-        totals.contratsSignes +
-        totals.rendezVousPris +
-        totals.refus +
-        totals.absents +
-        totals.argumentes,
-      tauxConversion:
-        opportunities > 0 ? roundRate((totals.contratsSignes / opportunities) * 100) : 0,
-      tauxContact:
-        totals.nbPortesProspectes > 0
-          ? roundRate((contacted / totals.nbPortesProspectes) * 100)
-          : 0,
-      tauxRdv:
-        totals.nbPortesProspectes > 0
-          ? roundRate((totals.rendezVousPris / totals.nbPortesProspectes) * 100)
-          : 0,
-    }
-  }, [productionStats, scopedCommercials, scopedManagers])
-
-  const statusBreakdown = useMemo(() => {
-    const total =
-      metrics.contratsSignes +
-      metrics.rendezVousPris +
-      metrics.refus +
-      metrics.absents +
-      metrics.argumentes
-
-    return Object.entries(STATUS_LABELS).map(([key, label]) => ({
-      key,
-      label,
-      value: metrics[key] || 0,
-      percentage: total > 0 ? roundRate(((metrics[key] || 0) / total) * 100) : 0,
-    }))
-  }, [metrics])
-
-  const funnelData = useMemo(() => {
-    const base = Math.max(metrics.nbPortesProspectes, 1)
-
-    return [
-      {
-        key: 'portes',
-        label: 'Portes prospectées',
-        value: metrics.nbPortesProspectes,
-        percentage: metrics.nbPortesProspectes > 0 ? 100 : 0,
-      },
-      {
-        key: 'contacts',
-        label: 'Contacts qualifiés',
-        value: metrics.contratsSignes + metrics.rendezVousPris + metrics.refus + metrics.argumentes,
-        percentage: roundRate(
-          ((metrics.contratsSignes + metrics.rendezVousPris + metrics.refus + metrics.argumentes) /
-            base) *
-            100
-        ),
-      },
-      {
-        key: 'rdv',
-        label: 'Rendez-vous',
-        value: metrics.rendezVousPris,
-        percentage: roundRate((metrics.rendezVousPris / base) * 100),
-      },
-      {
-        key: 'contrats',
-        label: 'Contrats signés',
-        value: metrics.contratsSignes,
-        percentage: roundRate((metrics.contratsSignes / base) * 100),
-      },
-    ]
-  }, [metrics])
-
-  const topPerformers = useMemo(() => {
+  const aggregatePerformersFallback = useMemo(() => {
     const statsByOwner = new Map()
 
-    productionStats.forEach(stat => {
+    scopedProductionStats.forEach(stat => {
       const type = stat.commercialId ? 'commercial' : 'manager'
       const id = stat.commercialId || stat.managerId
       if (!id) return
-      const key = `${type}-${id}`
+      const key = `${type}:${id}`
       const existing = statsByOwner.get(key) || {
-        id,
-        type,
+        userId: id,
+        userType: type,
         contratsSignes: 0,
         rendezVousPris: 0,
         refus: 0,
-        immeublesVisites: 0,
+        absents: 0,
+        argumentes: 0,
+        repassages: 0,
         nbPortesProspectes: 0,
       }
 
       existing.contratsSignes += stat.contratsSignes || 0
       existing.rendezVousPris += stat.rendezVousPris || 0
       existing.refus += stat.refus || 0
-      existing.immeublesVisites += stat.immeublesVisites || 0
+      existing.absents += stat.absents || 0
+      existing.argumentes += stat.argumentes || 0
       existing.nbPortesProspectes += stat.nbPortesProspectes || 0
       statsByOwner.set(key, existing)
     })
@@ -408,37 +537,76 @@ export function useStatistiquesLogic() {
       ])
     )
 
-    return Array.from(statsByOwner.values())
-      .map(entry => {
-        const opportunities = entry.contratsSignes + entry.rendezVousPris + entry.refus
-        return {
-          ...entry,
-          name:
-            entry.type === 'commercial'
-              ? commercialNames.get(entry.id) || `Commercial #${entry.id}`
-              : managerNames.get(entry.id) || `Manager #${entry.id}`,
-          label: entry.type === 'commercial' ? 'Commercial' : 'Manager',
-          lastActivity: lastStatusActivityByOwner.get(`${entry.type}:${entry.id}`) || null,
-          points: entry.contratsSignes * 50 + entry.rendezVousPris * 10 + entry.immeublesVisites * 5,
-          tauxConversion:
-            opportunities > 0 ? roundRate((entry.contratsSignes / opportunities) * 100) : 0,
-        }
-      })
+    return Array.from(statsByOwner.values()).map(entry => {
+      const opportunities = entry.contratsSignes + entry.rendezVousPris + entry.refus
+      return {
+        ...entry,
+        userName:
+          entry.userType === 'commercial'
+            ? commercialNames.get(entry.userId) || `Commercial #${entry.userId}`
+            : managerNames.get(entry.userId) || `Manager #${entry.userId}`,
+        tauxConversion:
+          opportunities > 0 ? roundRate((entry.contratsSignes / opportunities) * 100) : 0,
+        points:
+          entry.contratsSignes * 50 +
+          entry.rendezVousPris * 10 +
+          entry.argumentes * 4 +
+          entry.nbPortesProspectes * 2,
+        lastActivityAt:
+          lastStatusActivityByOwner.get(`${entry.userType}:${entry.userId}`)?.changedAt || null,
+      }
+    })
+  }, [lastStatusActivityByOwner, scopedCommercials, scopedManagers, scopedProductionStats])
+
+  const topPerformers = useMemo(() => {
+    const source =
+      (ownerActivityStats || []).length > 0 ? ownerActivityStats : aggregatePerformersFallback
+
+    return source
+      .map(entry => ({
+        ...entry,
+        label: entry.userType === 'commercial' ? 'Commercial' : 'Manager',
+        lastActivity:
+          lastStatusActivityByOwner.get(`${entry.userType}:${entry.userId}`) ||
+          (entry.lastActivityAt ? { changedAt: entry.lastActivityAt } : null),
+      }))
       .sort((a, b) => b.points - a.points || b.contratsSignes - a.contratsSignes)
       .slice(0, 5)
-  }, [productionStats, scopedCommercials, scopedManagers, lastStatusActivityByOwner])
+  }, [aggregatePerformersFallback, lastStatusActivityByOwner, ownerActivityStats])
+
+  const zoneHighlights = useMemo(() => {
+    return (zoneStatisticsData || [])
+      .slice()
+      .sort((a, b) => (b.performanceGlobale || 0) - (a.performanceGlobale || 0))
+      .slice(0, 6)
+  }, [zoneStatisticsData])
+
+  const zoneSummary = useMemo(() => {
+    const zones = zoneStatisticsData || []
+    const totals = zones.reduce(
+      (acc, zone) => ({
+        contrats: acc.contrats + (zone.totalContratsSignes || 0),
+        portes: acc.portes + (zone.totalPortesProspectes || 0),
+        rdv: acc.rdv + (zone.totalRendezVousPris || 0),
+      }),
+      { contrats: 0, portes: 0, rdv: 0 }
+    )
+
+    return {
+      count: zones.length,
+      bestZone: zoneHighlights[0] || null,
+      ...totals,
+    }
+  }, [zoneHighlights, zoneStatisticsData])
 
   const periodLabel = TIME_FILTERS.find(filter => filter.value === timePeriod)?.label || 'Période'
-  const daysToShow =
-    TIME_FILTERS.find(filter => filter.value === timePeriod)?.days ||
-    (timePeriod === 'all' ? 365 : 30)
   const activeFiltersCount =
-    (timePeriod !== 'all' ? 1 : 0) +
+    (timePeriod !== '30d' ? 1 : 0) +
     (scopeType !== 'all' ? 1 : 0) +
     (selectedOwner !== 'all' ? 1 : 0)
 
   const resetFilters = () => {
-    setTimePeriod('all')
+    setTimePeriod('30d')
     setScopeType('all')
     setSelectedOwner('all')
   }
@@ -456,19 +624,22 @@ export function useStatistiquesLogic() {
     activeFiltersCount,
     resetFilters,
     metrics,
+    aggregateTotals,
+    activityTotals,
     statusBreakdown,
     funnelData,
+    timelineData,
     topPerformers,
     lastStatusActivities,
-    chartStatistics,
-    productionStats,
-    timeFilteredStatistics: scopedTimeFilteredStatistics,
+    productionStats: scopedProductionStats,
+    rankingStatistics: scopedProductionStats,
     filteredCommercials: scopedCommercials,
     filteredDirecteurs: scopedDirecteurs,
     filteredManagers: scopedManagers,
-    zoneStatisticsData,
+    zoneStatisticsData: zoneHighlights,
+    zoneSummary,
     currentRole,
     periodLabel,
-    daysToShow,
+    dataModeLabel: metrics.dataMode === 'activity' ? 'Activité période' : 'État consolidé',
   }
 }

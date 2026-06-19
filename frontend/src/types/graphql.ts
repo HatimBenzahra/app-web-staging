@@ -10,6 +10,8 @@ import type {
   Zone,
   Immeuble,
   Statistic,
+  TimelinePoint,
+  OwnerActivityStatistic,
   ZoneStatistic,
   TeamLastStatusActivity,
   Porte,
@@ -95,6 +97,14 @@ export interface QueryZoneStatisticsResponse {
 
 export interface QueryTeamLastStatusActivitiesResponse {
   teamLastStatusActivities: TeamLastStatusActivity[]
+}
+
+export interface QueryStatsTimelineResponse {
+  statsTimeline: TimelinePoint[]
+}
+
+export interface QueryStatsActivityByOwnerResponse {
+  statsActivityByOwner: OwnerActivityStatistic[]
 }
 
 export interface QueryPortesResponse {

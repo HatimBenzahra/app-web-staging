@@ -7,15 +7,269 @@ import { PrismaService } from '../prisma.service';
 import { calculateStatsForStatus } from '../porte/porte-status.constants';
 import {
   CreateStatisticInput,
+  OwnerActivityStatistic,
   UpdateStatisticInput,
   ZoneStatistic,
   TimelinePoint,
   TeamLastStatusActivity,
 } from './statistic.dto';
 
+type StatsScopeType = 'all' | 'commercials' | 'managers';
+type StatsOwnerType = 'commercial' | 'manager';
+
+interface AccessibleActivityOwners {
+  commercialIds: number[];
+  managerIds: number[];
+  commercialNames: Map<number, string>;
+  managerNames: Map<number, string>;
+}
+
 @Injectable()
 export class StatisticService {
   constructor(private prisma: PrismaService) {}
+
+  private normalizeScopeType(scopeType?: string): StatsScopeType {
+    const normalized = (scopeType || 'all').toLowerCase();
+    if (normalized === 'commercials' || normalized === 'managers') {
+      return normalized;
+    }
+    return 'all';
+  }
+
+  private normalizeOwnerType(ownerType?: string): StatsOwnerType | undefined {
+    const normalized = ownerType?.toLowerCase();
+    if (normalized === 'commercial' || normalized === 'manager') {
+      return normalized;
+    }
+    return undefined;
+  }
+
+  private normalizeDate(date?: Date): Date | undefined {
+    if (!date) return undefined;
+    const value = new Date(date);
+    return Number.isNaN(value.getTime()) ? undefined : value;
+  }
+
+  private buildNameMap(
+    users: Array<{ id: number; nom?: string | null; prenom?: string | null }>,
+    fallback: string,
+  ) {
+    return new Map(
+      users.map((user) => [
+        user.id,
+        `${user.prenom || ''} ${user.nom || ''}`.trim() ||
+          `${fallback} #${user.id}`,
+      ]),
+    );
+  }
+
+  private async getAccessibleActivityOwners(
+    userId: number,
+    userRole: string,
+  ): Promise<AccessibleActivityOwners> {
+    switch (userRole) {
+      case 'admin': {
+        const [commercials, managers] = await this.prisma.$transaction([
+          this.prisma.commercial.findMany({
+            select: { id: true, nom: true, prenom: true },
+          }),
+          this.prisma.manager.findMany({
+            select: { id: true, nom: true, prenom: true },
+          }),
+        ]);
+
+        return {
+          commercialIds: commercials.map((commercial) => commercial.id),
+          managerIds: managers.map((manager) => manager.id),
+          commercialNames: this.buildNameMap(commercials, 'Commercial'),
+          managerNames: this.buildNameMap(managers, 'Manager'),
+        };
+      }
+
+      case 'directeur': {
+        const managers = await this.prisma.manager.findMany({
+          where: { directeurId: userId },
+          select: { id: true, nom: true, prenom: true },
+        });
+        const managerIds = managers.map((manager) => manager.id);
+
+        const commercials = await this.prisma.commercial.findMany({
+          where: {
+            OR: [{ directeurId: userId }, { managerId: { in: managerIds } }],
+          },
+          select: { id: true, nom: true, prenom: true },
+        });
+
+        return {
+          commercialIds: commercials.map((commercial) => commercial.id),
+          managerIds,
+          commercialNames: this.buildNameMap(commercials, 'Commercial'),
+          managerNames: this.buildNameMap(managers, 'Manager'),
+        };
+      }
+
+      case 'manager': {
+        const [commercials, managers] = await this.prisma.$transaction([
+          this.prisma.commercial.findMany({
+            where: { managerId: userId },
+            select: { id: true, nom: true, prenom: true },
+          }),
+          this.prisma.manager.findMany({
+            where: { id: userId },
+            select: { id: true, nom: true, prenom: true },
+          }),
+        ]);
+
+        return {
+          commercialIds: commercials.map((commercial) => commercial.id),
+          managerIds: managers.map((manager) => manager.id),
+          commercialNames: this.buildNameMap(commercials, 'Commercial'),
+          managerNames: this.buildNameMap(managers, 'Manager'),
+        };
+      }
+
+      case 'commercial': {
+        const commercial = await this.prisma.commercial.findUnique({
+          where: { id: userId },
+          select: { id: true, nom: true, prenom: true },
+        });
+        const commercials = commercial ? [commercial] : [];
+
+        return {
+          commercialIds: commercials.map((item) => item.id),
+          managerIds: [],
+          commercialNames: this.buildNameMap(commercials, 'Commercial'),
+          managerNames: new Map(),
+        };
+      }
+
+      default:
+        return {
+          commercialIds: [],
+          managerIds: [],
+          commercialNames: new Map(),
+          managerNames: new Map(),
+        };
+    }
+  }
+
+  private buildStatusHistoryOwnerWhere(
+    accessibleOwners: AccessibleActivityOwners,
+    scopeType?: string,
+    ownerType?: string,
+    ownerId?: number,
+  ) {
+    const normalizedScope = this.normalizeScopeType(scopeType);
+    const normalizedOwnerType = this.normalizeOwnerType(ownerType);
+
+    if (normalizedOwnerType && ownerId) {
+      if (
+        normalizedOwnerType === 'commercial' &&
+        accessibleOwners.commercialIds.includes(ownerId)
+      ) {
+        return { commercialId: ownerId };
+      }
+      if (
+        normalizedOwnerType === 'manager' &&
+        accessibleOwners.managerIds.includes(ownerId)
+      ) {
+        return { managerId: ownerId };
+      }
+      return { id: -1 };
+    }
+
+    if (normalizedScope === 'commercials') {
+      return accessibleOwners.commercialIds.length
+        ? { commercialId: { in: accessibleOwners.commercialIds } }
+        : { id: -1 };
+    }
+
+    if (normalizedScope === 'managers') {
+      return accessibleOwners.managerIds.length
+        ? { managerId: { in: accessibleOwners.managerIds } }
+        : { id: -1 };
+    }
+
+    const ownerFilters: any[] = [];
+    if (accessibleOwners.commercialIds.length) {
+      ownerFilters.push({ commercialId: { in: accessibleOwners.commercialIds } });
+    }
+    if (accessibleOwners.managerIds.length) {
+      ownerFilters.push({ managerId: { in: accessibleOwners.managerIds } });
+    }
+
+    if (ownerFilters.length === 0) {
+      return { id: -1 };
+    }
+
+    return ownerFilters.length === 1 ? ownerFilters[0] : { OR: ownerFilters };
+  }
+
+  private buildStatusHistoryDateWhere(startDate?: Date, endDate?: Date) {
+    const validStart = this.normalizeDate(startDate);
+    const validEnd = this.normalizeDate(endDate);
+
+    if (!validStart && !validEnd) {
+      return {};
+    }
+
+    return {
+      createdAt: {
+        ...(validStart ? { gte: validStart } : {}),
+        ...(validEnd ? { lte: validEnd } : {}),
+      },
+    };
+  }
+
+  private createTimelinePoint(dateKey: string): TimelinePoint {
+    return {
+      date: new Date(dateKey),
+      rdvPris: 0,
+      portesProspectees: 0,
+      contratsSignes: 0,
+      refus: 0,
+      absents: 0,
+      argumentes: 0,
+      repassages: 0,
+    };
+  }
+
+  private accumulateStatusStats(
+    target: {
+      contratsSignes: number;
+      rendezVousPris?: number;
+      rdvPris?: number;
+      refus: number;
+      absents: number;
+      argumentes: number;
+      repassages: number;
+      nbPortesProspectes?: number;
+      portesProspectees?: number;
+    },
+    status: string,
+    count: number,
+  ) {
+    const statusStats = calculateStatsForStatus(status, count);
+
+    target.contratsSignes += statusStats.contratsSignes;
+    target.refus += statusStats.refus;
+    target.absents += statusStats.absents;
+    target.argumentes += statusStats.argumentes;
+    target.repassages += status === 'NECESSITE_REPASSAGE' ? count : 0;
+
+    if (target.rendezVousPris !== undefined) {
+      target.rendezVousPris += statusStats.rendezVousPris;
+    }
+    if (target.rdvPris !== undefined) {
+      target.rdvPris += statusStats.rendezVousPris;
+    }
+    if (target.nbPortesProspectes !== undefined) {
+      target.nbPortesProspectes += statusStats.nbPortesProspectes;
+    }
+    if (target.portesProspectees !== undefined) {
+      target.portesProspectees += statusStats.nbPortesProspectes;
+    }
+  }
 
   private async assertStatisticAccess(
     statisticId: number,
@@ -759,15 +1013,7 @@ export class StatisticService {
     history.forEach((entry) => {
       const dayKey = entry.createdAt.toISOString().slice(0, 10);
       if (!grouped.has(dayKey)) {
-        grouped.set(dayKey, {
-          date: new Date(dayKey),
-          rdvPris: 0,
-          portesProspectees: 0,
-          contratsSignes: 0,
-          refus: 0,
-          absents: 0,
-          argumentes: 0,
-        });
+        grouped.set(dayKey, this.createTimelinePoint(dayKey));
       }
 
       // Pour CONTRAT_SIGNE, on multiplie par porte.nbContrats (une porte
@@ -777,18 +1023,244 @@ export class StatisticService {
         entry.statut === 'CONTRAT_SIGNE'
           ? entry.porte?.nbContrats || 1
           : 1;
-      const stats = calculateStatsForStatus(entry.statut, count);
       const current = grouped.get(dayKey)!;
-      current.rdvPris += stats.rendezVousPris;
-      current.portesProspectees += stats.nbPortesProspectes;
-      current.contratsSignes += stats.contratsSignes;
-      current.refus += stats.refus;
-      current.absents += stats.absents;
-      current.argumentes += stats.argumentes;
+      this.accumulateStatusStats(current, entry.statut, count);
     });
 
     return Array.from(grouped.values()).sort(
       (a, b) => a.date.getTime() - b.date.getTime(),
     );
+  }
+
+  async statsTimeline(
+    userId: number,
+    userRole: string,
+    scopeType?: string,
+    ownerType?: string,
+    ownerId?: number,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<TimelinePoint[]> {
+    const accessibleOwners = await this.getAccessibleActivityOwners(
+      userId,
+      userRole,
+    );
+    const ownerWhere = this.buildStatusHistoryOwnerWhere(
+      accessibleOwners,
+      scopeType,
+      ownerType,
+      ownerId,
+    );
+    const dateWhere = this.buildStatusHistoryDateWhere(startDate, endDate);
+
+    const history = await this.prisma.statusHistorique.findMany({
+      where: {
+        ...ownerWhere,
+        ...dateWhere,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        statut: true,
+        createdAt: true,
+        porte: {
+          select: { nbContrats: true },
+        },
+      },
+    });
+
+    const grouped = new Map<string, TimelinePoint>();
+
+    history.forEach((entry) => {
+      const dayKey = entry.createdAt.toISOString().slice(0, 10);
+      if (!grouped.has(dayKey)) {
+        grouped.set(dayKey, this.createTimelinePoint(dayKey));
+      }
+
+      const count =
+        entry.statut === 'CONTRAT_SIGNE'
+          ? entry.porte?.nbContrats || 1
+          : 1;
+      this.accumulateStatusStats(grouped.get(dayKey)!, entry.statut, count);
+    });
+
+    return Array.from(grouped.values()).sort(
+      (a, b) => a.date.getTime() - b.date.getTime(),
+    );
+  }
+
+  async statsActivityByOwner(
+    userId: number,
+    userRole: string,
+    scopeType?: string,
+    ownerType?: string,
+    ownerId?: number,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<OwnerActivityStatistic[]> {
+    const accessibleOwners = await this.getAccessibleActivityOwners(
+      userId,
+      userRole,
+    );
+    const normalizedScope = this.normalizeScopeType(scopeType);
+    const normalizedOwnerType = this.normalizeOwnerType(ownerType);
+    const ownerWhere = this.buildStatusHistoryOwnerWhere(
+      accessibleOwners,
+      scopeType,
+      ownerType,
+      ownerId,
+    );
+    const dateWhere = this.buildStatusHistoryDateWhere(startDate, endDate);
+
+    const history = await this.prisma.statusHistorique.findMany({
+      where: {
+        ...ownerWhere,
+        ...dateWhere,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        commercialId: true,
+        managerId: true,
+        statut: true,
+        createdAt: true,
+        porte: {
+          select: { nbContrats: true },
+        },
+      },
+    });
+
+    const grouped = new Map<string, OwnerActivityStatistic>();
+
+    const resolveOwner = (entry: {
+      commercialId: number | null;
+      managerId: number | null;
+    }): { id: number; type: StatsOwnerType; name: string } | null => {
+      if (normalizedOwnerType === 'commercial' && entry.commercialId) {
+        return {
+          id: entry.commercialId,
+          type: 'commercial',
+          name:
+            accessibleOwners.commercialNames.get(entry.commercialId) ||
+            `Commercial #${entry.commercialId}`,
+        };
+      }
+
+      if (normalizedOwnerType === 'manager' && entry.managerId) {
+        return {
+          id: entry.managerId,
+          type: 'manager',
+          name:
+            accessibleOwners.managerNames.get(entry.managerId) ||
+            `Manager #${entry.managerId}`,
+        };
+      }
+
+      if (normalizedScope === 'commercials' && entry.commercialId) {
+        return {
+          id: entry.commercialId,
+          type: 'commercial',
+          name:
+            accessibleOwners.commercialNames.get(entry.commercialId) ||
+            `Commercial #${entry.commercialId}`,
+        };
+      }
+
+      if (normalizedScope === 'managers' && entry.managerId) {
+        return {
+          id: entry.managerId,
+          type: 'manager',
+          name:
+            accessibleOwners.managerNames.get(entry.managerId) ||
+            `Manager #${entry.managerId}`,
+        };
+      }
+
+      if (entry.managerId && !entry.commercialId) {
+        return {
+          id: entry.managerId,
+          type: 'manager',
+          name:
+            accessibleOwners.managerNames.get(entry.managerId) ||
+            `Manager #${entry.managerId}`,
+        };
+      }
+
+      if (entry.commercialId) {
+        return {
+          id: entry.commercialId,
+          type: 'commercial',
+          name:
+            accessibleOwners.commercialNames.get(entry.commercialId) ||
+            `Commercial #${entry.commercialId}`,
+        };
+      }
+
+      if (entry.managerId) {
+        return {
+          id: entry.managerId,
+          type: 'manager',
+          name:
+            accessibleOwners.managerNames.get(entry.managerId) ||
+            `Manager #${entry.managerId}`,
+        };
+      }
+
+      return null;
+    };
+
+    history.forEach((entry) => {
+      const owner = resolveOwner(entry);
+      if (!owner) return;
+
+      const key = `${owner.type}:${owner.id}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          userId: owner.id,
+          userType: owner.type,
+          userName: owner.name,
+          contratsSignes: 0,
+          rendezVousPris: 0,
+          refus: 0,
+          absents: 0,
+          argumentes: 0,
+          repassages: 0,
+          nbPortesProspectes: 0,
+          tauxConversion: 0,
+          points: 0,
+          lastActivityAt: undefined,
+        });
+      }
+
+      const count =
+        entry.statut === 'CONTRAT_SIGNE'
+          ? entry.porte?.nbContrats || 1
+          : 1;
+      const current = grouped.get(key)!;
+      this.accumulateStatusStats(current, entry.statut, count);
+      current.lastActivityAt = entry.createdAt;
+    });
+
+    return Array.from(grouped.values())
+      .map((item) => {
+        const opportunities =
+          item.contratsSignes + item.rendezVousPris + item.refus;
+        return {
+          ...item,
+          tauxConversion:
+            opportunities > 0
+              ? Math.round((item.contratsSignes / opportunities) * 1000) / 10
+              : 0,
+          points:
+            item.contratsSignes * 50 +
+            item.rendezVousPris * 10 +
+            item.argumentes * 4 +
+            item.nbPortesProspectes * 2,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.contratsSignes - a.contratsSignes ||
+          b.rendezVousPris - a.rendezVousPris,
+      );
   }
 }

@@ -5,6 +5,8 @@
 import { api } from '../../../services/api'
 import type {
   Statistic,
+  TimelinePoint,
+  OwnerActivityStatistic,
   ZoneStatistic,
   TeamLastStatusActivity,
   CreateStatisticInput,
@@ -45,11 +47,28 @@ export function useZoneStatistics(): UseApiListState<ZoneStatistic> & UseApiActi
   return useApiCall(() => api.statistics.getZoneStatistics(), [], 'zoneStatistics')
 }
 
-export function useTeamLastStatusActivities(): UseApiListState<TeamLastStatusActivity> & UseApiActions {
+export function useTeamLastStatusActivities(): UseApiListState<TeamLastStatusActivity> &
+  UseApiActions {
   return useApiCall(
     () => api.statistics.getTeamLastStatusActivities(),
     [],
     'teamLastStatusActivities'
+  )
+}
+
+export function useStatsTimeline(filters = {}): UseApiListState<TimelinePoint> & UseApiActions {
+  const key = JSON.stringify(filters)
+  return useApiCall(() => api.statistics.getStatsTimeline(filters), [key], 'statsTimeline')
+}
+
+export function useStatsActivityByOwner(
+  filters = {}
+): UseApiListState<OwnerActivityStatistic> & UseApiActions {
+  const key = JSON.stringify(filters)
+  return useApiCall(
+    () => api.statistics.getStatsActivityByOwner(filters),
+    [key],
+    'statsActivityByOwner'
   )
 }
 

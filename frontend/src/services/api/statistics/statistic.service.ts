@@ -8,6 +8,8 @@ import {
   GET_STATISTIC,
   GET_ZONE_STATISTICS,
   GET_TEAM_LAST_STATUS_ACTIVITIES,
+  GET_STATS_TIMELINE,
+  GET_STATS_ACTIVITY_BY_OWNER,
   GET_ME,
 } from './statistic.queries'
 import {
@@ -17,17 +19,19 @@ import {
   RECALCULATE_ALL_STATS,
   VALIDATE_STATS_COHERENCE,
 } from './statistic.mutations'
-import {
-  GET_CURRENT_USER_ASSIGNMENT,
-} from '../zones/zone.queries' // Importing this from zones as it is used here
+import { GET_CURRENT_USER_ASSIGNMENT } from '../zones/zone.queries' // Importing this from zones as it is used here
 import type {
   Statistic,
+  TimelinePoint,
+  OwnerActivityStatistic,
   ZoneStatistic,
   TeamLastStatusActivity,
   QueryStatisticsResponse,
   QueryStatisticResponse,
   QueryZoneStatisticsResponse,
   QueryTeamLastStatusActivitiesResponse,
+  QueryStatsTimelineResponse,
+  QueryStatsActivityByOwnerResponse,
   CreateStatisticVariables,
   MutationCreateStatisticResponse,
   UpdateStatisticVariables,
@@ -35,6 +39,14 @@ import type {
   MutationRemoveStatisticResponse,
   GetEntityByIdVariables,
 } from './statistic.types'
+
+export interface StatsActivityFilters {
+  scopeType?: string
+  ownerType?: string
+  ownerId?: number
+  startDate?: string
+  endDate?: string
+}
 
 export const statisticApi = {
   async getAll(commercialId?: number): Promise<Statistic[]> {
@@ -86,6 +98,24 @@ export const statisticApi = {
       {}
     )
     return response.teamLastStatusActivities
+  },
+
+  async getStatsTimeline(filters: StatsActivityFilters = {}): Promise<TimelinePoint[]> {
+    const response = await gql<QueryStatsTimelineResponse, StatsActivityFilters>(
+      GET_STATS_TIMELINE,
+      filters
+    )
+    return response.statsTimeline
+  },
+
+  async getStatsActivityByOwner(
+    filters: StatsActivityFilters = {}
+  ): Promise<OwnerActivityStatistic[]> {
+    const response = await gql<QueryStatsActivityByOwnerResponse, StatsActivityFilters>(
+      GET_STATS_ACTIVITY_BY_OWNER,
+      filters
+    )
+    return response.statsActivityByOwner
   },
 
   async getCurrentUserAssignment(userId: number, userType: string): Promise<any> {

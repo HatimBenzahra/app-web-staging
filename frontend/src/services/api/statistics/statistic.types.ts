@@ -4,6 +4,8 @@
 
 export type {
   Statistic,
+  TimelinePoint,
+  OwnerActivityStatistic,
   ZoneStatistic,
   TeamLastStatusActivity,
 } from '../../../types/api'
@@ -13,6 +15,8 @@ export type {
   QueryStatisticResponse,
   QueryZoneStatisticsResponse,
   QueryTeamLastStatusActivitiesResponse,
+  QueryStatsTimelineResponse,
+  QueryStatsActivityByOwnerResponse,
   CreateStatisticVariables,
   MutationCreateStatisticResponse,
   UpdateStatisticVariables,

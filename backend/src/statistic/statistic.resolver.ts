@@ -9,6 +9,7 @@ import {
   ZoneStatistic,
   TimelinePoint,
   TeamLastStatusActivity,
+  OwnerActivityStatistic,
 } from './statistic.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -118,6 +119,48 @@ export class StatisticResolver {
       commercialId,
       user.id,
       user.role,
+      startDate,
+      endDate,
+    );
+  }
+
+  @Query(() => [TimelinePoint], { name: 'statsTimeline' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  statsTimeline(
+    @Args('scopeType', { type: () => String, nullable: true }) scopeType: string | undefined,
+    @Args('ownerType', { type: () => String, nullable: true }) ownerType: string | undefined,
+    @Args('ownerId', { type: () => Int, nullable: true }) ownerId: number | undefined,
+    @Args('startDate', { type: () => Date, nullable: true }) startDate: Date | undefined,
+    @Args('endDate', { type: () => Date, nullable: true }) endDate: Date | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.statisticService.statsTimeline(
+      user.id,
+      user.role,
+      scopeType,
+      ownerType,
+      ownerId,
+      startDate,
+      endDate,
+    );
+  }
+
+  @Query(() => [OwnerActivityStatistic], { name: 'statsActivityByOwner' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  statsActivityByOwner(
+    @Args('scopeType', { type: () => String, nullable: true }) scopeType: string | undefined,
+    @Args('ownerType', { type: () => String, nullable: true }) ownerType: string | undefined,
+    @Args('ownerId', { type: () => Int, nullable: true }) ownerId: number | undefined,
+    @Args('startDate', { type: () => Date, nullable: true }) startDate: Date | undefined,
+    @Args('endDate', { type: () => Date, nullable: true }) endDate: Date | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.statisticService.statsActivityByOwner(
+      user.id,
+      user.role,
+      scopeType,
+      ownerType,
+      ownerId,
       startDate,
       endDate,
     );

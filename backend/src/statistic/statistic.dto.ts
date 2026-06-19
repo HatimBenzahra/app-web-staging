@@ -128,6 +128,51 @@ export class TimelinePoint {
 
   @Field(() => Int)
   argumentes: number;
+
+  @Field(() => Int)
+  repassages: number;
+}
+
+@ObjectType()
+export class OwnerActivityStatistic {
+  @Field(() => Int)
+  userId: number;
+
+  @Field(() => String)
+  userType: string;
+
+  @Field(() => String)
+  userName: string;
+
+  @Field(() => Int)
+  contratsSignes: number;
+
+  @Field(() => Int)
+  rendezVousPris: number;
+
+  @Field(() => Int)
+  refus: number;
+
+  @Field(() => Int)
+  absents: number;
+
+  @Field(() => Int)
+  argumentes: number;
+
+  @Field(() => Int)
+  repassages: number;
+
+  @Field(() => Int)
+  nbPortesProspectes: number;
+
+  @Field(() => Float)
+  tauxConversion: number;
+
+  @Field(() => Int)
+  points: number;
+
+  @Field({ nullable: true })
+  lastActivityAt?: Date;
 }
 
 @ObjectType()
