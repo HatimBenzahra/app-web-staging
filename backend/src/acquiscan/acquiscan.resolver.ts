@@ -1,4 +1,4 @@
-import { Args, Query, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -15,8 +15,12 @@ import {
   AcquiscanDepartmentOpportunitiesPage,
   AcquiscanMapInput,
   AcquiscanMapResult,
+  AcquiscanZonePreviewInput,
+  AcquiscanZonePreviewResult,
+  CreateAcquiscanZoneInput,
 } from './acquiscan.dto';
 import { AcquiscanService } from './acquiscan.service';
+import { Zone } from '../zone/zone.dto';
 
 @Resolver()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -57,5 +61,17 @@ export class AcquiscanResolver {
   @Roles('admin', 'directeur')
   findMapAddresses(@Args('input') input: AcquiscanMapInput) {
     return this.acquiscanService.findMapAddresses(input);
+  }
+
+  @Query(() => AcquiscanZonePreviewResult, { name: 'acquiscanZonePreview' })
+  @Roles('admin', 'directeur')
+  previewZoneTargets(@Args('input') input: AcquiscanZonePreviewInput) {
+    return this.acquiscanService.previewZoneTargets(input);
+  }
+
+  @Mutation(() => Zone, { name: 'createAcquiscanZone' })
+  @Roles('admin', 'directeur')
+  createAcquiscanZone(@Args('input') input: CreateAcquiscanZoneInput) {
+    return this.acquiscanService.createZoneFromAcquiscan(input);
   }
 }

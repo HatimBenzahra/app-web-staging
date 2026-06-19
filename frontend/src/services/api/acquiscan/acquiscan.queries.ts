@@ -194,3 +194,64 @@ export const GET_ACQUISCAN_COPPER_BUILDINGS = `
     }
   }
 `
+
+const ACQUISCAN_ZONE_TARGET_FIELDS = `
+  immeubleId
+  imbCode
+  addrNumero
+  addrNomVoie
+  addrNomCommune
+  codeInsee
+  nbrLogements
+  fermetureTechnique
+  fermetureComZone
+  fermetureComAddr
+  eligFo
+  anneeFt
+  sites4g
+  sites5g
+  sitesTotal
+  dept
+  latitude
+  longitude
+  distanceMeters
+  opportunityScore
+`
+
+export const GET_ACQUISCAN_ZONE_PREVIEW = `
+  query GetAcquiscanZonePreview($input: AcquiscanZonePreviewInput!) {
+    acquiscanZonePreview(input: $input) {
+      totalInCircle
+      tooManyResults
+      summary {
+        totalTargets
+        totalLogements
+        noFiberTargets
+        fiberTargets
+        copperClosureTargets
+        strong4gTargets
+        strong5gTargets
+        averageOpportunityScore
+      }
+      targets {
+        ${ACQUISCAN_ZONE_TARGET_FIELDS}
+      }
+    }
+  }
+`
+
+export const CREATE_ACQUISCAN_ZONE = `
+  mutation CreateAcquiscanZone($input: CreateAcquiscanZoneInput!) {
+    createAcquiscanZone(input: $input) {
+      id
+      nom
+      xOrigin
+      yOrigin
+      rayon
+      directeurId
+      managerId
+      createdAt
+      updatedAt
+    }
+  }
+`

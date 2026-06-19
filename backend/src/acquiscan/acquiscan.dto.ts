@@ -1,5 +1,5 @@
 import { Field, Float, GraphQLISODateTime, InputType, Int, ObjectType } from '@nestjs/graphql';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 @InputType()
 export class AcquiscanAddressesInput {
@@ -573,4 +573,141 @@ export class AcquiscanMapResult {
 
   @Field(() => [AcquiscanDepartmentCoverage])
   coverage: AcquiscanDepartmentCoverage[];
+}
+
+@InputType()
+export class AcquiscanZonePreviewInput {
+  @Field(() => Float)
+  @IsNumber()
+  longitude: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  latitude: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(50)
+  @Max(10000)
+  radiusMeters: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(\d{2,3}|2A|2B)$/i)
+  dept?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5}$/)
+  commune?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(all|current|future|\d{4})$/)
+  annee?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'yes', 'no'])
+  fiber?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'eleve', 'moyen', 'faible'])
+  coverage4g?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'eleve', 'moyen', 'faible'])
+  coverage5g?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'urgent', 'chaud', 'tiede', 'froid'])
+  segment?: string;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+}
+
+@ObjectType()
+export class AcquiscanZoneTargetPreview extends AcquiscanMapPoint {
+  @Field(() => Float)
+  distanceMeters: number;
+
+  @Field(() => Int)
+  opportunityScore: number;
+}
+
+@ObjectType()
+export class AcquiscanZonePreviewSummary {
+  @Field(() => Int)
+  totalTargets: number;
+
+  @Field(() => Int)
+  totalLogements: number;
+
+  @Field(() => Int)
+  noFiberTargets: number;
+
+  @Field(() => Int)
+  fiberTargets: number;
+
+  @Field(() => Int)
+  copperClosureTargets: number;
+
+  @Field(() => Int)
+  strong4gTargets: number;
+
+  @Field(() => Int)
+  strong5gTargets: number;
+
+  @Field(() => Int)
+  averageOpportunityScore: number;
+}
+
+@ObjectType()
+export class AcquiscanZonePreviewResult {
+  @Field(() => [AcquiscanZoneTargetPreview])
+  targets: AcquiscanZoneTargetPreview[];
+
+  @Field(() => AcquiscanZonePreviewSummary)
+  summary: AcquiscanZonePreviewSummary;
+
+  @Field(() => Int)
+  totalInCircle: number;
+
+  @Field()
+  tooManyResults: boolean;
+}
+
+@InputType()
+export class CreateAcquiscanZoneInput extends AcquiscanZonePreviewInput {
+  @Field()
+  @IsNotEmpty()
+  @IsString()
+  nom: string;
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  selectedImmeubleIds?: string[];
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  directeurId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  managerId?: number;
 }

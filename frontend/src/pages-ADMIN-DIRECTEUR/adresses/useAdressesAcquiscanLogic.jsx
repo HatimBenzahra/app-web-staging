@@ -82,6 +82,7 @@ const formatSuggestionError = error => {
 export function useAdressesAcquiscanLogic() {
   const latestMapRequest = useRef(0)
   const latestListRequest = useRef(0)
+  const latestZonePreviewRequest = useRef(0)
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [addressQuery, setAddressQuery] = useState('')
   const [suggestions, setSuggestions] = useState([])
@@ -99,6 +100,16 @@ export function useAdressesAcquiscanLogic() {
   const [mapError, setMapError] = useState(null)
   const [listError, setListError] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
+  const [zoneMode, setZoneMode] = useState(false)
+  const [draftCircle, setDraftCircle] = useState(null)
+  const [zonePreview, setZonePreview] = useState(null)
+  const [zonePreviewLoading, setZonePreviewLoading] = useState(false)
+  const [zonePreviewError, setZonePreviewError] = useState(null)
+  const [excludedTargetIds, setExcludedTargetIds] = useState([])
+  const [zoneName, setZoneName] = useState('')
+  const [zoneCreateLoading, setZoneCreateLoading] = useState(false)
+  const [zoneCreateError, setZoneCreateError] = useState(null)
+  const [createdZone, setCreatedZone] = useState(null)
 
   const mapInput = useMemo(() => {
     const normalized = normalizeFilters(filters)
@@ -182,6 +193,31 @@ export function useAdressesAcquiscanLogic() {
     }
   }, [filters])
 
+  const zonePreviewInput = useMemo(() => {
+    if (!zoneMode || !draftCircle) return null
+    const normalized = normalizeFilters(filters)
+    return {
+      longitude: Number(draftCircle.longitude.toFixed(7)),
+      latitude: Number(draftCircle.latitude.toFixed(7)),
+      radiusMeters: Math.round(draftCircle.radiusMeters),
+      dept: normalized.dept,
+      commune: normalized.commune,
+      annee: normalized.annee,
+      fiber: normalized.fiber,
+      coverage4g: normalized.coverage4g,
+      coverage5g: normalized.coverage5g,
+      segment: normalized.segment,
+      limit: ADDRESS_LIMIT,
+    }
+  }, [draftCircle, filters, zoneMode])
+
+  useEffect(() => {
+    if (zoneMode) {
+      setZonePreview(null)
+      setZonePreviewError(null)
+    }
+  }, [zonePreviewInput, zoneMode])
+
   const loadList = useCallback(async () => {
     if (!listInput) {
       latestListRequest.current += 1
@@ -214,6 +250,39 @@ export function useAdressesAcquiscanLogic() {
   useEffect(() => {
     loadList()
   }, [loadList])
+
+  const loadZonePreview = useCallback(async () => {
+    if (!zonePreviewInput) {
+      latestZonePreviewRequest.current += 1
+      setZonePreview(null)
+      setZonePreviewError(null)
+      setZonePreviewLoading(false)
+      return
+    }
+
+    const requestId = latestZonePreviewRequest.current + 1
+    latestZonePreviewRequest.current = requestId
+    setZonePreviewLoading(true)
+    setZonePreviewError(null)
+    try {
+      const result = await api.acquiscan.getZonePreview(zonePreviewInput)
+      if (latestZonePreviewRequest.current !== requestId) return
+      setZonePreview(result)
+      setExcludedTargetIds(current => current.filter(id => result.targets.some(target => target.immeubleId === id)))
+    } catch (err) {
+      if (latestZonePreviewRequest.current !== requestId) return
+      setZonePreviewError(err instanceof Error ? err.message : 'Erreur de preview zone Acquiscan')
+    } finally {
+      if (latestZonePreviewRequest.current === requestId) setZonePreviewLoading(false)
+    }
+  }, [zonePreviewInput])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadZonePreview()
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [loadZonePreview])
 
   const updateFilter = useCallback((key, value) => {
     setFilters(prev => {
@@ -255,22 +324,6 @@ export function useAdressesAcquiscanLogic() {
     setSelectedSuggestion(null)
   }, [])
 
-  const selectSuggestion = useCallback(suggestion => {
-    if (!hasValidCoordinates(suggestion)) {
-      setSuggestionsError('Coordonnées invalides pour cette adresse.')
-      return
-    }
-    setSelectedSuggestion(suggestion)
-    setAddressQuery(suggestion.label)
-    setSuggestions([])
-    setSelectedId(null)
-    setFilters(prev => ({ ...prev, dept: '', commune: '' }))
-    setMapQuery({
-      bounds: boundsAround(suggestion.longitude, suggestion.latitude),
-      zoom: 15,
-    })
-  }, [])
-
   const rows = useMemo(() => (mapData?.points || []).map(mapPointToAddress), [mapData?.points])
   const listRows = useMemo(
     () => (listData?.rows?.length ? listData.rows : rows),
@@ -303,6 +356,130 @@ export function useAdressesAcquiscanLogic() {
     }
   }, [clusters.length, coverage.length, listData?.total, listRows.length, mapData?.returnedCount, mapData?.totalInBounds, rows])
 
+  const selectSuggestion = useCallback(suggestion => {
+    if (!hasValidCoordinates(suggestion)) {
+      setSuggestionsError('Coordonnées invalides pour cette adresse.')
+      return
+    }
+    setSelectedSuggestion(suggestion)
+    setAddressQuery(suggestion.label)
+    setSuggestions([])
+    setSelectedId(null)
+    setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+    setMapQuery({
+      bounds: boundsAround(suggestion.longitude, suggestion.latitude),
+      zoom: 15,
+    })
+    if (zoneMode) {
+      setDraftCircle({
+        longitude: suggestion.longitude,
+        latitude: suggestion.latitude,
+        radiusMeters: draftCircle?.radiusMeters || 600,
+      })
+    }
+  }, [draftCircle?.radiusMeters, zoneMode])
+
+  const startZoneMode = useCallback(() => {
+    setZoneMode(true)
+    setZoneCreateError(null)
+    setCreatedZone(null)
+    setDraftCircle(current => {
+      if (current) return current
+      if (selectedAddress?.coordinates?.latitude && selectedAddress?.coordinates?.longitude) {
+        return {
+          longitude: selectedAddress.coordinates.longitude,
+          latitude: selectedAddress.coordinates.latitude,
+          radiusMeters: 600,
+        }
+      }
+      if (selectedSuggestion) {
+        return {
+          longitude: selectedSuggestion.longitude,
+          latitude: selectedSuggestion.latitude,
+          radiusMeters: 600,
+        }
+      }
+      return null
+    })
+  }, [selectedAddress, selectedSuggestion])
+
+  const stopZoneMode = useCallback(() => {
+    setZoneMode(false)
+    setDraftCircle(null)
+    setZonePreview(null)
+    setExcludedTargetIds([])
+    setZoneCreateError(null)
+    setCreatedZone(null)
+  }, [])
+
+  const setZoneCenter = useCallback((longitude, latitude) => {
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
+    setZoneMode(true)
+    setDraftCircle(current => ({
+      longitude,
+      latitude,
+      radiusMeters: current?.radiusMeters || 600,
+    }))
+    setCreatedZone(null)
+  }, [])
+
+  const updateZoneRadius = useCallback(radiusMeters => {
+    const nextRadius = Number(radiusMeters)
+    if (!Number.isFinite(nextRadius)) return
+    setDraftCircle(current => current ? {
+      ...current,
+      radiusMeters: Math.min(10000, Math.max(50, nextRadius)),
+    } : current)
+    setCreatedZone(null)
+  }, [])
+
+  const toggleZoneTarget = useCallback(immeubleId => {
+    setExcludedTargetIds(current => (
+      current.includes(immeubleId)
+        ? current.filter(id => id !== immeubleId)
+        : [...current, immeubleId]
+    ))
+  }, [])
+
+  const selectedZoneTargetIds = useMemo(() => {
+    const excluded = new Set(excludedTargetIds)
+    return (zonePreview?.targets || [])
+      .filter(target => !excluded.has(target.immeubleId))
+      .map(target => target.immeubleId)
+  }, [excludedTargetIds, zonePreview?.targets])
+
+  const createZoneFromPreview = useCallback(async () => {
+    if (!zonePreviewInput) {
+      setZoneCreateError('Trace un cercle avant de créer la zone.')
+      return null
+    }
+    if (!zoneName.trim()) {
+      setZoneCreateError('Ajoute un nom de zone.')
+      return null
+    }
+    if (!selectedZoneTargetIds.length) {
+      setZoneCreateError('Aucune adresse Acquiscan sélectionnée dans le cercle.')
+      return null
+    }
+
+    setZoneCreateLoading(true)
+    setZoneCreateError(null)
+    try {
+      const zone = await api.acquiscan.createZone({
+        ...zonePreviewInput,
+        nom: zoneName.trim(),
+        selectedImmeubleIds: selectedZoneTargetIds,
+      })
+      setCreatedZone(zone)
+      return zone
+    } catch (err) {
+      setZoneCreateError(err instanceof Error ? err.message : 'Erreur de création de zone Acquiscan')
+      return null
+    } finally {
+      setZoneCreateLoading(false)
+    }
+  }, [selectedZoneTargetIds, zoneName, zonePreviewInput])
+
   return {
     filters,
     updateFilter,
@@ -325,6 +502,24 @@ export function useAdressesAcquiscanLogic() {
     selectedAddress,
     selectedId,
     setSelectedId,
+    zoneMode,
+    startZoneMode,
+    stopZoneMode,
+    draftCircle,
+    setZoneCenter,
+    updateZoneRadius,
+    zonePreview,
+    zonePreviewLoading,
+    zonePreviewError,
+    excludedTargetIds,
+    toggleZoneTarget,
+    selectedZoneTargetIds,
+    zoneName,
+    setZoneName,
+    createZoneFromPreview,
+    zoneCreateLoading,
+    zoneCreateError,
+    createdZone,
     stats,
     mapData,
     loading: mapLoading || listLoading,

@@ -25,6 +25,10 @@ import {
   AcquiscanMapResult,
   AcquiscanImportStatus,
   AcquiscanOpportunitySummary,
+  AcquiscanZonePreviewInput,
+  AcquiscanZonePreviewResult,
+  AcquiscanZoneTargetPreview,
+  CreateAcquiscanZoneInput,
 } from './acquiscan.dto';
 
 type AcquiscanTokenResponse = {
@@ -111,6 +115,8 @@ const MAP_DETAIL_ZOOM = 10;
 const MAP_DEFAULT_LIMIT = 500;
 const MAP_MAX_POINTS = 500;
 const MAP_MAX_CLUSTERS = 300;
+const ZONE_PREVIEW_MAX_COORDINATES = 2500;
+const ZONE_PREVIEW_MAX_ACQUISCAN_PAGES = 40;
 
 @Injectable()
 export class AcquiscanService {
@@ -378,6 +384,123 @@ export class AcquiscanService {
     };
   }
 
+  async previewZoneTargets(input: AcquiscanZonePreviewInput): Promise<AcquiscanZonePreviewResult> {
+    const circle = this.validateZoneCircle(input);
+    const bounds = this.boundsForCircle(circle.longitude, circle.latitude, circle.radiusMeters);
+    const limit = Math.min(input.limit ?? MAP_DEFAULT_LIMIT, MAP_MAX_POINTS);
+    const requestedDept = input.dept ? this.normalizeDept(input.dept) : undefined;
+    const coordinateInput: AcquiscanMapInput = {
+      bounds,
+      zoom: 14,
+      dept: requestedDept,
+      commune: input.commune,
+      cluster: false,
+    };
+    const coordinateCandidates = (await this.findCoordinatePreviewPoints(coordinateInput, bounds, ZONE_PREVIEW_MAX_COORDINATES))
+      .map(point => ({
+        ...point,
+        distanceMeters: this.distanceMeters(circle.latitude, circle.longitude, point.latitude, point.longitude),
+      }))
+      .filter(point => point.distanceMeters <= circle.radiusMeters)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+    const inferredDept = this.pickDominantValue(coordinateCandidates.map(point => point.dept));
+    const inferredCommune = this.pickDominantValue(coordinateCandidates.map(point => point.codeInsee ?? undefined));
+    const dept = requestedDept ?? inferredDept;
+    const commune = input.commune ?? inferredCommune;
+    const mapLikeInput: AcquiscanMapInput = {
+      bounds,
+      zoom: 14,
+      dept,
+      commune,
+      annee: input.annee,
+      fiber: input.fiber,
+      coverage4g: input.coverage4g,
+      coverage5g: input.coverage5g,
+      segment: input.segment,
+      limit,
+      cluster: false,
+    };
+
+    const candidates = dept
+      ? await this.findFilteredZonePreviewPoints(mapLikeInput, coordinateCandidates, dept, limit)
+      : this.hasBusinessMapFilters(input)
+        ? []
+        : coordinateCandidates.slice(0, limit);
+
+    const targets = candidates
+      .map(point => ({
+        ...point,
+        distanceMeters: point.distanceMeters,
+        opportunityScore: this.scoreMapPointOpportunity(point),
+      }))
+      .sort((a, b) => b.opportunityScore - a.opportunityScore || a.distanceMeters - b.distanceMeters);
+
+    const sliced = targets.slice(0, limit);
+    return {
+      targets: sliced,
+      summary: this.buildZonePreviewSummary(sliced),
+      totalInCircle: targets.length,
+      tooManyResults: targets.length > sliced.length,
+    };
+  }
+
+  async createZoneFromAcquiscan(input: CreateAcquiscanZoneInput) {
+    const preview = await this.previewZoneTargets(input);
+    const selectedIds = new Set(input.selectedImmeubleIds?.length ? input.selectedImmeubleIds : preview.targets.map(target => target.immeubleId));
+    const targets = preview.targets.filter(target => selectedIds.has(target.immeubleId));
+    if (!targets.length) {
+      throw new BadRequestException('Aucune adresse Acquiscan sélectionnée dans cette zone');
+    }
+
+    const filtersSnapshot = {
+      dept: input.dept ?? null,
+      commune: input.commune ?? null,
+      annee: input.annee ?? null,
+      fiber: input.fiber ?? null,
+      coverage4g: input.coverage4g ?? null,
+      coverage5g: input.coverage5g ?? null,
+      segment: input.segment ?? null,
+      radiusMeters: input.radiusMeters,
+      center: { longitude: input.longitude, latitude: input.latitude },
+    };
+
+    return this.prisma.zone.create({
+      data: {
+        nom: input.nom,
+        xOrigin: input.longitude,
+        yOrigin: input.latitude,
+        rayon: input.radiusMeters,
+        directeurId: input.directeurId,
+        managerId: input.managerId,
+        acquiscanTargets: {
+          create: targets.map(target => ({
+            immeubleId: target.immeubleId,
+            dept: target.dept,
+            codeInsee: target.codeInsee,
+            imbCode: target.imbCode,
+            addrNumero: target.addrNumero,
+            addrNomVoie: target.addrNomVoie,
+            addrNomCommune: target.addrNomCommune,
+            nbrLogements: target.nbrLogements,
+            fermetureTechnique: target.fermetureTechnique,
+            fermetureComZone: target.fermetureComZone,
+            fermetureComAddr: target.fermetureComAddr,
+            eligFo: target.eligFo,
+            anneeFt: target.anneeFt,
+            sites4g: target.sites4g,
+            sites5g: target.sites5g,
+            sitesTotal: target.sitesTotal,
+            latitude: target.latitude,
+            longitude: target.longitude,
+            distanceMeters: target.distanceMeters,
+            opportunityScore: target.opportunityScore,
+            filtersSnapshot,
+          })),
+        },
+      },
+    });
+  }
+
   private async downloadAndImportDepartment(dept: string): Promise<AcquiscanImportStatus> {
     const url = `${this.getArcepBaseImbBaseUrl()}/base_imb_${dept}.csv.gz`;
     this.logger.log(`Import coordonnées ARCEP ${dept}: ${url}`);
@@ -460,6 +583,217 @@ export class AcquiscanService {
     return where;
   }
 
+  private async findCoordinatePreviewPoints(
+    input: AcquiscanMapInput,
+    bounds: AcquiscanBoundsInput,
+    limit: number,
+  ): Promise<AcquiscanMapPoint[]> {
+    const rows = await this.prisma.acquiscanAddressCoordinate.findMany({
+      where: this.buildMapCoordinateWhere({ ...input, bounds }),
+      take: limit,
+      orderBy: { id: 'asc' },
+    });
+
+    return rows.flatMap(row => {
+      if (!row.latitude || !row.longitude) return [];
+      return [{
+        id: String(row.id),
+        immeubleId: row.immeubleId,
+        imbCode: row.imbCode,
+        addrNumero: row.addrNumero,
+        addrNomVoie: row.addrNomVoie,
+        addrNomCommune: row.addrNomCommune,
+        codeInsee: row.codeInsee,
+        nbrLogements: null,
+        fermetureTechnique: null,
+        fermetureComZone: null,
+        fermetureComAddr: null,
+        eligFo: null,
+        anneeFt: null,
+        sites4g: null,
+        sites5g: null,
+        sitesTotal: null,
+        dept: row.dept,
+        latitude: row.latitude,
+        longitude: row.longitude,
+      }];
+    });
+  }
+
+  private async findFilteredZonePreviewPoints(
+    input: AcquiscanMapInput,
+    coordinateCandidates: Array<AcquiscanMapPoint & { distanceMeters: number }>,
+    dept: string,
+    limit: number,
+  ): Promise<Array<AcquiscanMapPoint & { distanceMeters: number }>> {
+    if (!coordinateCandidates.length) return [];
+
+    const candidateIds = new Set(coordinateCandidates.map(point => point.immeubleId).filter(Boolean));
+    const candidateImbCodes = new Set(coordinateCandidates.map(point => point.imbCode).filter((code): code is string => Boolean(code)));
+    const coordinatesById = new Map(coordinateCandidates.map(point => [point.immeubleId, point]));
+    const coordinatesByImbCode = new Map(
+      coordinateCandidates
+        .filter(point => point.imbCode)
+        .map(point => [point.imbCode as string, point]),
+    );
+    const found = new Map<string, AcquiscanMapPoint & { distanceMeters: number }>();
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    let pages = 0;
+
+    while (offset < total && pages < ZONE_PREVIEW_MAX_ACQUISCAN_PAGES && found.size < Math.min(limit, coordinateCandidates.length)) {
+      const copperPage = await this.fetchCopperBuildings({
+        ...input,
+        dept,
+        limit: MAP_MAX_POINTS,
+        offset,
+      });
+      total = copperPage.total;
+      pages += 1;
+      offset += MAP_MAX_POINTS;
+
+      copperPage.rows.forEach(row => {
+        if (!candidateIds.has(row.immeuble_id) && (!row.imb_code || !candidateImbCodes.has(row.imb_code))) return;
+        const coordinate = coordinatesById.get(row.immeuble_id) || (row.imb_code ? coordinatesByImbCode.get(row.imb_code) : null);
+        if (!coordinate) return;
+        found.set(row.immeuble_id, {
+          id: coordinate.id,
+          immeubleId: row.immeuble_id,
+          imbCode: row.imb_code,
+          addrNumero: row.addr_numero,
+          addrNomVoie: row.addr_nom_voie,
+          addrNomCommune: row.addr_nom_commune,
+          codeInsee: row.code_insee,
+          nbrLogements: row.nbr_logements,
+          fermetureTechnique: row.fermeture_technique,
+          fermetureComZone: row.fermeture_com_zone,
+          fermetureComAddr: row.fermeture_com_addr,
+          eligFo: row.elig_fo,
+          anneeFt: row.annee_ft,
+          sites4g: this.toNullableInt(row.sites_4g),
+          sites5g: this.toNullableInt(row.sites_5g),
+          sitesTotal: this.toNullableInt(row.sites_total),
+          dept: coordinate.dept,
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          distanceMeters: coordinate.distanceMeters,
+        });
+      });
+    }
+
+    return Array.from(found.values())
+      .filter(point => this.matchesZonePreviewFilters(point, input))
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, limit);
+  }
+
+  private matchesZonePreviewFilters(point: AcquiscanMapPoint, input: Pick<AcquiscanMapInput, 'segment' | 'fiber' | 'annee' | 'coverage4g' | 'coverage5g'>) {
+    if (input.fiber === 'yes' && point.eligFo !== '1') return false;
+    if (input.fiber === 'no' && point.eligFo !== '0') return false;
+
+    if (input.segment && input.segment !== 'all') {
+      const hasTechClosure = point.fermetureTechnique === '1';
+      const hasAddrClosure = point.fermetureComAddr === '1';
+      const hasZoneClosure = point.fermetureComZone === '1';
+      if (input.segment === 'urgent' && !hasTechClosure) return false;
+      if (input.segment === 'chaud' && !hasAddrClosure) return false;
+      if (input.segment === 'tiede' && !hasZoneClosure) return false;
+      if (input.segment === 'froid' && (hasTechClosure || hasAddrClosure || hasZoneClosure)) return false;
+    }
+
+    if (input.annee && input.annee !== 'all') {
+      const year = this.toNullableInt(point.anneeFt);
+      const currentYear = new Date().getFullYear();
+      if (input.annee === 'current' && year !== currentYear) return false;
+      if (input.annee === 'future' && (year == null || year <= currentYear)) return false;
+      if (/^\d{4}$/.test(input.annee) && year !== Number(input.annee)) return false;
+    }
+
+    if (!this.matchesCoverageFilter(point.sites4g, input.coverage4g)) return false;
+    if (!this.matchesCoverageFilter(point.sites5g, input.coverage5g)) return false;
+    return true;
+  }
+
+  private matchesCoverageFilter(value: number | null | undefined, filter?: string) {
+    if (!filter || filter === 'all') return true;
+    const count = this.toSafeInt(value);
+    if (filter === 'faible') return count <= 1;
+    if (filter === 'moyen') return count >= 2 && count <= 4;
+    if (filter === 'eleve') return count >= 5;
+    return true;
+  }
+
+  private pickDominantValue(values: Array<string | undefined | null>) {
+    const counts = new Map<string, number>();
+    values.filter((value): value is string => Boolean(value)).forEach(value => {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+  }
+
+  private validateZoneCircle(input: AcquiscanZonePreviewInput) {
+    if (!this.isValidLongitude(input.longitude) || !this.isValidLatitude(input.latitude)) {
+      throw new BadRequestException('Centre de zone Acquiscan invalide');
+    }
+    if (!Number.isFinite(input.radiusMeters) || input.radiusMeters < 50 || input.radiusMeters > 10000) {
+      throw new BadRequestException('Rayon de zone Acquiscan invalide');
+    }
+    return {
+      longitude: input.longitude,
+      latitude: input.latitude,
+      radiusMeters: input.radiusMeters,
+    };
+  }
+
+  private boundsForCircle(longitude: number, latitude: number, radiusMeters: number): AcquiscanBoundsInput {
+    const latDelta = radiusMeters / 111_320;
+    const lngDelta = radiusMeters / (111_320 * Math.max(Math.cos(latitude * Math.PI / 180), 0.2));
+    return {
+      west: Math.max(-180, longitude - lngDelta),
+      south: Math.max(-90, latitude - latDelta),
+      east: Math.min(180, longitude + lngDelta),
+      north: Math.min(90, latitude + latDelta),
+    };
+  }
+
+  private distanceMeters(latA: number, lngA: number, latB: number, lngB: number) {
+    const radius = 6_371_000;
+    const toRad = (value: number) => value * Math.PI / 180;
+    const dLat = toRad(latB - latA);
+    const dLng = toRad(lngB - lngA);
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(toRad(latA)) * Math.cos(toRad(latB)) * Math.sin(dLng / 2) ** 2;
+    return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  private scoreMapPointOpportunity(point: AcquiscanMapPoint) {
+    const logements = this.toSafeInt(point.nbrLogements);
+    const hasCopperSignal = point.fermetureTechnique === '1' || point.fermetureComAddr === '1' || point.fermetureComZone === '1';
+    const fiberAvailable = point.eligFo === '1';
+    const timingScore = point.fermetureTechnique === '1' ? 30 : point.fermetureComAddr === '1' ? 24 : point.fermetureComZone === '1' ? 16 : 6;
+    const mobileScore = Math.min(12, (this.toSafeInt(point.sites4g) * 2) + (this.toSafeInt(point.sites5g) * 3));
+    return Math.round(Math.min(100, 20 + timingScore + (fiberAvailable ? 10 : 0) + Math.min(logements, 25) + mobileScore + (hasCopperSignal ? 0 : -5)));
+  }
+
+  private buildZonePreviewSummary(targets: AcquiscanZoneTargetPreview[]) {
+    const totalLogements = targets.reduce((sum, target) => sum + this.toSafeInt(target.nbrLogements), 0);
+    const scoreSum = targets.reduce((sum, target) => sum + target.opportunityScore, 0);
+    return {
+      totalTargets: targets.length,
+      totalLogements,
+      noFiberTargets: targets.filter(target => target.eligFo === '0').length,
+      fiberTargets: targets.filter(target => target.eligFo === '1').length,
+      copperClosureTargets: targets.filter(target => (
+        target.fermetureTechnique === '1'
+        || target.fermetureComAddr === '1'
+        || target.fermetureComZone === '1'
+      )).length,
+      strong4gTargets: targets.filter(target => this.toSafeInt(target.sites4g) >= 3).length,
+      strong5gTargets: targets.filter(target => this.toSafeInt(target.sites5g) >= 1).length,
+      averageOpportunityScore: targets.length ? Math.round(scoreSum / targets.length) : 0,
+    };
+  }
+
   private async findDepartmentMapPoints(
     input: AcquiscanMapInput,
     bounds: AcquiscanBoundsInput,
@@ -537,7 +871,7 @@ export class AcquiscanService {
     return { points, total: copperPage.total };
   }
 
-  private hasBusinessMapFilters(input: AcquiscanMapInput) {
+  private hasBusinessMapFilters(input: Pick<AcquiscanMapInput, 'segment' | 'fiber' | 'annee' | 'coverage4g' | 'coverage5g'>) {
     return Boolean(
       (input.segment && input.segment !== 'all')
         || (input.fiber && input.fiber !== 'all')

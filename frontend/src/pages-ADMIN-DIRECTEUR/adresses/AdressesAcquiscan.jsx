@@ -35,6 +35,31 @@ const fmtInt = value => Number(value || 0).toLocaleString('fr-FR')
 const formatAddress = row =>
   [row.addrNumero, row.addrNomVoie, row.addrNomCommune].filter(Boolean).join(' ') || row.imbCode || row.immeubleId
 
+const createCircleGeoJson = circle => {
+  if (!circle) return { type: 'FeatureCollection', features: [] }
+  const points = 80
+  const coordinates = []
+  const lat = circle.latitude
+  const lng = circle.longitude
+  const latRadius = circle.radiusMeters / 111320
+  const lngRadius = circle.radiusMeters / (111320 * Math.max(Math.cos(lat * Math.PI / 180), 0.2))
+  for (let i = 0; i <= points; i += 1) {
+    const angle = (i / points) * Math.PI * 2
+    coordinates.push([
+      lng + Math.cos(angle) * lngRadius,
+      lat + Math.sin(angle) * latRadius,
+    ])
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [coordinates] },
+      properties: {},
+    }],
+  }
+}
+
 const clusterLayer = {
   id: 'acquiscan-clusters',
   type: 'circle',
@@ -65,6 +90,7 @@ const pointLayer = {
   paint: {
     'circle-radius': ['interpolate', ['linear'], ['get', 'score'], 40, 5, 80, 9],
     'circle-color': ['step', ['get', 'score'], '#64748b', 55, '#f59e0b', 75, '#ef4444'],
+    'circle-opacity': ['coalesce', ['get', 'opacity'], 1],
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 2,
   },
@@ -102,6 +128,37 @@ const searchTargetLayer = {
     'circle-color': '#ef4444',
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 4,
+  },
+}
+
+const zoneCircleFillLayer = {
+  id: 'acquiscan-zone-circle-fill',
+  type: 'fill',
+  paint: {
+    'fill-color': '#ef4444',
+    'fill-opacity': 0.12,
+  },
+}
+
+const zoneCircleLineLayer = {
+  id: 'acquiscan-zone-circle-line',
+  type: 'line',
+  paint: {
+    'line-color': '#ef4444',
+    'line-width': 2,
+    'line-dasharray': [2, 2],
+  },
+}
+
+const zoneTargetLayer = {
+  id: 'acquiscan-zone-targets',
+  type: 'circle',
+  paint: {
+    'circle-radius': ['case', ['get', 'excluded'], 5, 8],
+    'circle-color': ['case', ['get', 'excluded'], '#94a3b8', '#ef4444'],
+    'circle-opacity': ['case', ['get', 'excluded'], 0.45, 0.9],
+    'circle-stroke-color': '#ffffff',
+    'circle-stroke-width': 2,
   },
 }
 
@@ -234,6 +291,24 @@ export default function AdressesAcquiscan() {
     selectedAddress,
     selectedId,
     setSelectedId,
+    zoneMode,
+    startZoneMode,
+    stopZoneMode,
+    draftCircle,
+    setZoneCenter,
+    updateZoneRadius,
+    zonePreview,
+    zonePreviewLoading,
+    zonePreviewError,
+    excludedTargetIds,
+    toggleZoneTarget,
+    selectedZoneTargetIds,
+    zoneName,
+    setZoneName,
+    createZoneFromPreview,
+    zoneCreateLoading,
+    zoneCreateError,
+    createdZone,
     stats,
     loading,
     mapLoading,
@@ -275,11 +350,12 @@ export default function AdressesAcquiscan() {
         properties: {
           id: row.immeubleId,
           score: row.opportunityScore || 50,
+          opacity: zoneMode ? 0.32 : 1,
           address: formatAddress(row),
         },
       })),
     }),
-    [rows]
+    [rows, zoneMode]
   )
 
   const clustersGeoJson = useMemo(
@@ -338,6 +414,27 @@ export default function AdressesAcquiscan() {
     [selectedSuggestion]
   )
 
+  const zoneCircleGeoJson = useMemo(() => createCircleGeoJson(draftCircle), [draftCircle])
+
+  const zoneTargetsGeoJson = useMemo(() => {
+    const excluded = new Set(excludedTargetIds)
+    return {
+      type: 'FeatureCollection',
+      features: (zonePreview?.targets || []).map(target => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [target.longitude, target.latitude],
+        },
+        properties: {
+          id: target.immeubleId,
+          excluded: excluded.has(target.immeubleId),
+          score: target.opportunityScore,
+        },
+      })),
+    }
+  }, [excludedTargetIds, zonePreview?.targets])
+
   const handleMoveEnd = event => {
     const map = event.target
     const bounds = map.getBounds()
@@ -354,6 +451,10 @@ export default function AdressesAcquiscan() {
 
   const handleMapClick = event => {
     const feature = event.features?.[0]
+    if (zoneMode && !feature && event.lngLat) {
+      setZoneCenter(event.lngLat.lng, event.lngLat.lat)
+      return
+    }
     if (!feature) return
 
     if (feature.layer.id === 'acquiscan-clusters' || feature.layer.id === 'acquiscan-cluster-count') {
@@ -464,7 +565,7 @@ export default function AdressesAcquiscan() {
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:flex xl:h-[calc(100vh-128px)] xl:min-h-[720px] xl:flex-col">
+        <aside className="scrollbar-hidden max-h-[calc(100svh-96px)] overflow-y-auto rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
           <div className="space-y-3 border-b p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
@@ -671,6 +772,140 @@ export default function AdressesAcquiscan() {
             </div>
           </div>
 
+          <div className="space-y-3 border-b p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <MapPin className="h-4 w-4 text-red-600" />
+                  Ciblage zone
+                  {zonePreviewLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {activeFilters.length
+                    ? `Sélection filtrée par ${activeFilters.map(filter => filter.label).join(' · ')}`
+                    : 'Trace un cercle et garde les adresses Acquiscan incluses.'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={zoneMode ? 'secondary' : 'outline'}
+                onClick={zoneMode ? stopZoneMode : startZoneMode}
+                className="h-8 shrink-0"
+              >
+                {zoneMode ? 'Fermer' : 'Créer'}
+              </Button>
+            </div>
+
+            {zoneMode && (
+              <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
+                {!draftCircle ? (
+                  <button
+                    type="button"
+                    onClick={() => selectedSuggestion && setZoneCenter(selectedSuggestion.longitude, selectedSuggestion.latitude)}
+                    className="w-full rounded-md border border-dashed p-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                  >
+                    Clique sur la carte pour placer le centre, ou sélectionne une adresse.
+                  </button>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-[1fr_96px] gap-2">
+                      <FilterField label="Rayon">
+                        <input
+                          type="range"
+                          min="100"
+                          max="3000"
+                          step="50"
+                          value={draftCircle.radiusMeters}
+                          onChange={event => updateZoneRadius(event.target.value)}
+                          className="h-9 w-full accent-red-600"
+                        />
+                      </FilterField>
+                      <FilterField label="Mètres">
+                        <Input
+                          type="number"
+                          value={Math.round(draftCircle.radiusMeters)}
+                          onChange={event => updateZoneRadius(event.target.value)}
+                          className="h-9"
+                        />
+                      </FilterField>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <MiniStat icon={MapPin} label="Targets" value={fmtInt(zonePreview?.summary?.totalTargets || 0)} />
+                      <MiniStat icon={CheckCircle2} label="Sans fibre" value={fmtInt(zonePreview?.summary?.noFiberTargets || 0)} />
+                      <MiniStat icon={Zap} label="Fermeture" value={fmtInt(zonePreview?.summary?.copperClosureTargets || 0)} />
+                      <MiniStat icon={Wifi} label="Score" value={fmtInt(zonePreview?.summary?.averageOpportunityScore || 0)} />
+                    </div>
+
+                    {zonePreviewError && (
+                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        {zonePreviewError}
+                      </div>
+                    )}
+
+                    {zonePreview?.targets?.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto rounded-md border">
+                        {zonePreview.targets.slice(0, 40).map(target => {
+                          const excluded = excludedTargetIds.includes(target.immeubleId)
+                          return (
+                            <button
+                              type="button"
+                              key={target.immeubleId}
+                              onClick={() => toggleZoneTarget(target.immeubleId)}
+                              className={`flex w-full items-start gap-2 border-b px-2 py-2 text-left last:border-b-0 hover:bg-muted ${
+                                excluded ? 'opacity-50' : ''
+                              }`}
+                            >
+                              <span className={`mt-1 h-3 w-3 rounded-full border ${excluded ? 'bg-muted' : 'bg-red-600'}`} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium">{formatAddress(target)}</span>
+                                <span className="block truncate text-[11px] text-muted-foreground">
+                                  {Math.round(target.distanceMeters)} m · {target.nbrLogements || 'N/A'} log. · FO {target.eligFo === '1' ? 'oui' : target.eligFo === '0' ? 'non' : 'N/A'}
+                                </span>
+                              </span>
+                              <Badge variant="outline" className={scoreTone(target.opportunityScore)}>
+                                {target.opportunityScore}
+                              </Badge>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <FilterField label="Nom de la zone">
+                        <Input
+                          value={zoneName}
+                          onChange={event => setZoneName(event.target.value)}
+                          placeholder="Zone Acquiscan - Paris 15"
+                          className="h-9"
+                        />
+                      </FilterField>
+                      {zoneCreateError && (
+                        <p className="text-xs text-destructive">{zoneCreateError}</p>
+                      )}
+                      {createdZone && (
+                        <p className="text-xs font-medium text-emerald-700">
+                          Zone créée: {createdZone.nom}
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        onClick={createZoneFromPreview}
+                        disabled={zoneCreateLoading || zonePreviewLoading || !selectedZoneTargetIds.length}
+                        className="h-9 w-full gap-2"
+                      >
+                        {zoneCreateLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                        Créer la zone avec {fmtInt(selectedZoneTargetIds.length)} adresse{selectedZoneTargetIds.length > 1 ? 's' : ''}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-4 gap-1 border-b p-2 sm:gap-2 xl:grid-cols-2">
             <MiniStat icon={MapPin} label="Zone" value={fmtInt(stats.total)} />
             <MiniStat icon={Layers} label="Clust." value={fmtInt(stats.clusters)} />
@@ -678,7 +913,7 @@ export default function AdressesAcquiscan() {
             <MiniStat icon={Zap} label="Cuivre" value={fmtInt(stats.shutdownCount)} />
           </div>
 
-          <div className={`min-h-0 flex-1 overflow-hidden transition-shadow ${listLoading ? 'ring-2 ring-primary/10' : ''}`}>
+          <div className={`transition-shadow ${listLoading ? 'ring-2 ring-primary/10' : ''}`}>
             <div className="flex items-center justify-between border-b px-3 py-2.5">
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold">
@@ -698,7 +933,7 @@ export default function AdressesAcquiscan() {
               </Badge>
             </div>
 
-            <div className="max-h-[48svh] overflow-y-auto pb-4 xl:h-[calc(100%-57px)] xl:max-h-none">
+            <div className="pb-4">
               {listLoading ? (
                 <div className="space-y-2 p-3">
                   {Array.from({ length: 5 }).map((_, index) => (
@@ -793,6 +1028,13 @@ export default function AdressesAcquiscan() {
                 </Source>
                 <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
                   <Layer {...pointLayer} />
+                </Source>
+                <Source id="acquiscan-zone-circle-source" type="geojson" data={zoneCircleGeoJson}>
+                  <Layer {...zoneCircleFillLayer} />
+                  <Layer {...zoneCircleLineLayer} />
+                </Source>
+                <Source id="acquiscan-zone-target-source" type="geojson" data={zoneTargetsGeoJson}>
+                  <Layer {...zoneTargetLayer} />
                 </Source>
                 <Source id="acquiscan-selected-source" type="geojson" data={selectedGeoJson}>
                   <Layer {...selectedPointLayer} />

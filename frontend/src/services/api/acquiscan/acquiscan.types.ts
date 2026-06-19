@@ -199,3 +199,47 @@ export interface AcquiscanCopperBuildingsPage {
   limit: number
   offset: number
 }
+
+export interface AcquiscanZonePreviewInput {
+  longitude: number
+  latitude: number
+  radiusMeters: number
+  dept?: string
+  commune?: string
+  annee?: string
+  fiber?: string
+  coverage4g?: string
+  coverage5g?: string
+  segment?: string
+  limit?: number
+}
+
+export interface AcquiscanZoneTargetPreview extends AcquiscanMapPoint {
+  distanceMeters: number
+  opportunityScore: number
+}
+
+export interface AcquiscanZonePreviewSummary {
+  totalTargets: number
+  totalLogements: number
+  noFiberTargets: number
+  fiberTargets: number
+  copperClosureTargets: number
+  strong4gTargets: number
+  strong5gTargets: number
+  averageOpportunityScore: number
+}
+
+export interface AcquiscanZonePreviewResult {
+  targets: AcquiscanZoneTargetPreview[]
+  summary: AcquiscanZonePreviewSummary
+  totalInCircle: number
+  tooManyResults: boolean
+}
+
+export interface CreateAcquiscanZoneInput extends AcquiscanZonePreviewInput {
+  nom: string
+  selectedImmeubleIds?: string[]
+  directeurId?: number
+  managerId?: number
+}

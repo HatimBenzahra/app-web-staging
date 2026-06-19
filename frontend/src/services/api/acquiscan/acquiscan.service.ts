@@ -6,6 +6,8 @@ import {
   GET_ACQUISCAN_COPPER_BUILDINGS,
   GET_ACQUISCAN_DEPARTMENT_OPPORTUNITIES,
   GET_ACQUISCAN_MAP_ADDRESSES,
+  GET_ACQUISCAN_ZONE_PREVIEW,
+  CREATE_ACQUISCAN_ZONE,
 } from './acquiscan.queries'
 import type {
   AcquiscanAddressesInput,
@@ -19,7 +21,11 @@ import type {
   AcquiscanDepartmentOpportunitiesPage,
   AcquiscanMapInput,
   AcquiscanMapResult,
+  AcquiscanZonePreviewInput,
+  AcquiscanZonePreviewResult,
+  CreateAcquiscanZoneInput,
 } from './acquiscan.types'
+import type { Zone } from '../zones'
 
 export const acquiscanApi = {
   async getAddressSuggestions(input: AcquiscanAddressSearchInput): Promise<AcquiscanAddressSuggestion[]> {
@@ -67,5 +73,21 @@ export const acquiscanApi = {
       { input: AcquiscanCopperBuildingsInput }
     >(GET_ACQUISCAN_COPPER_BUILDINGS, { input })
     return response.acquiscanCopperBuildings
+  },
+
+  async getZonePreview(input: AcquiscanZonePreviewInput): Promise<AcquiscanZonePreviewResult> {
+    const response = await gql<
+      { acquiscanZonePreview: AcquiscanZonePreviewResult },
+      { input: AcquiscanZonePreviewInput }
+    >(GET_ACQUISCAN_ZONE_PREVIEW, { input })
+    return response.acquiscanZonePreview
+  },
+
+  async createZone(input: CreateAcquiscanZoneInput): Promise<Zone> {
+    const response = await gql<
+      { createAcquiscanZone: Zone },
+      { input: CreateAcquiscanZoneInput }
+    >(CREATE_ACQUISCAN_ZONE, { input })
+    return response.createAcquiscanZone
   },
 }
