@@ -14,8 +14,6 @@ import {
   Shield,
   UserCog,
   Briefcase,
-  Settings,
-  Smartphone,
   LayoutDashboard,
   Tablet,
   Package,
@@ -26,7 +24,7 @@ import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import logoSvg from '@/assets/logo.svg'
 import { useRole } from '@/contexts/userole'
-import { hasPermission, ROLES } from '@/hooks/metier/permissions/roleFilters'
+import { hasPermission } from '@/hooks/metier/permissions/roleFilters'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible'
 import { useDetailsSections } from '@/contexts/DetailsSectionsContext'
 import { cn } from '@/lib/utils'
@@ -48,14 +46,7 @@ import {
 
 const mainItems = [{ title: 'Dashboard', url: '/', icon: Home, entity: 'dashboard' }]
 
-const teamItems = [
-  { title: 'Directeurs', url: '/directeurs', icon: Shield, entity: 'directeurs' },
-  { title: 'Managers', url: '/managers', icon: UserCog, entity: 'managers' },
-  { title: 'Commerciaux', url: '/commerciaux', icon: Briefcase, entity: 'commerciaux' },
-  { title: 'Gestion', url: '/gestion', icon: Users, entity: 'gestion' },
-]
-
-const prospectionItems = [
+const terrainItems = [
   { title: 'Immeubles', url: '/immeubles', icon: Building2, entity: 'immeubles' },
   {
     title: 'Zones',
@@ -68,25 +59,18 @@ const prospectionItems = [
       { title: 'Historique', url: '/zones/historique' },
     ],
   },
-  {
-    title: 'Suivi GPS',
-    url: '/gps-tracking',
-    icon: Navigation2,
-    entity: 'gps-tracking',
-    disabled: true,
-  },
+  { title: 'Localisation', url: '/kiosk/localisation', icon: Navigation2, entity: 'kiosk' },
 ]
 
-const kioskItems = [
-  { title: "Vue d'ensemble", url: '/kiosk', icon: LayoutDashboard, entity: 'kiosk', exact: true },
-  { title: 'Tablettes', url: '/kiosk/tablettes', icon: Tablet, entity: 'kiosk' },
-  { title: 'Releases', url: '/kiosk/releases', icon: Package, entity: 'kiosk' },
-  { title: 'Déploiements', url: '/kiosk/deploiements', icon: Rocket, entity: 'kiosk' },
-  { title: 'Logs', url: '/kiosk/logs', icon: ScrollText, entity: 'kiosk' },
-  { title: 'Localisation', url: '/kiosk/localisation', icon: MapPin, entity: 'kiosk' },
+const teamItems = [
+  { title: 'Commerciaux', url: '/commerciaux', icon: Briefcase, entity: 'commerciaux' },
+  { title: 'Managers', url: '/managers', icon: UserCog, entity: 'managers' },
+  { title: 'Directeurs', url: '/directeurs', icon: Shield, entity: 'directeurs' },
 ]
 
-const toolsItems = [
+const performanceItems = [
+  { title: 'Statistiques', url: '/statistiques', icon: BarChart3, entity: 'statistics' },
+  { title: 'Classement', url: '/gamification', icon: Trophy, entity: 'gamification', exact: true },
   {
     title: 'Écoutes',
     url: '/ecoutes',
@@ -103,17 +87,40 @@ const toolsItems = [
     icon: Trophy,
     entity: 'gamification',
     subitems: [
-      { title: 'Classement', url: '/gamification' },
       { title: 'Badges', url: '/gamification/badges' },
       { title: 'Mapping', url: '/gamification/mapping' },
       { title: 'Offres', url: '/gamification/offres' },
       { title: 'Synchronisation', url: '/gamification/sync' },
     ],
   },
-  { title: 'Statistiques', url: '/statistiques', icon: BarChart3, entity: 'statistics' },
 ]
 
-const items = [...mainItems, ...teamItems, ...kioskItems, ...prospectionItems, ...toolsItems]
+const administrationItems = [
+  { title: 'Gestion', url: '/gestion', icon: Users, entity: 'gestion' },
+  {
+    title: 'Kiosk',
+    url: '/kiosk',
+    icon: Tablet,
+    entity: 'kiosk',
+    subitems: [
+      { title: "Vue d'ensemble", url: '/kiosk', icon: LayoutDashboard },
+      { title: 'Tablettes', url: '/kiosk/tablettes', icon: Tablet },
+      { title: 'Releases', url: '/kiosk/releases', icon: Package },
+      { title: 'Déploiements', url: '/kiosk/deploiements', icon: Rocket },
+      { title: 'Logs', url: '/kiosk/logs', icon: ScrollText },
+    ],
+  },
+]
+
+const navigationGroups = [
+  { label: 'Principal', items: mainItems },
+  { label: 'Terrain', items: terrainItems },
+  { label: 'Équipe', items: teamItems },
+  { label: 'Performance', items: performanceItems },
+  { label: 'Administration', items: administrationItems },
+]
+
+const items = navigationGroups.flatMap(group => group.items)
 
 export function AppSidebar() {
   const { currentRole, logout } = useRole()
@@ -289,7 +296,7 @@ export function AppSidebar() {
         >
           <SidebarMenuItem>
             <CollapsibleTrigger asChild>
-              <SidebarMenuButton tooltip={item.title}>
+              <SidebarMenuButton tooltip={item.title} isActive={isAnySubitemActive}>
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span>{item.title}</span>
                 <ChevronDown className="ml-auto h-3.5 w-3.5 text-sidebar-foreground/40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
@@ -381,13 +388,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {[
-          { label: 'Principal', items: mainItems },
-          { label: 'Équipe', items: teamItems },
-          { label: 'Kiosk', items: kioskItems },
-          { label: 'Prospection', items: prospectionItems },
-          { label: 'Outils', items: toolsItems },
-        ].map((group, idx) => {
+        {navigationGroups.map((group, idx) => {
           const groupVisible = group.items.filter(
             item => !item.entity || hasPermission(currentRole, item.entity, 'view')
           )
