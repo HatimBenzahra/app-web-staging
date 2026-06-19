@@ -5,12 +5,14 @@
 export type {
   Statistic,
   ZoneStatistic,
+  TeamLastStatusActivity,
 } from '../../../types/api'
 
 export type {
   QueryStatisticsResponse,
   QueryStatisticResponse,
   QueryZoneStatisticsResponse,
+  QueryTeamLastStatusActivitiesResponse,
   CreateStatisticVariables,
   MutationCreateStatisticResponse,
   UpdateStatisticVariables,

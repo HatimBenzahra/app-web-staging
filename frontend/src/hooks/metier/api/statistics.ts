@@ -6,6 +6,7 @@ import { api } from '../../../services/api'
 import type {
   Statistic,
   ZoneStatistic,
+  TeamLastStatusActivity,
   CreateStatisticInput,
   UpdateStatisticInput,
 } from '../../../types/api'
@@ -42,6 +43,14 @@ export function useStatisticsByZone(zoneId: number): UseApiListState<Statistic> 
 
 export function useZoneStatistics(): UseApiListState<ZoneStatistic> & UseApiActions {
   return useApiCall(() => api.statistics.getZoneStatistics(), [], 'zoneStatistics')
+}
+
+export function useTeamLastStatusActivities(): UseApiListState<TeamLastStatusActivity> & UseApiActions {
+  return useApiCall(
+    () => api.statistics.getTeamLastStatusActivities(),
+    [],
+    'teamLastStatusActivities'
+  )
 }
 
 export function useStatistic(id: number): UseApiState<Statistic> & UseApiActions {

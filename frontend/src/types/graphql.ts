@@ -11,6 +11,7 @@ import type {
   Immeuble,
   Statistic,
   ZoneStatistic,
+  TeamLastStatusActivity,
   Porte,
   CreateDirecteurInput,
   CreateManagerInput,
@@ -90,6 +91,10 @@ export interface QueryStatisticResponse {
 
 export interface QueryZoneStatisticsResponse {
   zoneStatistics: ZoneStatistic[]
+}
+
+export interface QueryTeamLastStatusActivitiesResponse {
+  teamLastStatusActivities: TeamLastStatusActivity[]
 }
 
 export interface QueryPortesResponse {

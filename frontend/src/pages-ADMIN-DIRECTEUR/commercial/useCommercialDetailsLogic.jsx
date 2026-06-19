@@ -1,5 +1,10 @@
 import { useParams } from 'react-router-dom'
-import { useCommercialFull, useManagers, useCurrentZoneAssignment } from '@/services'
+import {
+  useCommercialFull,
+  useManagers,
+  useCurrentZoneAssignment,
+  useTeamLastStatusActivities,
+} from '@/services'
 import { useMemo, useState } from 'react'
 import { calculateRank, aggregateStats } from '@/utils/business/ranks'
 import { Badge } from '@/components/ui/badge'
@@ -12,11 +17,54 @@ import {
   useFilteredPortes,
 } from '@/hooks/utils/filters/useStatisticsFilter'
 
+const ACTIVITY_STATUS_LABELS = {
+  CONTRAT_SIGNE: 'Contrat signé',
+  RENDEZ_VOUS_PRIS: 'Rendez-vous pris',
+  REFUS: 'Refus',
+  ABSENT: 'Absent',
+  ARGUMENTE: 'Argumenté',
+  NECESSITE_REPASSAGE: 'Repassage nécessaire',
+  NON_VISITE: 'Non visité',
+}
+
+const formatRelativeActivityDate = dateValue => {
+  if (!dateValue) return 'Aucune activité'
+
+  const date = new Date(dateValue)
+  const diffMs = Date.now() - date.getTime()
+  if (!Number.isFinite(diffMs)) return 'Date inconnue'
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'À l’instant'
+  if (minutes < 60) return `Il y a ${minutes} min`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Il y a ${hours} h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `Il y a ${days} j`
+
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const getActivityDescription = activity => {
+  if (!activity) return 'Aucun changement de statut enregistré'
+
+  const statusLabel = ACTIVITY_STATUS_LABELS[activity.statut] || activity.statut
+  const address = activity.immeubleAdresse ? ` · ${activity.immeubleAdresse}` : ''
+  return `${statusLabel} · Porte ${activity.porteNumero}${address}`
+}
+
 export function useCommercialDetailsLogic() {
   const { id } = useParams()
   const { data: commercial, loading, error } = useCommercialFull(parseInt(id))
   const { data: managers } = useManagers()
   const { data: currentZone } = useCurrentZoneAssignment(parseInt(id), 'COMMERCIAL')
+  const { data: lastStatusActivities } = useTeamLastStatusActivities()
 
   // Hook pour gérer les filtres de date (pour les stats et portes)
   const dateFilter = useDateFilter()
@@ -62,6 +110,12 @@ export function useCommercialDetailsLogic() {
     )
   }, [backendStats])
 
+  const lastStatusActivity = useMemo(() => {
+    return (lastStatusActivities || []).find(
+      activity => activity.userType === 'commercial' && activity.userId === parseInt(id)
+    )
+  }, [id, lastStatusActivities])
+
   // Préparer les données pour l'affichage
   const commercialData = useMemo(() => {
     if (!commercial) return null
@@ -89,8 +143,9 @@ export function useCommercialDetailsLogic() {
       immeublesCount: commercial.immeubles?.length || 0,
       rank: memoizedCommercialRank?.rank,
       points: memoizedCommercialRank?.points,
+      lastStatusActivity,
     }
-  }, [commercial, managers, personalStats, backendStats, memoizedCommercialRank, currentZone, appliedStartDate, appliedEndDate])
+  }, [commercial, managers, personalStats, backendStats, memoizedCommercialRank, currentZone, appliedStartDate, appliedEndDate, lastStatusActivity])
 
   // Préparer les zones
   const assignedZones = useMemo(() => {
@@ -199,34 +254,6 @@ export function useCommercialDetailsLogic() {
       cell: row => row.visitedAt || <span className="text-muted-foreground">-</span>,
     },
   ]
-
-  const doorsData = useMemo(() => {
-    if (!allPortes) return []
-
-    return allPortes.map(porte => {
-      const immeuble = commercial?.immeubles?.find(i => i.id === porte.immeubleId)
-      
-      return {
-        ...porte,
-        id: porte.id,
-        porteId: porte.id,
-        tableId: `door-${porte.id}`,
-        number: porte.numero,
-        address: immeuble ? `${immeuble.adresse}` : 'Non spécifié',
-        etage: `Étage ${porte.etage}`,
-        status: porte.statut.toLowerCase(),
-        rdvDate: porte.rdvDate
-          ? new Date(porte.rdvDate).toLocaleDateString('fr-FR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-            })
-          : null,
-        rdvTime: porte.rdvTime || null,
-        lastVisit: porte.updatedAt ? new Date(porte.updatedAt).toLocaleDateString() : null,
-      }
-    })
-  }, [allPortes, commercial?.immeubles])
 
   // Colonnes des immeubles
   const immeublesColumns = [
@@ -350,6 +377,13 @@ export function useCommercialDetailsLogic() {
       value: commercialData.points,
       description: 'Score personnel',
       icon: 'trendingUp',
+      fullWidth: true,
+    },
+    {
+      title: 'Dernière activité terrain',
+      value: formatRelativeActivityDate(commercialData.lastStatusActivity?.changedAt),
+      description: getActivityDescription(commercialData.lastStatusActivity),
+      icon: 'shieldCheck',
       fullWidth: true,
     },
     {

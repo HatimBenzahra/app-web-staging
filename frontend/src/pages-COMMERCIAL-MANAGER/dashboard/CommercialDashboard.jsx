@@ -89,7 +89,9 @@ export default function CommercialDashboard() {
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
               <p className={`text-[10px] sm:text-xs ${base.text.muted} truncate`}>{title}</p>
-              <div className="p-1 rounded-lg border border-gray-200 bg-gray-50 flex-shrink-0">
+              <div
+                className={`p-1 rounded-lg border ${base.border.default} ${base.bg.muted} flex-shrink-0`}
+              >
                 <Icon className={`h-3 w-3 sm:h-3.5 sm:w-3.5 ${base.icon.default}`} />
               </div>
             </div>

@@ -7,6 +7,7 @@ import {
   GET_STATISTICS,
   GET_STATISTIC,
   GET_ZONE_STATISTICS,
+  GET_TEAM_LAST_STATUS_ACTIVITIES,
   GET_ME,
 } from './statistic.queries'
 import {
@@ -22,9 +23,11 @@ import {
 import type {
   Statistic,
   ZoneStatistic,
+  TeamLastStatusActivity,
   QueryStatisticsResponse,
   QueryStatisticResponse,
   QueryZoneStatisticsResponse,
+  QueryTeamLastStatusActivitiesResponse,
   CreateStatisticVariables,
   MutationCreateStatisticResponse,
   UpdateStatisticVariables,
@@ -75,6 +78,14 @@ export const statisticApi = {
   async getZoneStatistics(): Promise<ZoneStatistic[]> {
     const response = await gql<QueryZoneStatisticsResponse, {}>(GET_ZONE_STATISTICS, {})
     return response.zoneStatistics
+  },
+
+  async getTeamLastStatusActivities(): Promise<TeamLastStatusActivity[]> {
+    const response = await gql<QueryTeamLastStatusActivitiesResponse, {}>(
+      GET_TEAM_LAST_STATUS_ACTIVITIES,
+      {}
+    )
+    return response.teamLastStatusActivities
   },
 
   async getCurrentUserAssignment(userId: number, userType: string): Promise<any> {

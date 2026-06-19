@@ -1,11 +1,58 @@
-import { useMemo, useCallback } from 'react'
-import { useManagers, useUpdateManager, useDirecteurs } from '@/services'
+import { useMemo } from 'react'
+import {
+  useManagers,
+  useUpdateManager,
+  useDirecteurs,
+  useTeamLastStatusActivities,
+} from '@/services'
 import { useEntityPage } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useRole } from '@/contexts/userole'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { calculateRankFromStats } from '@/utils/business/ranks'
 import { USER_STATUS_CONFIG, getStatusFilterOptions } from '@/constants/domain/user-status'
 import { useStatusBadge } from '@/hooks/utils/ui/useStatusBadge'
+
+const getActivityTime = activity => {
+  if (!activity?.changedAt) return 0
+  const time = new Date(activity.changedAt).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+const formatRelativeActivityDate = dateValue => {
+  if (!dateValue) return 'Jamais'
+
+  const date = new Date(dateValue)
+  const diffMs = Date.now() - date.getTime()
+  if (!Number.isFinite(diffMs)) return 'Date inconnue'
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'À l’instant'
+  if (minutes < 60) return `${minutes} min`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} j`
+
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const renderActivityCell = row => {
+  if (!row.lastActivity) {
+    return <span className="text-xs text-muted-foreground">Jamais</span>
+  }
+
+  return (
+    <div className="min-w-28">
+      <p className="text-sm font-medium">{formatRelativeActivityDate(row.lastActivity.changedAt)}</p>
+    </div>
+  )
+}
 
 const getManagersColumns = renderStatusBadge => {
   const baseColumns = [
@@ -27,6 +74,14 @@ const getManagersColumns = renderStatusBadge => {
       sortable: true,
       className: 'hidden md:table-cell',
       cell: row => renderStatusBadge(row.status),
+    },
+    {
+      header: 'Dernier terrain',
+      accessor: 'lastActivityLabel',
+      sortKey: 'lastActivityAt',
+      sortable: true,
+      className: 'hidden md:table-cell',
+      cell: renderActivityCell,
     },
     {
       header: 'Rang',
@@ -62,6 +117,10 @@ export function useManagersLogic() {
   // API hooks
   const { data: managersApi, loading: managersLoading, refetch } = useManagers()
   const { data: directeurs } = useDirecteurs()
+  const {
+    data: lastStatusActivities,
+    loading: lastActivitiesLoading,
+  } = useTeamLastStatusActivities()
   const { mutate: updateManager } = useUpdateManager()
 
   // Utilisation du système de rôles pour filtrer les données
@@ -76,9 +135,19 @@ export function useManagersLogic() {
   // Préparation des données pour le tableau avec mapping API -> UI
   const tableData = useMemo(() => {
     if (!filteredManagers) return []
+
+    const activityByManager = new Map(
+      (lastStatusActivities || [])
+        .filter(activity => activity.userType === 'manager')
+        .map(activity => [activity.userId, activity])
+    )
+
     return filteredManagers.map(manager => {
       const directeur = directeurs?.find(d => d.id === manager.directeurId)
       const { rank, points } = calculateRankFromStats(manager.statistics)
+      const lastActivity = activityByManager.get(manager.id) || null
+      const lastActivityAt = getActivityTime(lastActivity)
+
       return {
         ...manager,
         nom: manager.nom,
@@ -87,6 +156,9 @@ export function useManagersLogic() {
         email: manager.email || 'Non renseigné',
         numTelephone: manager.numTelephone || 'Non renseigné',
         directeur: directeur ? `${directeur.prenom} ${directeur.nom}` : 'Aucun directeur',
+        lastActivity,
+        lastActivityAt,
+        lastActivityLabel: formatRelativeActivityDate(lastActivity?.changedAt),
         rankBadge: (
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${rank.bgColor} ${rank.textColor} ${rank.borderColor} border`}
@@ -98,8 +170,8 @@ export function useManagersLogic() {
         ),
         points,
       }
-    })
-  }, [filteredManagers, directeurs])
+    }).sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.nom.localeCompare(b.nom, 'fr'))
+  }, [filteredManagers, directeurs, lastStatusActivities])
 
   // Options dynamiques pour les directeurs
   const directeurOptions = useMemo(() => {
@@ -189,7 +261,7 @@ export function useManagersLogic() {
     columns,
     permissions,
     description,
-    managersLoading,
+    managersLoading: managersLoading || lastActivitiesLoading,
     managersEditFields,
     handleEditManager,
     isAdmin,

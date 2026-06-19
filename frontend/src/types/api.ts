@@ -117,6 +117,18 @@ export interface ZoneStatistic {
   performanceGlobale: number
 }
 
+export interface TeamLastStatusActivity {
+  userId: number
+  userType: 'commercial' | 'manager'
+  userName: string
+  statut: string
+  changedAt: string
+  porteId: number
+  porteNumero: string
+  immeubleId?: number | null
+  immeubleAdresse?: string | null
+}
+
 /* Ces unemarations sont pour classifier les utilisateurs d'un utilisateur actif a celui non actif et aussi de separer les comptes de testes */
 export enum UserStatus {
   ACTIF = 'ACTIF',

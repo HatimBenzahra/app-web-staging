@@ -10,6 +10,7 @@ import {
   UpdateStatisticInput,
   ZoneStatistic,
   TimelinePoint,
+  TeamLastStatusActivity,
 } from './statistic.dto';
 
 @Injectable()
@@ -209,6 +210,112 @@ export class StatisticService {
         manager: true,
       },
     });
+  }
+
+  async getTeamLastStatusActivities(
+    userId: number,
+    userRole: string,
+  ): Promise<TeamLastStatusActivity[]> {
+    let commercialWhere: any = {};
+    let managerWhere: any = {};
+
+    switch (userRole) {
+      case 'admin':
+        break;
+      case 'directeur':
+        commercialWhere = { directeurId: userId };
+        managerWhere = { directeurId: userId };
+        break;
+      case 'manager':
+        commercialWhere = { managerId: userId };
+        managerWhere = { id: userId };
+        break;
+      case 'commercial':
+        commercialWhere = { id: userId };
+        managerWhere = { id: -1 };
+        break;
+      default:
+        return [];
+    }
+
+    const [commercials, managers] = await this.prisma.$transaction([
+      this.prisma.commercial.findMany({
+        where: commercialWhere,
+        select: { id: true, nom: true, prenom: true },
+      }),
+      this.prisma.manager.findMany({
+        where: managerWhere,
+        select: { id: true, nom: true, prenom: true },
+      }),
+    ]);
+
+    const commercialIds = commercials.map((commercial) => commercial.id);
+    const managerIds = managers.map((manager) => manager.id);
+
+    const [commercialActivities, managerActivities] =
+      await this.prisma.$transaction([
+        this.prisma.statusHistorique.findMany({
+          where: { commercialId: { in: commercialIds } },
+          orderBy: { createdAt: 'desc' },
+          distinct: ['commercialId'],
+          include: {
+            porte: {
+              select: {
+                id: true,
+                numero: true,
+                immeubleId: true,
+                immeuble: { select: { adresse: true } },
+              },
+            },
+            commercial: { select: { id: true, nom: true, prenom: true } },
+          },
+        }),
+        this.prisma.statusHistorique.findMany({
+          where: { managerId: { in: managerIds } },
+          orderBy: { createdAt: 'desc' },
+          distinct: ['managerId'],
+          include: {
+            porte: {
+              select: {
+                id: true,
+                numero: true,
+                immeubleId: true,
+                immeuble: { select: { adresse: true } },
+              },
+            },
+            manager: { select: { id: true, nom: true, prenom: true } },
+          },
+        }),
+      ]);
+
+    return [
+      ...commercialActivities.map((activity) => ({
+        userId: activity.commercialId!,
+        userType: 'commercial',
+        userName:
+          `${activity.commercial?.prenom || ''} ${activity.commercial?.nom || ''}`.trim() ||
+          `Commercial #${activity.commercialId}`,
+        statut: activity.statut,
+        changedAt: activity.createdAt,
+        porteId: activity.porteId,
+        porteNumero: activity.porte.numero,
+        immeubleId: activity.porte.immeubleId,
+        immeubleAdresse: activity.porte.immeuble?.adresse,
+      })),
+      ...managerActivities.map((activity) => ({
+        userId: activity.managerId!,
+        userType: 'manager',
+        userName:
+          `${activity.manager?.prenom || ''} ${activity.manager?.nom || ''}`.trim() ||
+          `Manager #${activity.managerId}`,
+        statut: activity.statut,
+        changedAt: activity.createdAt,
+        porteId: activity.porteId,
+        porteNumero: activity.porte.numero,
+        immeubleId: activity.porte.immeubleId,
+        immeubleAdresse: activity.porte.immeuble?.adresse,
+      })),
+    ].sort((a, b) => b.changedAt.getTime() - a.changedAt.getTime());
   }
 
   async update(

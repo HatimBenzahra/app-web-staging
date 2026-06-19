@@ -131,6 +131,36 @@ export class TimelinePoint {
 }
 
 @ObjectType()
+export class TeamLastStatusActivity {
+  @Field(() => Int)
+  userId: number;
+
+  @Field(() => String)
+  userType: string;
+
+  @Field(() => String)
+  userName: string;
+
+  @Field(() => String)
+  statut: string;
+
+  @Field()
+  changedAt: Date;
+
+  @Field(() => Int)
+  porteId: number;
+
+  @Field(() => String)
+  porteNumero: string;
+
+  @Field(() => Int, { nullable: true })
+  immeubleId?: number;
+
+  @Field(() => String, { nullable: true })
+  immeubleAdresse?: string;
+}
+
+@ObjectType()
 export class ZoneStatistic {
   @Field(() => Int)
   zoneId: number;

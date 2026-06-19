@@ -1,11 +1,12 @@
 import React, { lazy, Suspense, useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import {
   ArrowLeft,
+  Award,
+  BadgeCheck,
   Mail,
   Phone,
   MapPin,
@@ -13,10 +14,19 @@ import {
   TrendingUp,
   Users,
   Building2,
+  DoorOpen,
+  FileText,
+  KeyRound,
+  MessageCircle,
   Search,
   Filter,
   ChevronDown,
   ChevronRight,
+  ShieldCheck,
+  Star,
+  Target,
+  UserX,
+  X,
 } from 'lucide-react'
 import { useDetailsSections } from '@/contexts/DetailsSectionsContext'
 import {
@@ -52,8 +62,167 @@ import PortesProspectionChart from './charts/PortesProspectionChart'
 import PortesWeeklyChart from './charts/PortesWeeklyChart'
 import PortesStatusChart from './charts/PortesStatusChart'
 import PorteHistoriqueTimeline from '@/pages-ADMIN-DIRECTEUR/immeubles/components/PorteHistoriqueTimeline'
+import { cn } from '@/lib/utils'
 
 const AssignedZoneCard = lazy(() => import('./AssignedZoneCard'))
+
+function SectionHeader({ title, description }) {
+  return (
+    <div className="mb-4 flex flex-col gap-1.5">
+      <div className="flex items-center gap-3">
+        <div className="h-2 w-2 rounded-full bg-primary" />
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      </div>
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+    </div>
+  )
+}
+
+function ProspectionMetric({ label, value, detail, icon }) {
+  const IconComponent = icon
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-bold tracking-tight">{value}</p>
+          {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
+          <IconComponent className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProspectionChartsSection({ charts = [] }) {
+  const portes = charts.find(chart => chart.props?.portes)?.props?.portes || []
+
+  const summary = useMemo(() => {
+    const normalizeStatus = status => String(status || '').toUpperCase()
+    const totalPortes = portes.length
+    const portesProspectees = portes.filter(
+      porte => normalizeStatus(porte.statut) !== 'NON_VISITE'
+    ).length
+    const contrats = portes
+      .filter(porte => normalizeStatus(porte.statut) === 'CONTRAT_SIGNE')
+      .reduce((sum, porte) => sum + (porte.nbContrats || 1), 0)
+    const rdv = portes.filter(porte => normalizeStatus(porte.statut) === 'RENDEZ_VOUS_PRIS').length
+    const refus = portes.filter(porte => normalizeStatus(porte.statut) === 'REFUS').length
+    const argumentes = portes.filter(porte => normalizeStatus(porte.statut) === 'ARGUMENTE').length
+    const absents = portes.filter(porte => normalizeStatus(porte.statut) === 'ABSENT').length
+    const couverture = totalPortes > 0 ? Math.round((portesProspectees / totalPortes) * 100) : 0
+    const opportunites = contrats + rdv + refus + argumentes
+    const conversion = opportunites > 0 ? Math.round((contrats / opportunites) * 100) : 0
+    const contact = portesProspectees > 0 ? Math.round((opportunites / portesProspectees) * 100) : 0
+
+    return {
+      totalPortes,
+      portesProspectees,
+      contrats,
+      rdv,
+      refus,
+      argumentes,
+      absents,
+      couverture,
+      conversion,
+      contact,
+      funnel: [
+        { label: 'Portes prospectées', value: portesProspectees, percent: couverture },
+        { label: 'Contacts qualifiés', value: opportunites, percent: contact },
+        { label: 'Rendez-vous', value: rdv, percent: portesProspectees > 0 ? Math.round((rdv / portesProspectees) * 100) : 0 },
+        { label: 'Contrats', value: contrats, percent: portesProspectees > 0 ? Math.round((contrats / portesProspectees) * 100) : 0 },
+      ],
+    }
+  }, [portes])
+
+  const renderChart = (chart, index) => {
+    if (chart.type === 'PortesStatusChart') {
+      return <PortesStatusChart key={index} {...chart.props} />
+    }
+    if (chart.type === 'PortesProspectionChart') {
+      return <PortesProspectionChart key={index} {...chart.props} />
+    }
+    if (chart.type === 'PortesWeeklyChart') {
+      return <PortesWeeklyChart key={index} {...chart.props} />
+    }
+    return null
+  }
+
+  const statusChart = charts.find(chart => chart.type === 'PortesStatusChart')
+  const trendCharts = charts.filter(chart => chart.type !== 'PortesStatusChart')
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ProspectionMetric
+          label="Couverture"
+          value={`${summary.couverture}%`}
+          detail={`${summary.portesProspectees}/${summary.totalPortes} portes prospectées`}
+          icon={DoorOpen}
+        />
+        <ProspectionMetric
+          label="Contrats"
+          value={summary.contrats}
+          detail={`${summary.conversion}% de conversion qualifiée`}
+          icon={BadgeCheck}
+        />
+        <ProspectionMetric
+          label="Rendez-vous"
+          value={summary.rdv}
+          detail="Opportunités à suivre"
+          icon={Calendar}
+        />
+        <ProspectionMetric
+          label="Points de friction"
+          value={summary.refus + summary.argumentes + summary.absents}
+          detail={`${summary.refus} refus · ${summary.absents} absents`}
+          icon={UserX}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <Card className="border-border/60 bg-card xl:col-span-1">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4 text-primary" />
+              Funnel terrain
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {summary.funnel.map((step, index) => (
+              <div key={step.label} className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{step.label}</span>
+                  <span className="text-muted-foreground">
+                    {step.value} · {step.percent}%
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.min(step.percent, 100)}%`,
+                      opacity: 1 - index * 0.12,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="xl:col-span-2">{statusChart && renderChart(statusChart, 0)}</div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">{trendCharts.map(renderChart)}</div>
+    </div>
+  )
+}
 
 /**
  * Composant de tableau sans Card wrapper pour éviter les doubles cards
@@ -302,7 +471,7 @@ function DoorsTableContent({
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedData.map((row, rowIndex) => {
+                paginatedData.map(row => {
                   const rowKey = row.tableId || row.id
                   const porteId = row.porteId || row.id
                   const isExpanded = expandedRows.has(rowKey)
@@ -549,38 +718,139 @@ export default function DetailsPage({
 
   const getIcon = (iconName, iconColor = 'text-primary', className = '') => {
     const icons = {
-      mail: Mail,
-      phone: Phone,
-      mapPin: MapPin,
-      calendar: Calendar,
-      trendingUp: TrendingUp,
-      users: Users,
+      award: Award,
+      badgeCheck: BadgeCheck,
       building: Building2,
+      calendar: Calendar,
+      doorOpen: DoorOpen,
+      fileText: FileText,
+      key: KeyRound,
+      keyRound: KeyRound,
+      mail: Mail,
+      mapPin: MapPin,
+      messageCircle: MessageCircle,
+      'message-square': MessageCircle,
+      phone: Phone,
+      shieldCheck: ShieldCheck,
+      star: Star,
+      target: Target,
+      trendingUp: TrendingUp,
+      userX: UserX,
+      users: Users,
+      x: X,
     }
-    const Icon = icons[iconName] || Mail
+    const Icon = icons[iconName] || BadgeCheck
     return <Icon className={`h-4 w-4 ${iconColor} ${className}`} />
   }
 
   // Fonction pour obtenir les classes CSS d'une section focusée
   const getSectionClasses = sectionId => {
     return focusedSection === sectionId
-      ? 'transition-all duration-400 scale-[1.03] text-primary/80 ring-primary/30 border-1 border-primary/30 rounded-lg'
-      : 'transition-all duration-400'
+      ? 'rounded-xl ring-2 ring-primary/20 ring-offset-2 ring-offset-background transition-all duration-300'
+      : 'transition-all duration-300'
+  }
+
+  const renderTrend = trend => {
+    if (!trend) return null
+
+    return (
+      <div className="mt-4 border-t border-border/60 pt-3">
+        <div
+          className={`flex items-center gap-1.5 text-xs font-medium ${
+            trend.type === 'positive'
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-destructive'
+          }`}
+        >
+          <TrendingUp className="h-3.5 w-3.5" />
+          {trend.value}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStatCard = (stat, index, variant = 'default') => {
+    const isFeatured = variant === 'full'
+    const isHalf = variant === 'half'
+
+    return (
+      <Card
+        key={index}
+        className={cn(
+          'group border-border/60 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
+          isFeatured && 'overflow-hidden',
+          isHalf && 'overflow-hidden'
+        )}
+      >
+        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
+          <div className="min-w-0 space-y-1">
+            <CardTitle
+              className={cn(
+                'truncate font-medium text-muted-foreground',
+                isFeatured ? 'text-sm' : 'text-xs uppercase tracking-wide'
+              )}
+            >
+              {stat.title}
+            </CardTitle>
+            {stat.description && (
+              <p
+                className={cn(
+                  'text-muted-foreground',
+                  isFeatured || isHalf ? 'text-sm' : 'text-xs'
+                )}
+              >
+                {stat.description}
+              </p>
+            )}
+          </div>
+          {stat.icon && (
+            <div
+              className={cn(
+                'flex shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary transition-colors group-hover:bg-primary/10',
+                isFeatured ? 'h-12 w-12' : 'h-10 w-10'
+              )}
+            >
+              {getIcon(stat.icon, stat.iconColor || 'text-primary', isFeatured ? 'h-5 w-5' : '')}
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className={cn(isFeatured ? 'pt-1' : 'pt-0')}>
+          <div
+            className={cn(
+              'font-bold tracking-tight text-foreground',
+              isFeatured ? 'text-4xl md:text-5xl' : isHalf ? 'text-3xl' : 'text-2xl'
+            )}
+          >
+            {stat.value}
+          </div>
+          {renderTrend(stat.trend)}
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <div className="space-y-8 mb-50">
+    <div className="mb-50 space-y-8">
       {/* Header avec bouton retour */}
-      <div className="flex items-center gap-4 pb-6 border-b">
-        <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-            {status && getStatusBadge(status)}
+      <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 shrink-0 rounded-xl"
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
+              {status && getStatusBadge(status)}
+            </div>
+            {subtitle && (
+              <p className="mt-1 text-sm text-muted-foreground sm:text-base">{subtitle}</p>
+            )}
           </div>
-          {subtitle && <p className="text-muted-foreground text-base">{subtitle}</p>}
         </div>
       </div>
       {/* Informations personnelles */}
@@ -589,25 +859,24 @@ export default function DetailsPage({
           id="informations-personnelles"
           className={getSectionClasses('informations-personnelles')}
         >
-          <div className="mb-6">
-            <h2 className="text-xl font-bold mb-1">Informations personnelles</h2>
-            <Separator className="border-t-2 border-primary mb-2" />
-            <p className="text-sm text-muted-foreground">Détails et coordonnées</p>
-          </div>
-          <Separator className="mb-6" />
-          <Card className="border-2">
-            <CardContent className="pt-6">
-              <div className="grid gap-6 md:grid-cols-2">
+          <SectionHeader title="Informations personnelles" description="Détails et coordonnées" />
+          <Card className="border-border/60 bg-card">
+            <CardContent className="p-0">
+              <div className="grid divide-y divide-border/60 md:grid-cols-2 md:divide-x md:divide-y-0">
                 {personalInfo.map((info, index) => (
-                  <div key={index} className="flex items-start gap-3">
-                    {info.icon && <div className="mt-1">{getIcon(info.icon, info.iconColor)}</div>}
-                    <div className="flex-1">
-                      <p
-                        className={`text-sm font-medium ${info.iconColor || 'text-primary'} uppercase tracking-wide`}
-                      >
+                  <div key={index} className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
+                    {info.icon && (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
+                        {getIcon(info.icon, info.iconColor || 'text-primary')}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {info.label}
                       </p>
-                      <p className="text-base font-semibold mt-1.5">{info.value}</p>
+                      <div className="mt-1.5 text-sm font-semibold leading-6 text-foreground sm:text-base">
+                        {info.value || <span className="text-muted-foreground">Non renseigné</span>}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -620,141 +889,31 @@ export default function DetailsPage({
       {/* Statistiques */}
       {statsCards.length > 0 && (
         <div id="statistiques" className={getSectionClasses('statistiques')}>
-          <div className="mb-6">
-            <h2 className="text-xl font-bold mb-1 ">Statistiques</h2>
-            <Separator className="border-t-2 border-primary mb-2" />
-            <p className="text-sm text-muted-foreground">Indicateurs de performance clés</p>
-          </div>
-          <Separator className="mb-6" />
-          {statsFilter && <div className="mb-6">{statsFilter}</div>}
+          <SectionHeader title="Statistiques" description="Indicateurs de performance clés" />
+          {statsFilter && <div className="mb-5">{statsFilter}</div>}
 
           {/* Cards en pleine largeur en premier */}
           {statsCards.filter(stat => stat.fullWidth).length > 0 && (
-            <div className="grid gap-6 mb-6">
+            <div className="mb-5 grid gap-4">
               {statsCards
                 .filter(stat => stat.fullWidth)
-                .map((stat, index) => (
-                  <Card key={index} className="border-2">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                      <CardTitle className="text-lg font-bold">{stat.title}</CardTitle>
-                      {stat.icon && (
-                        <div className="h-8 w-8">
-                          {getIcon(stat.icon, stat.iconColor, stat.iconClassName || 'h-8 w-8')}
-                        </div>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold tracking-tight mb-2">{stat.value}</div>
-
-                      {stat.description && (
-                        <div className="mt-2">
-                          <p className="text-sm text-muted-foreground">{stat.description}</p>
-                          <div className="border-t-2 border-primary mt-3"></div>
-                        </div>
-                      )}
-                      {stat.trend && (
-                        <div className="mt-3 pt-3 border-t">
-                          <div
-                            className={`text-xs font-medium flex items-center gap-1 ${
-                              stat.trend.type === 'positive' ? 'text-green-600' : 'text-red-600'
-                            }`}
-                          >
-                            <TrendingUp className="h-3 w-3" />
-                            {stat.trend.value}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                .map((stat, index) => renderStatCard(stat, index, 'full'))}
             </div>
           )}
 
           {/* Cards normales en grille */}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {statsCards
               .filter(stat => !stat.fullWidth && !stat.halfWidth)
-              .map((stat, index) => (
-                <Card key={index} className="border-2">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                    <CardTitle className="text-sm font-medium ">{stat.title}</CardTitle>
-                    {stat.icon && (
-                      <div className="h-4 w-4">
-                        {getIcon(stat.icon, stat.iconColor, stat.iconClassName || '')}
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold tracking-tight ">{stat.value}</div>
-
-                    {stat.description && (
-                      <div className="mt-2 inline-block">
-                        <p className="text-xs text-muted-foreground">{stat.description}</p>
-                        <div className="border-t-2 border-primary mt-2"></div>
-                      </div>
-                    )}
-                    {stat.trend && (
-                      <div className="mt-3 pt-3 border-t">
-                        <div
-                          className={`text-xs font-medium flex items-center gap-1 ${
-                            stat.trend.type === 'positive' ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          <TrendingUp className="h-3 w-3" />
-                          {stat.trend.value}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+              .map((stat, index) => renderStatCard(stat, index))}
           </div>
 
           {/* Cards demi-largeur (taux de conversion) */}
           {statsCards.filter(stat => stat.halfWidth).length > 0 && (
-            <div className="grid gap-6 md:grid-cols-2 mt-6">
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
               {statsCards
                 .filter(stat => stat.halfWidth)
-                .map((stat, index) => (
-                  <Card
-                    key={index}
-                    className="border-2 relative overflow-hidden"
-                    style={{
-                      backgroundImage:
-                        'repeating-linear-gradient(45deg, transparent, transparent 10px, hsl(var(--muted) / 0.05) 10px, hsl(var(--muted) / 0.05) 20px)',
-                    }}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b-2">
-                      <CardTitle className="text-base font-bold">{stat.title}</CardTitle>
-                      {stat.icon && (
-                        <div className="h-6 w-6 rounded-md bg-primary/10 flex items-center justify-center">
-                          {getIcon(stat.icon, stat.iconColor || 'text-primary', stat.iconClassName || 'h-4 w-4')}
-                        </div>
-                      )}
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="text-3xl font-bold tracking-tight mb-2">{stat.value}</div>
-
-                      {stat.description && (
-                        <div className="mt-2">
-                          <p className="text-sm text-muted-foreground italic">{stat.description}</p>
-                        </div>
-                      )}
-                      {stat.trend && (
-                        <div className="mt-3 pt-3 border-t">
-                          <div
-                            className={`text-xs font-medium flex items-center gap-1 ${
-                              stat.trend.type === 'positive' ? 'text-green-600' : 'text-red-600'
-                            }`}
-                          >
-                            <TrendingUp className="h-3 w-3" />
-                            {stat.trend.value}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                .map((stat, index) => renderStatCard(stat, index, 'half'))}
             </div>
           )}
         </div>
@@ -763,12 +922,10 @@ export default function DetailsPage({
       {/* Section des zones assignées (si applicable et autorisée) */}
       {assignedZones && zonePermissions.canView && (
         <div id="zones-assignees" className={getSectionClasses('zones-assignees')}>
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-1">Zones assignées</h2>
-            <Separator className="border-t-2 border-primary mb-2" />
-            <p className="text-sm text-muted-foreground">Territoires géographiques attribués</p>
-          </div>
-          <Separator className="mb-6" />
+          <SectionHeader
+            title="Zones assignées"
+            description="Territoires géographiques attribués"
+          />
           <div className="space-y-4">
             {assignedZones.length > 0 ? (
               showAssignedZoneMaps ? (
@@ -782,13 +939,17 @@ export default function DetailsPage({
                   </Suspense>
                 ))
               ) : (
-                <Card className="border-2">
+                <Card className="border-border/60 bg-card">
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
                       <p className="text-sm text-muted-foreground">
                         Les cartes des zones sont chargees a la demande pour alleger la page.
                       </p>
-                      <Button size="sm" className="gap-2" onClick={() => setShowAssignedZoneMaps(true)}>
+                      <Button
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => setShowAssignedZoneMaps(true)}
+                      >
                         <MapPin className="h-4 w-4" />
                         Afficher les cartes ({assignedZones.length})
                       </Button>
@@ -797,7 +958,7 @@ export default function DetailsPage({
                 </Card>
               )
             ) : (
-              <Card className="border-2">
+              <Card className="border-border/60 bg-card">
                 <CardContent className="pt-6">
                   <p className="text-muted-foreground text-center py-8">Aucune zone assignée</p>
                 </CardContent>
@@ -814,24 +975,22 @@ export default function DetailsPage({
           id={createSectionId(section.title)}
           className={getSectionClasses(createSectionId(section.title))}
         >
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-1">{section.title}</h2>
-            <Separator className="border-t-2 border-primary mb-2" />
-            {section.description && (
-              <p className="text-sm text-muted-foreground">{section.description}</p>
-            )}
-          </div>
-          <Separator className="mb-6" />
+          <SectionHeader title={section.title} description={section.description} />
           {/* Afficher le filtre personnalisé si présent */}
-          {section.customFilter && <div className="mb-6">{section.customFilter}</div>}
-          <Card className="border-2">
-            <CardContent className="pt-6">
+          {section.customFilter && <div className="mb-5">{section.customFilter}</div>}
+          {section.type === 'custom' && section.component === 'ChartsSection' ? (
+            <ProspectionChartsSection charts={section.data.charts} />
+          ) : (
+            <Card className="border-border/60 bg-card">
+              <CardContent className="pt-6">
               {section.type === 'grid' && (
                 <div className="grid gap-6 md:grid-cols-2">
-                  ^
                   {section.items.map((item, itemIndex) => (
-                    <div key={itemIndex}>
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    <div
+                      key={itemIndex}
+                      className="rounded-xl border border-border/60 bg-muted/30 p-4"
+                    >
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {item.label}
                       </p>
                       <p className="text-base font-semibold mt-1.5">{item.value}</p>
@@ -874,65 +1033,56 @@ export default function DetailsPage({
                   showFilters={section.data.showFilters !== false}
                 />
               )}
-              {section.type === 'custom' && section.component === 'ChartsSection' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {section.data.charts.map((chart, index) => {
-                    if (chart.type === 'PortesStatusChart') {
-                      return <PortesStatusChart key={index} {...chart.props} />
-                    }
-                    if (chart.type === 'PortesProspectionChart') {
-                      return <PortesProspectionChart key={index} {...chart.props} />
-                    }
-                    if (chart.type === 'PortesWeeklyChart') {
-                      return <PortesWeeklyChart key={index} {...chart.props} />
-                    }
-                    return null
-                  })}
-                </div>
-              )}
               {section.type === 'custom' && section.component === 'FloorDetails' && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {section.data.map((floor, floorIndex) => (
-                    <div key={floorIndex} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">Étage {floor.floor}</h3>
-                        <div className="flex gap-2 text-xs">
-                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
+                    <div
+                      key={floorIndex}
+                      className="rounded-xl border border-border/60 bg-muted/20 p-4"
+                    >
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="text-base font-semibold tracking-tight">
+                          Étage {floor.floor}
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline" className="bg-background">
                             {floor.doors.filter(d => d.status === 'contrat_signe').length} signés
-                          </span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                          </Badge>
+                          <Badge variant="outline" className="bg-background">
                             {floor.doors.filter(d => d.status === 'rdv_pris').length} RDV
-                          </span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                          </Badge>
+                          <Badge variant="outline" className="bg-background">
                             {floor.doors.filter(d => d.status === 'absent').length} absents
-                          </span>
-                          <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
+                          </Badge>
+                          <Badge variant="outline" className="bg-background">
                             {floor.doors.filter(d => d.status === 'argumente').length} argumentés
-                          </span>
-                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
+                          </Badge>
+                          <Badge variant="outline" className="bg-background">
                             {floor.doors.filter(d => d.status === 'refus').length} refus
-                          </span>
+                          </Badge>
                         </div>
                       </div>
 
-                      <div className="border-t pt-4">
-                        <h4 className="text-sm font-medium mb-3">Statut des portes</h4>
+                      <div className="border-t border-border/60 pt-4">
+                        <h4 className="mb-3 text-sm font-medium text-muted-foreground">
+                          Statut des portes
+                        </h4>
                         <div className="grid gap-3">
                           {floor.doors.map((door, doorIndex) => {
                             const getStatusColor = status => {
                               switch (status) {
                                 case 'contrat_signe':
-                                  return 'bg-green-50 border-green-200 text-green-800'
+                                  return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                 case 'rdv_pris':
-                                  return 'bg-blue-50 border-blue-200 text-blue-800'
+                                  return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300'
                                 case 'absent':
-                                  return 'bg-blue-50 border-blue-200 text-blue-800'
+                                  return 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'
                                 case 'argumente':
-                                  return 'bg-orange-50 border-orange-200 text-orange-800'
+                                  return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
                                 case 'refus':
-                                  return 'bg-red-50 border-red-200 text-red-800'
+                                  return 'border-destructive/20 bg-destructive/10 text-destructive'
                                 default:
-                                  return 'bg-gray-50 border-gray-200 text-gray-800'
+                                  return 'border-border/60 bg-background text-foreground'
                               }
                             }
 
@@ -958,13 +1108,13 @@ export default function DetailsPage({
                             return (
                               <div
                                 key={doorIndex}
-                                className={`p-3 rounded border ${getStatusColor(door.status)}`}
+                                className={`rounded-xl border p-3 ${getStatusColor(door.status)}`}
                               >
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                       <span className="font-medium">Porte {door.number}</span>
-                                      <span className="text-xs px-2 py-1 rounded bg-white/50">
+                                      <span className="rounded-full border border-current/15 bg-background/70 px-2 py-0.5 text-xs">
                                         {getStatusLabel(door.status)}
                                       </span>
                                     </div>
@@ -984,7 +1134,7 @@ export default function DetailsPage({
                                     )}
 
                                     {door.comment && (
-                                      <div className="text-sm mt-2 p-2 bg-white/30 rounded">
+                                      <div className="mt-2 rounded-lg bg-background/70 p-2 text-sm">
                                         <span className="font-medium">Commentaire:</span>{' '}
                                         {door.comment}
                                       </div>
@@ -1000,8 +1150,9 @@ export default function DetailsPage({
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
       ))}
     </div>

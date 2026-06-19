@@ -627,24 +627,20 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
 
 const KPI_COLORS = {
   emerald: {
-    iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    iconBg: 'bg-emerald-500/10',
     iconColor: 'text-emerald-600 dark:text-emerald-400',
-    accent: 'border-l-4 border-l-emerald-500',
   },
   blue: {
-    iconBg: 'bg-blue-100 dark:bg-blue-900/30',
+    iconBg: 'bg-blue-500/10',
     iconColor: 'text-blue-600 dark:text-blue-400',
-    accent: 'border-l-4 border-l-blue-500',
   },
   amber: {
-    iconBg: 'bg-amber-100 dark:bg-amber-900/30',
+    iconBg: 'bg-amber-500/10',
     iconColor: 'text-amber-600 dark:text-amber-400',
-    accent: 'border-l-4 border-l-amber-500',
   },
   violet: {
-    iconBg: 'bg-violet-100 dark:bg-violet-900/30',
+    iconBg: 'bg-violet-500/10',
     iconColor: 'text-violet-600 dark:text-violet-400',
-    accent: 'border-l-4 border-l-violet-500',
   },
 }
 
@@ -653,19 +649,19 @@ function KpiCard({ title, value, description, icon: Icon, trend, color = 'blue' 
   const isPositive = trend && trend > 0
   const colors = KPI_COLORS[color] || KPI_COLORS.blue
   return (
-    <Card
-      className={`relative overflow-hidden hover:scale-[1.02] transition-all duration-200 cursor-default ${colors.accent}`}
-    >
+    <Card className="relative overflow-hidden border-border/60 bg-card hover:shadow-md transition-shadow duration-200 cursor-default">
       <CardContent className="pt-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <p className="truncate text-sm font-medium text-muted-foreground">{title}</p>
             <p className="text-3xl font-bold tracking-tight">
               <AnimatedNumber value={value} />
             </p>
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
-          <div className={`flex items-center justify-center w-11 h-11 rounded-xl ${colors.iconBg}`}>
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 ${colors.iconBg}`}
+          >
             <Icon className={`h-5 w-5 ${colors.iconColor}`} />
           </div>
         </div>

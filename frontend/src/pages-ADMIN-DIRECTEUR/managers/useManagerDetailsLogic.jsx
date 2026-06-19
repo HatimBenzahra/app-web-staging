@@ -5,6 +5,7 @@ import {
   useCommercials,
   useUpdateCommercial,
   useCurrentZoneAssignment,
+  useTeamLastStatusActivities,
 } from '@/services'
 import { useRole } from '@/contexts/userole'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
@@ -21,6 +22,48 @@ import { Badge } from '@/components/ui/badge'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import { AdvancedDataTable } from '@/components/tableau'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
+
+const ACTIVITY_STATUS_LABELS = {
+  CONTRAT_SIGNE: 'Contrat signé',
+  RENDEZ_VOUS_PRIS: 'Rendez-vous pris',
+  REFUS: 'Refus',
+  ABSENT: 'Absent',
+  ARGUMENTE: 'Argumenté',
+  NECESSITE_REPASSAGE: 'Repassage nécessaire',
+  NON_VISITE: 'Non visité',
+}
+
+const formatRelativeActivityDate = dateValue => {
+  if (!dateValue) return 'Aucune activité'
+
+  const date = new Date(dateValue)
+  const diffMs = Date.now() - date.getTime()
+  if (!Number.isFinite(diffMs)) return 'Date inconnue'
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'À l’instant'
+  if (minutes < 60) return `Il y a ${minutes} min`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Il y a ${hours} h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `Il y a ${days} j`
+
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const getActivityDescription = activity => {
+  if (!activity) return 'Aucun changement de statut enregistré'
+
+  const statusLabel = ACTIVITY_STATUS_LABELS[activity.statut] || activity.statut
+  const address = activity.immeubleAdresse ? ` · ${activity.immeubleAdresse}` : ''
+  return `${statusLabel} · Porte ${activity.porteNumero}${address}`
+}
 
 export function useManagerDetailsLogic() {
   const { id } = useParams()
@@ -53,6 +96,7 @@ export function useManagerDetailsLogic() {
   const { data: allCommercials, refetch: refetchCommercials } = useCommercials()
   const { mutate: updateCommercial, loading: updatingCommercial } = useUpdateCommercial()
   const { data: currentManagerZone } = useCurrentZoneAssignment(parseInt(id), 'MANAGER')
+  const { data: lastStatusActivities } = useTeamLastStatusActivities()
 
   // Utiliser le hook pour calculer les stats personnelles du manager
   const { personalStats } = usePersonalStats(manager, appliedStartDate, appliedEndDate)
@@ -80,6 +124,12 @@ export function useManagerDetailsLogic() {
 
     return calculateRankFromStats(manager.statistics)
   }, [manager?.statistics])
+
+  const lastStatusActivity = useMemo(() => {
+    return (lastStatusActivities || []).find(
+      activity => activity.userType === 'manager' && activity.userId === parseInt(id)
+    )
+  }, [id, lastStatusActivities])
 
   // Transformation des données API vers format UI (avec filtrage)
   const managerData = useMemo(() => {
@@ -141,6 +191,7 @@ export function useManagerDetailsLogic() {
       points: memoizedManagerRank?.points,
       totalPortesProspectes: personalStats.totalPortesProspectes,
       totalImmeublesProspectes: personalStats.totalImmeublesProspectes,
+      lastStatusActivity,
       // Indicateurs de l'équipe
       meilleurCommercial,
       meilleurBadge,
@@ -152,6 +203,7 @@ export function useManagerDetailsLogic() {
     personalStats,
     filteredCommercialsStats,
     memoizedManagerRank,
+    lastStatusActivity,
   ])
 
   // Récupérer la zone actuellement assignée à ce manager depuis ZoneEnCours
@@ -428,6 +480,13 @@ export function useManagerDetailsLogic() {
       value: managerData.points,
       description: 'Score personnel',
       icon: 'trendingUp',
+      fullWidth: true,
+    },
+    {
+      title: 'Dernière activité terrain',
+      value: formatRelativeActivityDate(managerData.lastStatusActivity?.changedAt),
+      description: getActivityDescription(managerData.lastStatusActivity),
+      icon: 'shieldCheck',
       fullWidth: true,
     },
     {

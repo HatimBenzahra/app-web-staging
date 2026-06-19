@@ -58,6 +58,22 @@ export const GET_ZONE_STATISTICS = `
   }
 `
 
+export const GET_TEAM_LAST_STATUS_ACTIVITIES = `
+  query GetTeamLastStatusActivities {
+    teamLastStatusActivities {
+      userId
+      userType
+      userName
+      statut
+      changedAt
+      porteId
+      porteNumero
+      immeubleId
+      immeubleAdresse
+    }
+  }
+`
+
 export const GET_ME = `
   query Me {
     me {

@@ -1,11 +1,59 @@
-import { useMemo, useCallback } from 'react'
-import { useCommercials, useUpdateCommercial, useManagers, useDirecteurs } from '@/services'
+import { useMemo } from 'react'
+import {
+  useCommercials,
+  useUpdateCommercial,
+  useManagers,
+  useDirecteurs,
+  useTeamLastStatusActivities,
+} from '@/services'
 import { useRole } from '@/contexts/userole'
 import { useEntityPermissions, useEntityDescription } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { aggregateStats, calculateRank } from '@/utils/business/ranks'
 import { USER_STATUS_CONFIG, getStatusFilterOptions } from '@/constants/domain/user-status'
 import { useStatusBadge } from '@/hooks/utils/ui/useStatusBadge'
+
+const getActivityTime = activity => {
+  if (!activity?.changedAt) return 0
+  const time = new Date(activity.changedAt).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+const formatRelativeActivityDate = dateValue => {
+  if (!dateValue) return 'Jamais'
+
+  const date = new Date(dateValue)
+  const diffMs = Date.now() - date.getTime()
+  if (!Number.isFinite(diffMs)) return 'Date inconnue'
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'À l’instant'
+  if (minutes < 60) return `${minutes} min`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} j`
+
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const renderActivityCell = row => {
+  if (!row.lastActivity) {
+    return <span className="text-xs text-muted-foreground">Jamais</span>
+  }
+
+  return (
+    <div className="min-w-28">
+      <p className="text-sm font-medium">{formatRelativeActivityDate(row.lastActivity.changedAt)}</p>
+    </div>
+  )
+}
 
 const getCommerciauxColumns = (isAdmin, isDirecteur, renderStatusBadge) => {
   const baseColumns = [
@@ -27,6 +75,14 @@ const getCommerciauxColumns = (isAdmin, isDirecteur, renderStatusBadge) => {
       sortable: true,
       className: 'hidden md:table-cell',
       cell: row => renderStatusBadge(row.status),
+    },
+    {
+      header: 'Dernier terrain',
+      accessor: 'lastActivityLabel',
+      sortKey: 'lastActivityAt',
+      sortable: true,
+      className: 'hidden md:table-cell',
+      cell: renderActivityCell,
     },
     {
       header: 'Rang',
@@ -64,6 +120,10 @@ export function useCommerciauxLogic() {
   const { data: commercials, loading, error, refetch } = useCommercials()
   const { data: managers } = useManagers()
   const { data: directeurs } = useDirecteurs()
+  const {
+    data: lastStatusActivities,
+    loading: lastActivitiesLoading,
+  } = useTeamLastStatusActivities()
   const { mutate: updateCommercial, loading: updating } = useUpdateCommercial()
   const { showError, showSuccess } = useErrorToast()
   const { renderStatusBadge } = useStatusBadge()
@@ -83,6 +143,12 @@ export function useCommerciauxLogic() {
   const tableData = useMemo(() => {
     if (!filteredCommercials) return []
 
+    const activityByCommercial = new Map(
+      (lastStatusActivities || [])
+        .filter(activity => activity.userType === 'commercial')
+        .map(activity => [activity.userId, activity])
+    )
+
     return filteredCommercials.map(commercial => {
       // Trouver le nom du manager
       const manager = managers?.find(m => m.id === commercial.managerId)
@@ -94,6 +160,8 @@ export function useCommerciauxLogic() {
 
       const { contratsSignes: totalContratsSignes, rendezVousPris: totalRendezVousPris, immeublesVisites: totalImmeublesVisites } = aggregateStats(commercial.statistics)
       const { rank, points } = calculateRank(totalContratsSignes, totalRendezVousPris, totalImmeublesVisites)
+      const lastActivity = activityByCommercial.get(commercial.id) || null
+      const lastActivityAt = getActivityTime(lastActivity)
 
       // Créer le badge de rang
       const rankBadge = (
@@ -113,12 +181,15 @@ export function useCommerciauxLogic() {
         status: commercial.status,
         columns,
         rankBadge,
+        lastActivity,
+        lastActivityAt,
+        lastActivityLabel: formatRelativeActivityDate(lastActivity?.changedAt),
         managerName,
         directeurName,
         createdAt: new Date(commercial.createdAt).toLocaleDateString('fr-FR'),
       }
-    })
-  }, [filteredCommercials, managers, directeurs, columns])
+    }).sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.nom.localeCompare(b.nom, 'fr'))
+  }, [filteredCommercials, managers, directeurs, columns, lastStatusActivities])
 
   // Préparer les options pour les formulaires
   const managerOptions = useMemo(() => {
@@ -204,7 +275,7 @@ export function useCommerciauxLogic() {
     columns,
     permissions,
     description,
-    loading,
+    loading: loading || lastActivitiesLoading,
     error,
     updating,
     refetch,
