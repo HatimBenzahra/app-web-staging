@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { calculateRank, aggregateStats } from '@/utils/business/ranks'
 import { Badge } from '@/components/ui/badge'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { useDateFilter } from '@/hooks/utils/filters/useDateFilter'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import {
@@ -500,6 +501,18 @@ export function useCommercialDetailsLogic() {
           showDateTypeSelector={true}
           dateType={immeubleDateType}
           onDateTypeChange={setImmeubleDateType}
+        />
+      ),
+    },
+    {
+      title: 'Enregistrements audio',
+      description: 'Ecoute et telechargement des enregistrements de ce commercial',
+      type: 'custom',
+      render: () => (
+        <UserRecordingsSection
+          userId={commercialData?.id}
+          userType="commercial"
+          userName={commercialData?.name}
         />
       ),
     },

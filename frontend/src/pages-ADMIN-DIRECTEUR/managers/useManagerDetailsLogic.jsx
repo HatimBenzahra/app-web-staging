@@ -20,6 +20,7 @@ import { calculateRank, calculateRankFromStats, aggregateStats } from '@/utils/b
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { AdvancedDataTable } from '@/components/tableau'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 
@@ -694,6 +695,18 @@ export function useManagerDetailsLogic() {
           showDateTypeSelector={true}
           dateType={immeubleDateType}
           onDateTypeChange={setImmeubleDateType}
+        />
+      ),
+    },
+    {
+      title: 'Enregistrements audio',
+      description: 'Ecoute et telechargement des enregistrements de ce manager',
+      type: 'custom',
+      render: () => (
+        <UserRecordingsSection
+          userId={managerData?.id}
+          userType="manager"
+          userName={managerData?.name}
         />
       ),
     },
