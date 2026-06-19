@@ -75,9 +75,22 @@ const selectedPointLayer = {
   type: 'circle',
   paint: {
     'circle-radius': 13,
-    'circle-color': '#2563eb',
+    'circle-color': '#ef4444',
     'circle-stroke-color': '#ffffff',
-    'circle-stroke-width': 3,
+    'circle-stroke-width': 5,
+  },
+}
+
+const searchTargetHaloLayer = {
+  id: 'acquiscan-search-target-halo',
+  type: 'circle',
+  paint: {
+    'circle-radius': 24,
+    'circle-color': '#ef4444',
+    'circle-opacity': 0.18,
+    'circle-stroke-color': '#ef4444',
+    'circle-stroke-width': 2,
+    'circle-stroke-opacity': 0.35,
   },
 }
 
@@ -85,10 +98,41 @@ const searchTargetLayer = {
   id: 'acquiscan-search-target',
   type: 'circle',
   paint: {
-    'circle-radius': 12,
-    'circle-color': '#10b981',
+    'circle-radius': 10,
+    'circle-color': '#ef4444',
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 4,
+  },
+}
+
+const building3dLayer = {
+  id: 'acquiscan-3d-buildings',
+  source: 'composite',
+  'source-layer': 'building',
+  filter: ['==', ['get', 'extrude'], 'true'],
+  type: 'fill-extrusion',
+  minzoom: 14,
+  paint: {
+    'fill-extrusion-color': '#94a3b8',
+    'fill-extrusion-height': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      14,
+      0,
+      15,
+      ['coalesce', ['get', 'height'], 18],
+    ],
+    'fill-extrusion-base': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      14,
+      0,
+      15,
+      ['coalesce', ['get', 'min_height'], 0],
+    ],
+    'fill-extrusion-opacity': 0.55,
   },
 }
 
@@ -159,11 +203,22 @@ const FILTER_LABELS = {
   },
 }
 
+const FILTER_RESET_VALUES = {
+  dept: '',
+  commune: '',
+  segment: 'all',
+  fiber: 'all',
+  annee: 'all',
+  coverage4g: 'all',
+  coverage5g: 'all',
+}
+
 export default function AdressesAcquiscan() {
   const {
     filters,
     updateFilter,
     resetFilters,
+    clearSearchSelection,
     addressQuery,
     setAddressQuery,
     suggestions,
@@ -181,6 +236,7 @@ export default function AdressesAcquiscan() {
     setSelectedId,
     stats,
     loading,
+    mapLoading,
     listLoading,
     error,
     refetch,
@@ -188,10 +244,12 @@ export default function AdressesAcquiscan() {
     clustered,
   } = useAdressesAcquiscanLogic()
   const mapRef = useRef(null)
+  const lastFocusedSuggestionId = useRef(null)
+  const lastFocusedAddressId = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
-  const [showList, setShowList] = useState(true)
   const [searchFocused, setSearchFocused] = useState(false)
-  const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/streets-v12')
+  const [isPitched, setIsPitched] = useState(false)
 
   const activeFilters = useMemo(() => {
     const entries = []
@@ -313,26 +371,74 @@ export default function AdressesAcquiscan() {
   }
 
   useEffect(() => {
-    if (!selectedAddress?.coordinates || !mapRef.current) return
-    mapRef.current.flyTo({
+    if (!selectedAddress?.coordinates) {
+      lastFocusedAddressId.current = null
+      return
+    }
+    if (!mapRef.current) return
+    if (lastFocusedAddressId.current === selectedAddress.immeubleId) return
+    lastFocusedAddressId.current = selectedAddress.immeubleId
+    mapRef.current.easeTo({
       center: [selectedAddress.coordinates.longitude, selectedAddress.coordinates.latitude],
-      zoom: Math.max(mapRef.current.getZoom?.() || 0, 14),
-      duration: 600,
+      zoom: Math.max(mapRef.current.getZoom?.() || 0, 15),
+      duration: 550,
     })
   }, [selectedAddress])
 
   useEffect(() => {
-    if (!selectedSuggestion || !mapRef.current) return
-    mapRef.current.flyTo({
+    if (!selectedSuggestion) {
+      lastFocusedSuggestionId.current = null
+      return
+    }
+    if (!mapRef.current) return
+    if (lastFocusedSuggestionId.current === selectedSuggestion.id) return
+    lastFocusedSuggestionId.current = selectedSuggestion.id
+    mapRef.current.easeTo({
       center: [selectedSuggestion.longitude, selectedSuggestion.latitude],
-      zoom: 15,
-      duration: 700,
+      zoom: Math.max(mapRef.current.getZoom?.() || 0, 16),
+      pitch: isPitched ? 58 : mapRef.current.getPitch?.() || 0,
+      duration: 750,
     })
-  }, [selectedSuggestion])
+  }, [isPitched, selectedSuggestion])
 
   const hasSearchQuery = addressQuery.trim().length >= 2
   const searchHasPostcode = /\b\d{5}\b/.test(addressQuery)
   const showSuggestions = searchFocused && hasSearchQuery
+  const isSatellite = mapStyle.includes('satellite')
+
+  const toggleMapStyle = () => {
+    setMapStyle(current => (
+      current.includes('satellite')
+        ? 'mapbox://styles/mapbox/streets-v12'
+        : 'mapbox://styles/mapbox/satellite-streets-v12'
+    ))
+  }
+
+  const togglePitch = () => {
+    const nextPitched = !isPitched
+    setIsPitched(nextPitched)
+    const currentZoom = mapRef.current?.getZoom?.() || initialViewState.zoom
+    mapRef.current?.easeTo({
+      pitch: nextPitched ? 60 : 0,
+      bearing: nextPitched ? -18 : 0,
+      zoom: nextPitched ? Math.max(currentZoom, 15) : currentZoom,
+      duration: 550,
+    })
+  }
+
+  const recenterOnSearch = () => {
+    if (!selectedSuggestion || !mapRef.current) return
+    mapRef.current.easeTo({
+      center: [selectedSuggestion.longitude, selectedSuggestion.latitude],
+      zoom: Math.max(mapRef.current.getZoom?.() || 0, 16),
+      pitch: isPitched ? 58 : mapRef.current.getPitch?.() || 0,
+      duration: 550,
+    })
+  }
+
+  const clearFilter = key => {
+    updateFilter(key, FILTER_RESET_VALUES[key] ?? 'all')
+  }
 
   return (
     <div className="space-y-3">
@@ -350,180 +456,148 @@ export default function AdressesAcquiscan() {
               {error}
             </Badge>
           )}
-          <Button variant="outline" onClick={refetch} disabled={loading} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <Button variant="outline" onClick={refetch} disabled={mapLoading} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${mapLoading ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
         </div>
       </div>
 
-      <div className="relative min-h-[780px] overflow-hidden rounded-lg border bg-muted shadow-sm lg:h-[calc(100vh-128px)] lg:min-h-[720px]">
-        {loading && mapLoaded && (
-          <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]" />
-          </div>
-        )}
+      <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:flex xl:h-[calc(100vh-128px)] xl:min-h-[720px] xl:flex-col">
+          <div className="space-y-3 border-b p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                Recherche
+              </div>
+              {selectedSuggestion && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSearchSelection}
+                  className="h-8 px-2"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
 
-        {!MAPBOX_TOKEN ? (
-          <div className="flex h-full min-h-[690px] items-center justify-center text-sm text-muted-foreground">
-            Token Mapbox manquant
-          </div>
-        ) : (
-          <>
-            {!mapLoaded && <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-none" />}
-            <MapboxMap
-              ref={mapRef}
-              initialViewState={initialViewState}
-              mapStyle="mapbox://styles/mapbox/streets-v12"
-              style={{ width: '100%', height: '100%' }}
-              onLoad={() => setMapLoaded(true)}
-              onMoveEnd={handleMoveEnd}
-              onClick={handleMapClick}
-              interactiveLayerIds={['acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}
-              attributionControl={false}
-            >
-              <NavigationControl position="bottom-right" />
-              <Source id="acquiscan-cluster-source" type="geojson" data={clustersGeoJson}>
-                <Layer {...clusterLayer} />
-                <Layer {...clusterCountLayer} />
-              </Source>
-              <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
-                <Layer {...pointLayer} />
-              </Source>
-              <Source id="acquiscan-selected-source" type="geojson" data={selectedGeoJson}>
-                <Layer {...selectedPointLayer} />
-              </Source>
-              <Source id="acquiscan-search-target-source" type="geojson" data={searchTargetGeoJson}>
-                <Layer {...searchTargetLayer} />
-              </Source>
-            </MapboxMap>
-          </>
-        )}
-
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex max-h-[52svh] flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:max-h-none sm:overflow-visible lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,390px)] lg:items-start lg:gap-2">
-          <div className="pointer-events-auto grid w-full items-start gap-2 xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
-            <div className={`self-start rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur transition-all duration-300 ${
-              searchFocused ? 'border-primary/40 shadow-xl ring-2 ring-primary/10' : ''
+            <div className={`relative transition-all duration-300 ${
+              searchFocused ? 'ring-2 ring-primary/10' : ''
             }`}>
-              <div className="mb-1.5 flex items-center justify-between gap-2 md:hidden">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Search className="h-3.5 w-3.5" />
-                  Recherche adresse
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={addressQuery}
+                onChange={event => setAddressQuery(event.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+                placeholder="Rechercher une adresse"
+                className="h-10 pl-9"
+              />
+              {showSuggestions && (
+                <div className="absolute left-0 right-0 top-11 z-40 max-h-80 overflow-y-auto rounded-md border bg-background shadow-xl animate-in fade-in-0 zoom-in-95">
+                  {suggestionsLoading && (
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Recherche...
+                    </div>
+                  )}
+                  {suggestionsError && (
+                    <div className="px-3 py-2 text-sm text-destructive">{suggestionsError}</div>
+                  )}
+                  {!suggestionsLoading && !suggestionsError && suggestions.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      {searchHasPostcode
+                        ? 'Aucune adresse trouvée pour cette saisie.'
+                        : 'Aucune adresse trouvée. Ajoute la ville si la voie existe dans plusieurs communes.'}
+                    </div>
+                  )}
+                  {!suggestionsLoading && !suggestionsError && suggestions.map(suggestion => (
+                    <button
+                      type="button"
+                      key={suggestion.id}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => selectSuggestion(suggestion)}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
+                    >
+                      <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{suggestion.label}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {[suggestion.postcode, suggestion.city, suggestion.codeInsee].filter(Boolean).join(' · ') || 'Adresse géocodée'}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    type="button"
-                    variant={showMobileFilters || activeFilters.length > 0 ? 'secondary' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowMobileFilters(value => !value)}
-                    className="h-7 px-2 text-xs md:hidden"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                    Filtres{activeFilters.length > 0 ? ` ${activeFilters.length}` : ''}
+              )}
+            </div>
+
+            {selectedSuggestion && (
+              <div className="rounded-md border border-red-200 bg-red-50/70 p-2 text-sm animate-in fade-in-0 slide-in-from-top-1">
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-red-950">{selectedSuggestion.label}</p>
+                    <p className="mt-0.5 text-xs text-red-700">
+                      Marqueur rouge sur la carte. Navigation libre après le zoom.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={recenterOnSearch} className="h-8 flex-1 gap-2">
+                    <LocateFixed className="h-3.5 w-3.5" />
+                    Recentrer
                   </Button>
-                  {selectedSuggestion && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setAddressQuery('')
-                      resetFilters()
-                    }}
-                    className="h-7 px-2 text-xs"
-                  >
-                    <X className="h-3.5 w-3.5" />
+                  <Button type="button" size="sm" variant="outline" onClick={clearSearchSelection} className="h-8">
                     Effacer
                   </Button>
-                  )}
                 </div>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={addressQuery}
-                  onChange={event => setAddressQuery(event.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-                  placeholder="Rechercher une adresse"
-                  className="h-9 pl-9 text-sm"
-                />
-                {showSuggestions && (
-                  <div className="absolute left-0 right-0 top-10 z-30 overflow-hidden rounded-md border bg-background shadow-xl animate-in fade-in-0 zoom-in-95">
-                    {suggestionsLoading && (
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        Recherche...
-                      </div>
-                    )}
-                    {suggestionsError && (
-                      <div className="px-3 py-2 text-sm text-destructive">{suggestionsError}</div>
-                    )}
-                    {!suggestionsLoading && !suggestionsError && suggestions.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        {searchHasPostcode
-                          ? 'Aucune adresse trouvée pour cette saisie.'
-                          : 'Aucune adresse trouvée. Ajoute la ville si la voie existe dans plusieurs communes.'}
-                      </div>
-                    )}
-                    {!suggestionsLoading && !suggestionsError && suggestions.map(suggestion => (
-                      <button
-                        type="button"
-                        key={suggestion.id}
-                        onMouseDown={event => event.preventDefault()}
-                        onClick={() => selectSuggestion(suggestion)}
-                        className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
-                      >
-                        <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{suggestion.label}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {[suggestion.postcode, suggestion.city, suggestion.codeInsee].filter(Boolean).join(' · ') || 'Adresse géocodée'}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+            )}
+          </div>
+
+          <div className="space-y-3 border-b p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                Filtres
+                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFilters.length > 0 && (
+                  <Badge variant="secondary" className="animate-in fade-in-0 zoom-in-95">
+                    {activeFilters.length} actif{activeFilters.length > 1 ? 's' : ''}
+                  </Badge>
                 )}
+                <Button variant="outline" size="sm" onClick={resetFilters} className="h-8">
+                  Réinitialiser
+                </Button>
               </div>
             </div>
 
-            <div className={`${showMobileFilters ? 'block' : 'hidden'} self-start rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur transition-all duration-300 animate-in fade-in-0 slide-in-from-top-2 md:block ${
-              loading ? 'border-primary/30 shadow-xl' : ''
-            }`}>
-              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  Filtres
-                  {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
-                </div>
-                <div className="flex items-center gap-2">
-                  {activeFilters.length > 0 && (
-                    <Badge variant="secondary" className="animate-in fade-in-0 zoom-in-95">
-                      {activeFilters.length} actif{activeFilters.length > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                  <Button variant="outline" size="sm" onClick={resetFilters} className="h-8">
-                    Réinitialiser
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <FilterField label="Département">
                 <Input
                   value={filters.dept}
                   onChange={event => updateFilter('dept', event.target.value)}
-                  placeholder="Dépt."
-                  className="h-8"
+                  placeholder="75"
+                  className={`h-9 ${filters.dept.trim() ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}
                 />
+              </FilterField>
+              <FilterField label="Commune INSEE">
                 <Input
                   value={filters.commune}
                   onChange={event => updateFilter('commune', event.target.value)}
-                  placeholder="INSEE"
-                  className="h-8"
+                  placeholder="75056"
+                  className={`h-9 ${filters.commune.trim() ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}
                 />
+              </FilterField>
+              <FilterField label="Cuivre">
                 <Select value={filters.segment} onValueChange={value => updateFilter('segment', value)}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={`h-9 w-full ${filters.segment !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Étape cuivre: toutes</SelectItem>
                     <SelectItem value="urgent">Fermeture technique</SelectItem>
@@ -532,24 +606,30 @@ export default function AdressesAcquiscan() {
                     <SelectItem value="froid">Cuivre actif</SelectItem>
                   </SelectContent>
                 </Select>
+              </FilterField>
+              <FilterField label="Fibre">
                 <Select value={filters.fiber} onValueChange={value => updateFilter('fiber', value)}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={`h-9 w-full ${filters.fiber !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Fibre: toutes</SelectItem>
                     <SelectItem value="yes">Fibre: oui</SelectItem>
                     <SelectItem value="no">Fibre: non</SelectItem>
                   </SelectContent>
                 </Select>
+              </FilterField>
+              <FilterField label="Année fermeture">
                 <Select value={filters.annee} onValueChange={value => updateFilter('annee', value)}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={`h-9 w-full ${filters.annee !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Toutes années</SelectItem>
                     <SelectItem value="current">Année courante</SelectItem>
                     <SelectItem value="future">Après année courante</SelectItem>
                   </SelectContent>
                 </Select>
+              </FilterField>
+              <FilterField label="Couverture 4G">
                 <Select value={filters.coverage4g} onValueChange={value => updateFilter('coverage4g', value)}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={`h-9 w-full ${filters.coverage4g !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">4G: toutes</SelectItem>
                     <SelectItem value="eleve">4G élevée</SelectItem>
@@ -557,8 +637,10 @@ export default function AdressesAcquiscan() {
                     <SelectItem value="faible">4G faible</SelectItem>
                   </SelectContent>
                 </Select>
+              </FilterField>
+              <FilterField label="Couverture 5G">
                 <Select value={filters.coverage5g} onValueChange={value => updateFilter('coverage5g', value)}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={`h-9 w-full ${filters.coverage5g !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">5G: toutes</SelectItem>
                     <SelectItem value="eleve">5G élevée</SelectItem>
@@ -566,64 +648,44 @@ export default function AdressesAcquiscan() {
                     <SelectItem value="faible">5G faible</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              </FilterField>
+            </div>
 
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <div className="flex min-h-7 flex-1 flex-wrap items-center gap-1.5">
-                  {activeFilters.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">Aucun filtre restrictif</span>
-                  ) : (
-                    activeFilters.map(filter => (
-                      <Badge
-                        key={filter.key}
-                        variant="outline"
-                        className="animate-in fade-in-0 zoom-in-95 bg-background/80"
-                      >
-                        {filter.label}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-              </div>
+            <div className="flex min-h-7 flex-wrap items-center gap-1.5">
+              {activeFilters.length === 0 ? (
+                <span className="text-xs text-muted-foreground">Aucun filtre restrictif</span>
+              ) : (
+                activeFilters.map(filter => (
+                  <button
+                    type="button"
+                    key={filter.key}
+                    onClick={() => clearFilter(filter.key)}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700 shadow-sm transition-colors hover:bg-red-100 animate-in fade-in-0 zoom-in-95"
+                  >
+                    <MapPin className="h-3 w-3" />
+                    {filter.label}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
-          <div className="pointer-events-auto grid w-full grid-cols-4 gap-1 rounded-lg border bg-background/95 p-1 shadow-lg backdrop-blur transition-all duration-300 lg:justify-self-end">
+          <div className="grid grid-cols-4 gap-1 border-b p-2 sm:gap-2 xl:grid-cols-2">
             <MiniStat icon={MapPin} label="Zone" value={fmtInt(stats.total)} />
             <MiniStat icon={Layers} label="Clust." value={fmtInt(stats.clusters)} />
             <MiniStat icon={List} label="Liste" value={fmtInt(stats.listTotal)} />
             <MiniStat icon={Zap} label="Cuivre" value={fmtInt(stats.shutdownCount)} />
           </div>
-        </div>
 
-        {loading && mapLoaded && (
-          <Badge className="absolute bottom-4 right-4 z-20 gap-2 shadow-lg" variant="secondary">
-            <RefreshCw className="h-3 w-3 animate-spin" />
-            Chargement
-          </Badge>
-        )}
-
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShowList(value => !value)}
-          className="absolute bottom-4 left-4 z-20 gap-2 shadow-lg"
-        >
-          <List className="h-4 w-4" />
-          {showList ? 'Masquer la liste' : 'Afficher la liste'}
-        </Button>
-
-        {showList && (
-          <div className={`absolute inset-x-2 bottom-20 z-20 overflow-hidden rounded-lg border bg-background/95 shadow-xl backdrop-blur transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-3 sm:inset-x-3 md:left-auto md:right-4 md:top-36 md:bottom-6 md:w-[390px] xl:top-32 ${
-            listLoading ? 'ring-2 ring-primary/15' : ''
-          }`}>
+          <div className={`min-h-0 flex-1 overflow-hidden transition-shadow ${listLoading ? 'ring-2 ring-primary/10' : ''}`}>
             <div className="flex items-center justify-between border-b px-3 py-2.5">
-              <div>
+              <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold">
                   Adresses affichées
                   {listLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {filters.dept
                     ? `${fmtInt(stats.listTotal)} adresses Acquiscan pour ce département`
                     : clustered
@@ -631,10 +693,12 @@ export default function AdressesAcquiscan() {
                       : `${rows.length} adresses géocodées dans la vue`}
                 </p>
               </div>
-              <Badge variant="outline">{tooManyResults && !filters.dept ? 'dense' : `${listRows.length}`}</Badge>
+              <Badge variant={listRows.length ? 'secondary' : 'outline'}>
+                {tooManyResults && !filters.dept ? 'dense' : `${listRows.length}`}
+              </Badge>
             </div>
 
-            <div className="max-h-[42svh] overflow-y-auto pb-6 md:h-[calc(100%-57px)] md:max-h-none">
+            <div className="max-h-[48svh] overflow-y-auto pb-4 xl:h-[calc(100%-57px)] xl:max-h-none">
               {listLoading ? (
                 <div className="space-y-2 p-3">
                   {Array.from({ length: 5 }).map((_, index) => (
@@ -653,18 +717,18 @@ export default function AdressesAcquiscan() {
                       type="button"
                       key={row.immeubleId}
                       onClick={() => onMap && setSelectedId(row.immeubleId)}
-                      className={`w-full border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/60 ${
-                        selected ? 'bg-primary/10' : ''
+                      className={`w-full border-b border-l-4 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 ${
+                        selected ? 'border-l-red-600 bg-red-50/80' : 'border-l-transparent'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{formatAddress(row)}</p>
+                          <p className={`truncate text-sm font-medium ${selected ? 'text-red-950' : ''}`}>{formatAddress(row)}</p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
                             Dép. {row.dept} · {row.codeInsee || 'INSEE ?'} · {row.imbCode || row.immeubleId}
                           </p>
                         </div>
-                        <Badge variant="outline" className={scoreTone(row.opportunityScore || 50)}>
+                        <Badge variant="outline" className={`${scoreTone(row.opportunityScore || 50)} tabular-nums`}>
                           {row.opportunityScore || 'N/A'}
                         </Badge>
                       </div>
@@ -694,9 +758,94 @@ export default function AdressesAcquiscan() {
               )}
             </div>
           </div>
-        )}
+        </aside>
+
+        <div className="relative min-h-[560px] overflow-hidden rounded-lg border bg-muted shadow-sm sm:min-h-[680px] xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
+          {loading && mapLoaded && (
+            <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]" />
+            </div>
+          )}
+
+          {!MAPBOX_TOKEN ? (
+            <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-muted-foreground">
+              Token Mapbox manquant
+            </div>
+          ) : (
+            <>
+              {!mapLoaded && <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-none" />}
+              <MapboxMap
+                ref={mapRef}
+                initialViewState={initialViewState}
+                mapStyle={mapStyle}
+                style={{ width: '100%', height: '100%' }}
+                onLoad={() => setMapLoaded(true)}
+                onMoveEnd={handleMoveEnd}
+                onClick={handleMapClick}
+                interactiveLayerIds={['acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}
+                attributionControl={false}
+              >
+                <NavigationControl position="bottom-right" />
+                {isPitched && <Layer {...building3dLayer} />}
+                <Source id="acquiscan-cluster-source" type="geojson" data={clustersGeoJson}>
+                  <Layer {...clusterLayer} />
+                  <Layer {...clusterCountLayer} />
+                </Source>
+                <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
+                  <Layer {...pointLayer} />
+                </Source>
+                <Source id="acquiscan-selected-source" type="geojson" data={selectedGeoJson}>
+                  <Layer {...selectedPointLayer} />
+                </Source>
+                <Source id="acquiscan-search-target-source" type="geojson" data={searchTargetGeoJson}>
+                  <Layer {...searchTargetHaloLayer} />
+                  <Layer {...searchTargetLayer} />
+                </Source>
+              </MapboxMap>
+            </>
+          )}
+
+          <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant={isSatellite ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={toggleMapStyle}
+              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+            >
+              <Layers className="h-4 w-4" />
+              {isSatellite ? 'Plan' : 'Satellite'}
+            </Button>
+            <Button
+              type="button"
+              variant={isPitched ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={togglePitch}
+              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+            >
+              <Building2 className="h-4 w-4" />
+              3D
+            </Button>
+          </div>
+
+          {loading && mapLoaded && (
+            <Badge className="absolute bottom-4 left-4 z-20 gap-2 shadow-lg" variant="secondary">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Chargement
+            </Badge>
+          )}
+        </div>
       </div>
     </div>
+  )
+}
+
+function FilterField({ label, children }) {
+  return (
+    <label className="space-y-1">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      {children}
+    </label>
   )
 }
 

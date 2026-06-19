@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/services'
 
 const INITIAL_VIEW_STATE = {
@@ -80,6 +80,8 @@ const formatSuggestionError = error => {
 }
 
 export function useAdressesAcquiscanLogic() {
+  const latestMapRequest = useRef(0)
+  const latestListRequest = useRef(0)
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [addressQuery, setAddressQuery] = useState('')
   const [suggestions, setSuggestions] = useState([])
@@ -144,19 +146,23 @@ export function useAdressesAcquiscanLogic() {
   }, [addressQuery, loadSuggestions])
 
   const loadMap = useCallback(async () => {
+    const requestId = latestMapRequest.current + 1
+    latestMapRequest.current = requestId
     setMapLoading(true)
     setMapError(null)
     try {
       const result = await api.acquiscan.getMapAddresses(mapInput)
+      if (latestMapRequest.current !== requestId) return
       setMapData(result)
       setSelectedId(current => {
         if (!result.points.length) return null
         return result.points.some(point => point.immeubleId === current) ? current : null
       })
     } catch (err) {
+      if (latestMapRequest.current !== requestId) return
       setMapError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
     } finally {
-      setMapLoading(false)
+      if (latestMapRequest.current === requestId) setMapLoading(false)
     }
   }, [mapInput])
 
@@ -178,20 +184,26 @@ export function useAdressesAcquiscanLogic() {
 
   const loadList = useCallback(async () => {
     if (!listInput) {
+      latestListRequest.current += 1
       setListData(null)
       setListError(null)
+      setListLoading(false)
       return
     }
 
+    const requestId = latestListRequest.current + 1
+    latestListRequest.current = requestId
     setListLoading(true)
     setListError(null)
     try {
       const result = await api.acquiscan.getCopperBuildings(listInput)
+      if (latestListRequest.current !== requestId) return
       setListData(result)
     } catch (err) {
+      if (latestListRequest.current !== requestId) return
       setListError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
     } finally {
-      setListLoading(false)
+      if (latestListRequest.current === requestId) setListLoading(false)
     }
   }, [listInput])
 
@@ -213,9 +225,18 @@ export function useAdressesAcquiscanLogic() {
 
   const updateMapViewport = useCallback((bounds, zoom) => {
     if (!bounds) return
-    setMapQuery({
-      bounds: normalizeBounds(bounds),
-      zoom: Number(zoom.toFixed(2)),
+    const nextBounds = normalizeBounds(bounds)
+    const nextZoom = Number(zoom.toFixed(2))
+    setMapQuery(current => {
+      const sameBounds = current.bounds.west === nextBounds.west
+        && current.bounds.south === nextBounds.south
+        && current.bounds.east === nextBounds.east
+        && current.bounds.north === nextBounds.north
+      if (sameBounds && current.zoom === nextZoom) return current
+      return {
+        bounds: nextBounds,
+        zoom: nextZoom,
+      }
     })
   }, [])
 
@@ -225,6 +246,13 @@ export function useAdressesAcquiscanLogic() {
     setSuggestions([])
     setSelectedSuggestion(null)
     setSelectedId(null)
+  }, [])
+
+  const clearSearchSelection = useCallback(() => {
+    setAddressQuery('')
+    setSuggestions([])
+    setSuggestionsError(null)
+    setSelectedSuggestion(null)
   }, [])
 
   const selectSuggestion = useCallback(suggestion => {
@@ -279,6 +307,7 @@ export function useAdressesAcquiscanLogic() {
     filters,
     updateFilter,
     resetFilters,
+    clearSearchSelection,
     addressQuery,
     setAddressQuery,
     suggestions,
