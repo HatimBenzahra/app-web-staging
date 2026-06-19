@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '@/services'
+import { api, useCommercials, useManagers } from '@/services'
 
 const INITIAL_VIEW_STATE = {
   longitude: 2.2137,
@@ -80,6 +80,8 @@ const formatSuggestionError = error => {
 }
 
 export function useAdressesAcquiscanLogic() {
+  const { data: managers = [] } = useManagers()
+  const { data: commercials = [] } = useCommercials()
   const latestMapRequest = useRef(0)
   const latestListRequest = useRef(0)
   const latestZonePreviewRequest = useRef(0)
@@ -110,6 +112,7 @@ export function useAdressesAcquiscanLogic() {
   const [zoneCreateLoading, setZoneCreateLoading] = useState(false)
   const [zoneCreateError, setZoneCreateError] = useState(null)
   const [createdZone, setCreatedZone] = useState(null)
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState([])
 
   const mapInput = useMemo(() => {
     const normalized = normalizeFilters(filters)
@@ -410,6 +413,7 @@ export function useAdressesAcquiscanLogic() {
     setExcludedTargetIds([])
     setZoneCreateError(null)
     setCreatedZone(null)
+    setSelectedAssignmentIds([])
   }, [])
 
   const setZoneCenter = useCallback((longitude, latitude) => {
@@ -448,6 +452,45 @@ export function useAdressesAcquiscanLogic() {
       .map(target => target.immeubleId)
   }, [excludedTargetIds, zonePreview?.targets])
 
+  const assignableUsers = useMemo(() => {
+    const formatName = user => [user?.prenom, user?.nom].filter(Boolean).join(' ').trim()
+      || user?.email
+      || `Utilisateur ${user?.id}`
+
+    const managerItems = (managers || []).map(manager => ({
+      key: `manager:${manager.id}`,
+      id: manager.id,
+      role: 'manager',
+      label: formatName(manager),
+      subtitle: 'Manager',
+    }))
+
+    const commercialItems = (commercials || []).map(commercial => ({
+      key: `commercial:${commercial.id}`,
+      id: commercial.id,
+      role: 'commercial',
+      label: formatName(commercial),
+      subtitle: 'Commercial',
+    }))
+
+    return [...managerItems, ...commercialItems].sort((a, b) => (
+      a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
+    ))
+  }, [commercials, managers])
+
+  const selectedAssignments = useMemo(() => {
+    const selected = new Set(selectedAssignmentIds)
+    return assignableUsers.filter(user => selected.has(user.key))
+  }, [assignableUsers, selectedAssignmentIds])
+
+  const toggleAssignment = useCallback(key => {
+    setSelectedAssignmentIds(current => (
+      current.includes(key)
+        ? current.filter(item => item !== key)
+        : [...current, key]
+    ))
+  }, [])
+
   const createZoneFromPreview = useCallback(async () => {
     if (!zonePreviewInput) {
       setZoneCreateError('Trace un cercle avant de créer la zone.')
@@ -470,6 +513,21 @@ export function useAdressesAcquiscanLogic() {
         nom: zoneName.trim(),
         selectedImmeubleIds: selectedZoneTargetIds,
       })
+
+      if (selectedAssignments.length) {
+        const assignments = await Promise.allSettled(selectedAssignments.map(async user => {
+          const assigned = user.role === 'manager'
+            ? await api.managers.assignZone(user.id, zone.id)
+            : await api.commercials.assignZone(user.id, zone.id)
+          if (!assigned) throw new Error(`Assignation ${user.label} refusée`)
+          return assigned
+        }))
+        const failedCount = assignments.filter(result => result.status === 'rejected').length
+        if (failedCount) {
+          setZoneCreateError(`Zone créée, mais ${failedCount} assignation${failedCount > 1 ? 's' : ''} ont échoué.`)
+        }
+      }
+
       setCreatedZone(zone)
       return zone
     } catch (err) {
@@ -478,7 +536,7 @@ export function useAdressesAcquiscanLogic() {
     } finally {
       setZoneCreateLoading(false)
     }
-  }, [selectedZoneTargetIds, zoneName, zonePreviewInput])
+  }, [selectedAssignments, selectedZoneTargetIds, zoneName, zonePreviewInput])
 
   return {
     filters,
@@ -514,6 +572,10 @@ export function useAdressesAcquiscanLogic() {
     excludedTargetIds,
     toggleZoneTarget,
     selectedZoneTargetIds,
+    assignableUsers,
+    selectedAssignmentIds,
+    selectedAssignments,
+    toggleAssignment,
     zoneName,
     setZoneName,
     createZoneFromPreview,

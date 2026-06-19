@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Users,
   Wifi,
   X,
   Zap,
@@ -303,6 +304,10 @@ export default function AdressesAcquiscan() {
     excludedTargetIds,
     toggleZoneTarget,
     selectedZoneTargetIds,
+    assignableUsers,
+    selectedAssignmentIds,
+    selectedAssignments,
+    toggleAssignment,
     zoneName,
     setZoneName,
     createZoneFromPreview,
@@ -882,6 +887,50 @@ export default function AdressesAcquiscan() {
                           className="h-9"
                         />
                       </FilterField>
+                      <FilterField label="Assigner à">
+                        <div className="rounded-md border bg-background">
+                          <div className="flex items-center justify-between border-b px-2 py-1.5">
+                            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                              <Users className="h-3.5 w-3.5" />
+                              Managers / commerciaux
+                            </span>
+                            <Badge variant={selectedAssignments.length ? 'secondary' : 'outline'} className="h-5">
+                              {selectedAssignments.length}
+                            </Badge>
+                          </div>
+                          {assignableUsers.length === 0 ? (
+                            <p className="px-2 py-3 text-xs text-muted-foreground">
+                              Aucun manager ou commercial disponible.
+                            </p>
+                          ) : (
+                            <div className="scrollbar-hidden max-h-36 overflow-y-auto">
+                              {assignableUsers.map(user => {
+                                const selected = selectedAssignmentIds.includes(user.key)
+                                return (
+                                  <button
+                                    type="button"
+                                    key={user.key}
+                                    onClick={() => toggleAssignment(user.key)}
+                                    className={`flex w-full items-center gap-2 border-b px-2 py-2 text-left last:border-b-0 transition-colors hover:bg-muted ${
+                                      selected ? 'bg-red-50/70 text-red-950' : ''
+                                    }`}
+                                  >
+                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                      selected ? 'border-red-500 bg-red-600 text-white' : 'border-muted-foreground/30 text-transparent'
+                                    }`}>
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-xs font-medium">{user.label}</span>
+                                      <span className="block truncate text-[11px] text-muted-foreground">{user.subtitle}</span>
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </FilterField>
                       {zoneCreateError && (
                         <p className="text-xs text-destructive">{zoneCreateError}</p>
                       )}
@@ -897,7 +946,9 @@ export default function AdressesAcquiscan() {
                         className="h-9 w-full gap-2"
                       >
                         {zoneCreateLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
-                        Créer la zone avec {fmtInt(selectedZoneTargetIds.length)} adresse{selectedZoneTargetIds.length > 1 ? 's' : ''}
+                        {selectedAssignments.length
+                          ? `Créer et assigner ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`
+                          : `Créer la zone avec ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`}
                       </Button>
                     </div>
                   </>
