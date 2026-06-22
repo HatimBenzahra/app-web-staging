@@ -29,9 +29,11 @@ import { RecordingService } from '@/services/audio'
 
 function SegmentCard({ segment }) {
   const [expanded, setExpanded] = useState(false)
+  const [segmentUrl, setSegmentUrl] = useState(null)
+  const [loadingSegment, setLoadingSegment] = useState(false)
   const [originalUrl, setOriginalUrl] = useState(null)
   const [loadingOriginal, setLoadingOriginal] = useState(false)
-  const [originalError, setOriginalError] = useState(null)
+  const [audioError, setAudioError] = useState(null)
   const date = new Date(segment.createdAt)
   const dateStr = date.toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -47,18 +49,34 @@ function SegmentCard({ segment }) {
     hasLongTranscription && !expanded
       ? segment.transcription.slice(0, truncateLimit) + '…'
       : segment.transcription
-  const canLoadOriginal = !segment.streamingUrl && segment.s3KeyOriginal
+  const canLoadSegment = Boolean(segment.s3KeySegment)
+  const canLoadOriginal = !canLoadSegment && segment.s3KeyOriginal
+
+  const handleLoadSegment = async () => {
+    if (!segment.s3KeySegment || loadingSegment) return
+
+    setLoadingSegment(true)
+    setAudioError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeySegment)
+      setSegmentUrl(url)
+    } catch {
+      setAudioError("Impossible de charger l'audio du segment.")
+    } finally {
+      setLoadingSegment(false)
+    }
+  }
 
   const handleLoadOriginal = async () => {
     if (!segment.s3KeyOriginal || loadingOriginal) return
 
     setLoadingOriginal(true)
-    setOriginalError(null)
+    setAudioError(null)
     try {
       const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
       setOriginalUrl(url)
     } catch {
-      setOriginalError("Impossible de charger l'enregistrement complet.")
+      setAudioError("Impossible de charger l'enregistrement complet.")
     } finally {
       setLoadingOriginal(false)
     }
@@ -94,8 +112,8 @@ function SegmentCard({ segment }) {
         </div>
       </div>
 
-      {segment.streamingUrl ? (
-        <AudioPlayer src={segment.streamingUrl} />
+      {segmentUrl ? (
+        <AudioPlayer src={segmentUrl} />
       ) : originalUrl ? (
         <div className="space-y-2">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -109,6 +127,22 @@ function SegmentCard({ segment }) {
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
           <span className="text-[11px] text-muted-foreground">Traitement audio en cours...</span>
         </div>
+      ) : canLoadSegment ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleLoadSegment}
+          disabled={loadingSegment}
+          className="h-8 gap-1.5"
+        >
+          {loadingSegment ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <PlayCircle className="h-3.5 w-3.5" />
+          )}
+          Charger l'audio
+        </Button>
       ) : canLoadOriginal ? (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
           <div className="flex items-start gap-2 text-amber-900">
@@ -134,9 +168,10 @@ function SegmentCard({ segment }) {
             )}
             Charger l'audio complet
           </Button>
-          {originalError && <p className="text-[11px] text-red-600">{originalError}</p>}
         </div>
       ) : null}
+
+      {audioError && <p className="mt-2 text-[11px] text-red-600">{audioError}</p>}
 
       {segment.transcription && (
         <div className="bg-muted/40 rounded-lg p-2.5 border border-border/40">

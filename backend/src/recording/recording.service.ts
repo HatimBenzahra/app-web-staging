@@ -773,16 +773,7 @@ export class RecordingService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const withUrls = await Promise.all(
-      segments.map(async (segment) => ({
-        ...segment,
-        streamingUrl: segment.s3KeySegment
-          ? await this.signedUrlOrUndefined(segment.s3KeySegment)
-          : undefined,
-      })),
-    );
-
-    return withUrls.map((segment) => ({
+    return segments.map((segment) => ({
       id: segment.id,
       porteId: segment.porteId,
       s3KeyOriginal: segment.s3KeyOriginal,
@@ -794,7 +785,6 @@ export class RecordingService {
       transcription: segment.transcription ?? undefined,
       speechScore: segment.speechScore ?? undefined,
       status: segment.status,
-      streamingUrl: segment.streamingUrl,
       createdAt: segment.createdAt,
     }));
   }

@@ -257,6 +257,7 @@ export const GET_RECORDING_SEGMENTS_BY_PORTE = `
       id
       porteId
       s3KeyOriginal
+      s3KeySegment
       statut
       startTime
       endTime
@@ -264,7 +265,6 @@ export const GET_RECORDING_SEGMENTS_BY_PORTE = `
       transcription
       speechScore
       status
-      streamingUrl
       createdAt
     }
   }

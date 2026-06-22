@@ -1,6 +1,24 @@
 import { useMemo } from 'react'
 import { filterStatisticsByDate, filterPortesByDate } from './useDateFilter'
 
+function sortPortesByRecentCreation(portes) {
+  return [...portes].sort((a, b) => {
+    const createdAtA = a.createdAt ? new Date(a.createdAt).getTime() : -Infinity
+    const createdAtB = b.createdAt ? new Date(b.createdAt).getTime() : -Infinity
+    const timestampA = Number.isFinite(createdAtA) ? createdAtA : -Infinity
+    const timestampB = Number.isFinite(createdAtB) ? createdAtB : -Infinity
+
+    if (timestampA !== timestampB) {
+      return timestampB - timestampA
+    }
+
+    return String(b.id || '').localeCompare(String(a.id || ''), 'fr', {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  })
+}
+
 /**
  * Hook pour calculer les statistiques personnelles filtrées par date
  * IMPORTANT: Calcule les stats à partir des PORTES filtrées, pas des statistiques
@@ -128,7 +146,7 @@ export function useImmeublesTableData(immeubles, appliedStartDate, appliedEndDat
   })
 }
 
-      const doors = portesImmeuble.map(porte => {
+      const doors = sortPortesByRecentCreation(portesImmeuble).map(porte => {
         const porteVisit = porte.derniereVisite || porte.updatedAt || null
 
         return {
@@ -189,6 +207,8 @@ export function useFilteredPortes(immeubles, appliedStartDate, appliedEndDate) {
     }, [])
 
     // Filtrer par date si nécessaire
-    return filterPortesByDate(allPortesUnfiltered, appliedStartDate, appliedEndDate)
+    return sortPortesByRecentCreation(
+      filterPortesByDate(allPortesUnfiltered, appliedStartDate, appliedEndDate)
+    )
   }, [immeubles, appliedStartDate, appliedEndDate])
 }

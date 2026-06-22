@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
   Loader2,
@@ -12,6 +13,7 @@ import {
   DoorOpen,
   ChevronDown,
   ChevronUp,
+  PlayCircle,
 } from 'lucide-react'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import { usePorte, useRecordingSegmentsByPorte } from '@/hooks/metier/use-api'
@@ -21,9 +23,13 @@ import {
   formatDuration,
 } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
 import AudioPlayer from '@/components/AudioPlayer'
+import { RecordingService } from '@/services/audio'
 
 function SegmentCard({ segment }) {
   const [expanded, setExpanded] = useState(false)
+  const [segmentUrl, setSegmentUrl] = useState(null)
+  const [loadingSegment, setLoadingSegment] = useState(false)
+  const [audioError, setAudioError] = useState(null)
   const date = new Date(segment.createdAt)
   const dateStr = date.toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -39,6 +45,21 @@ function SegmentCard({ segment }) {
     hasLongTranscription && !expanded
       ? segment.transcription.slice(0, truncateLimit) + '\u2026'
       : segment.transcription
+
+  const handleLoadSegment = async () => {
+    if (!segment.s3KeySegment || loadingSegment) return
+
+    setLoadingSegment(true)
+    setAudioError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeySegment)
+      setSegmentUrl(url)
+    } catch {
+      setAudioError("Impossible de charger l'audio.")
+    } finally {
+      setLoadingSegment(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-border/60 hover:border-border hover:shadow-sm transition-all duration-200 bg-card p-3">
@@ -65,7 +86,26 @@ function SegmentCard({ segment }) {
         </div>
       </div>
 
-      {segment.streamingUrl && <AudioPlayer src={segment.streamingUrl} />}
+      {segmentUrl ? (
+        <AudioPlayer src={segmentUrl} />
+      ) : segment.s3KeySegment ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleLoadSegment}
+          disabled={loadingSegment}
+          className="mb-2 h-8 gap-1.5"
+        >
+          {loadingSegment ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <PlayCircle className="h-3.5 w-3.5" />
+          )}
+          Charger l'audio
+        </Button>
+      ) : null}
+      {audioError && <p className="mb-2 text-[11px] text-red-600">{audioError}</p>}
 
       {segment.transcription && (
         <div className="bg-muted/40 rounded-lg p-2.5 border border-border/40">

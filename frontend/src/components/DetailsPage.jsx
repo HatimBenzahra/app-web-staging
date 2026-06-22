@@ -234,22 +234,39 @@ function ProspectionChartsSection({ charts = [] }) {
 }
 
 function InlineRecordingSegment({ segment }) {
+  const [segmentUrl, setSegmentUrl] = useState(null)
+  const [loadingSegment, setLoadingSegment] = useState(false)
   const [originalUrl, setOriginalUrl] = useState(null)
   const [loadingOriginal, setLoadingOriginal] = useState(false)
-  const [originalError, setOriginalError] = useState(null)
-  const hasSegmentAudio = Boolean(segment.streamingUrl)
-  const canLoadOriginal = !hasSegmentAudio && segment.s3KeyOriginal
+  const [audioError, setAudioError] = useState(null)
+  const canLoadSegment = Boolean(segment.s3KeySegment)
+  const canLoadOriginal = !canLoadSegment && segment.s3KeyOriginal
+
+  const handleLoadSegment = async () => {
+    if (!segment.s3KeySegment || loadingSegment) return
+
+    setLoadingSegment(true)
+    setAudioError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeySegment)
+      setSegmentUrl(url)
+    } catch {
+      setAudioError("Impossible de charger l'audio du segment.")
+    } finally {
+      setLoadingSegment(false)
+    }
+  }
 
   const handleLoadOriginal = async () => {
     if (!segment.s3KeyOriginal || loadingOriginal) return
 
     setLoadingOriginal(true)
-    setOriginalError(null)
+    setAudioError(null)
     try {
       const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
       setOriginalUrl(url)
     } catch {
-      setOriginalError("Impossible de charger l'audio complet.")
+      setAudioError("Impossible de charger l'audio complet.")
     } finally {
       setLoadingOriginal(false)
     }
@@ -283,8 +300,8 @@ function InlineRecordingSegment({ segment }) {
         </div>
       </div>
 
-      {hasSegmentAudio ? (
-        <AudioPlayer src={segment.streamingUrl} />
+      {segmentUrl ? (
+        <AudioPlayer src={segmentUrl} />
       ) : originalUrl ? (
         <div className="space-y-2">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -298,6 +315,22 @@ function InlineRecordingSegment({ segment }) {
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Traitement audio en cours...
         </div>
+      ) : canLoadSegment ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleLoadSegment}
+          disabled={loadingSegment}
+          className="h-8 gap-1.5"
+        >
+          {loadingSegment ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <PlayCircle className="h-3.5 w-3.5" />
+          )}
+          Charger l'audio
+        </Button>
       ) : canLoadOriginal ? (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <div className="flex items-start gap-2 text-[11px] leading-relaxed text-amber-900">
@@ -322,13 +355,14 @@ function InlineRecordingSegment({ segment }) {
             )}
             Charger l'audio complet
           </Button>
-          {originalError && <p className="text-[11px] text-destructive">{originalError}</p>}
         </div>
       ) : (
         <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           Aucun lecteur disponible pour ce segment.
         </div>
       )}
+
+      {audioError && <p className="mt-2 text-[11px] text-destructive">{audioError}</p>}
 
       {segment.transcription && (
         <p className="mt-2 line-clamp-2 rounded-lg bg-muted/30 px-3 py-2 text-xs italic text-muted-foreground">
