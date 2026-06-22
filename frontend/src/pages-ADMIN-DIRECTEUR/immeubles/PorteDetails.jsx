@@ -15,6 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  PlayCircle,
+  AlertTriangle,
 } from 'lucide-react'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import PorteHistoriqueTimeline from './components/PorteHistoriqueTimeline'
@@ -23,9 +25,13 @@ import {
   formatDuration,
 } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
 import AudioPlayer from '@/components/AudioPlayer'
+import { RecordingService } from '@/services/audio'
 
 function SegmentCard({ segment }) {
   const [expanded, setExpanded] = useState(false)
+  const [originalUrl, setOriginalUrl] = useState(null)
+  const [loadingOriginal, setLoadingOriginal] = useState(false)
+  const [originalError, setOriginalError] = useState(null)
   const date = new Date(segment.createdAt)
   const dateStr = date.toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -41,6 +47,22 @@ function SegmentCard({ segment }) {
     hasLongTranscription && !expanded
       ? segment.transcription.slice(0, truncateLimit) + '…'
       : segment.transcription
+  const canLoadOriginal = !segment.streamingUrl && segment.s3KeyOriginal
+
+  const handleLoadOriginal = async () => {
+    if (!segment.s3KeyOriginal || loadingOriginal) return
+
+    setLoadingOriginal(true)
+    setOriginalError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
+      setOriginalUrl(url)
+    } catch {
+      setOriginalError("Impossible de charger l'enregistrement complet.")
+    } finally {
+      setLoadingOriginal(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-border/60 hover:border-border hover:shadow-sm transition-all duration-200 bg-card p-3.5">
@@ -74,10 +96,45 @@ function SegmentCard({ segment }) {
 
       {segment.streamingUrl ? (
         <AudioPlayer src={segment.streamingUrl} />
+      ) : originalUrl ? (
+        <div className="space-y-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            Segment non découpé. Audio complet chargé, passage à écouter autour de{' '}
+            <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+          </div>
+          <AudioPlayer src={originalUrl} />
+        </div>
       ) : segment.status === 'PENDING' || segment.status === 'PROCESSING' ? (
         <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-muted/30 border border-border/40">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
           <span className="text-[11px] text-muted-foreground">Traitement audio en cours...</span>
+        </div>
+      ) : canLoadOriginal ? (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
+          <div className="flex items-start gap-2 text-amber-900">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="text-[11px] leading-relaxed">
+              Le découpage de ce segment n'est pas disponible. Tu peux écouter
+              l'enregistrement complet et te placer autour de{' '}
+              <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleLoadOriginal}
+            disabled={loadingOriginal}
+            className="h-8 gap-1.5 bg-background"
+          >
+            {loadingOriginal ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlayCircle className="h-3.5 w-3.5" />
+            )}
+            Charger l'audio complet
+          </Button>
+          {originalError && <p className="text-[11px] text-red-600">{originalError}</p>}
         </div>
       ) : null}
 

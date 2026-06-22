@@ -201,11 +201,62 @@ export const GET_RECORDING_SEGMENTS_BY_IMMEUBLE = `
   }
 `
 
+export const GET_RECORDING_SEGMENTS_BY_COMMERCIAL = `
+  query RecordingSegmentsByCommercial($commercialId: Int!) {
+    recordingSegmentsByCommercial(commercialId: $commercialId) {
+      id
+      porteId
+      porteNumero
+      porteEtage
+      immeubleId
+      immeubleAdresse
+      commercialId
+      managerId
+      commercialNom
+      s3KeySegment
+      statut
+      startTime
+      endTime
+      durationSec
+      transcription
+      speechScore
+      status
+      createdAt
+    }
+  }
+`
+
+export const GET_RECORDING_SEGMENTS_BY_MANAGER = `
+  query RecordingSegmentsByManager($managerId: Int!) {
+    recordingSegmentsByManager(managerId: $managerId) {
+      id
+      porteId
+      porteNumero
+      porteEtage
+      immeubleId
+      immeubleAdresse
+      commercialId
+      managerId
+      commercialNom
+      s3KeySegment
+      statut
+      startTime
+      endTime
+      durationSec
+      transcription
+      speechScore
+      status
+      createdAt
+    }
+  }
+`
+
 export const GET_RECORDING_SEGMENTS_BY_PORTE = `
   query RecordingSegmentsByPorte($porteId: Int!) {
     recordingSegmentsByPorte(porteId: $porteId) {
       id
       porteId
+      s3KeyOriginal
       statut
       startTime
       endTime

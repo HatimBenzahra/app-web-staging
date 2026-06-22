@@ -15,7 +15,8 @@ import {
   useImmeublesTableData,
   useFilteredPortes,
 } from '@/hooks/utils/filters/useStatisticsFilter'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Mic } from 'lucide-react'
 import { calculateRank, calculateRankFromStats, aggregateStats } from '@/utils/business/ranks'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { AdvancedDataTable } from '@/components/tableau'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
+import { porteApi } from '@/services/api/portes/porte.service'
 
 const ACTIVITY_STATUS_LABELS = {
   CONTRAT_SIGNE: 'Contrat signé',
@@ -71,6 +73,27 @@ export function useManagerDetailsLogic() {
   const { isAdmin } = useRole()
   const { showError, showSuccess } = useErrorToast()
   const [assigningCommercial, setAssigningCommercial] = useState(null)
+  const [recordingSegments, setRecordingSegments] = useState([])
+
+  useEffect(() => {
+    const managerId = parseInt(id)
+    if (!Number.isFinite(managerId)) return
+
+    let active = true
+    porteApi
+      .getRecordingSegmentsByManager(managerId)
+      .then(segments => {
+        if (active) setRecordingSegments(segments || [])
+      })
+      .catch(error => {
+        console.error('Erreur chargement segments audio du manager:', error)
+        if (active) setRecordingSegments([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
 
   // Hook pour gérer les filtres de date (pour les stats et portes)
   const dateFilter = useDateFilter()
@@ -438,6 +461,15 @@ export function useManagerDetailsLogic() {
   // Données des portes
   const allPortes = useFilteredPortes(manager?.immeubles, appliedStartDate, appliedEndDate)
 
+  const porteSegmentCounts = useMemo(() => {
+    const counts = new Map()
+    recordingSegments.forEach(segment => {
+      if (!segment.porteId) return
+      counts.set(segment.porteId, (counts.get(segment.porteId) || 0) + 1)
+    })
+    return counts
+  }, [recordingSegments])
+
   // Construct props for view
   const personalInfo = managerData ? [
     {
@@ -598,6 +630,26 @@ export function useManagerDetailsLogic() {
     { header: 'Statut', accessor: 'status', sortable: true, cell: row => <Badge className={getStatusColor(row.status?.toUpperCase())}>{getStatusLabel(row.status?.toUpperCase())}</Badge> },
     { header: 'RDV', accessor: 'rdvDate', sortable: true, cell: row => row.rdvDate ? <div className="text-sm"><div>{row.rdvDate}</div><div className="text-muted-foreground">{row.rdvTime}</div></div> : <span className="text-muted-foreground">-</span> },
     { header: 'Dernière visite', accessor: 'lastVisit', sortable: true, cell: row => row.visitedAt || <span className="text-muted-foreground">-</span> },
+    {
+      header: 'Audio',
+      accessor: 'audio',
+      sortable: false,
+      className: 'text-center',
+      cell: row => {
+        const count = porteSegmentCounts.get(row.porteId) || 0
+        if (!count || !row.immeubleId) return <span className="text-muted-foreground">-</span>
+
+        return (
+          <span
+            className="inline-flex items-center justify-center gap-1 text-primary"
+            title={`${count} audio${count > 1 ? 's' : ''} disponible${count > 1 ? 's' : ''}. Clique la ligne pour ouvrir les détails.`}
+          >
+            <Mic className="h-4 w-4" />
+            <span className="text-sm font-medium">{count}</span>
+          </span>
+        )
+      },
+    },
   ]
 
   const immeublesColumns = [
@@ -621,6 +673,7 @@ export function useManagerDetailsLogic() {
         ...porte,
         id: porte.id,
         porteId: porte.id,
+        immeubleId: porte.immeubleId,
         tableId: `door-${porte.id}`,
         number: porte.numero,
         address: immeuble ? `${immeuble.adresse}` : 'Non spécifié',

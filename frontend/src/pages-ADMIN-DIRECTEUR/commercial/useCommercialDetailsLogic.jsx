@@ -5,13 +5,15 @@ import {
   useCurrentZoneAssignment,
   useTeamLastStatusActivities,
 } from '@/services'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Mic } from 'lucide-react'
 import { calculateRank, aggregateStats } from '@/utils/business/ranks'
 import { Badge } from '@/components/ui/badge'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { useDateFilter } from '@/hooks/utils/filters/useDateFilter'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
+import { porteApi } from '@/services/api/portes/porte.service'
 import {
   usePersonalStats,
   useImmeublesTableData,
@@ -80,6 +82,27 @@ export function useCommercialDetailsLogic() {
 
   // État pour le type de date à filtrer (création ou modification)
   const [immeubleDateType, setImmeubleDateType] = useState('created')
+  const [recordingSegments, setRecordingSegments] = useState([])
+
+  useEffect(() => {
+    const commercialId = parseInt(id)
+    if (!Number.isFinite(commercialId)) return
+
+    let active = true
+    porteApi
+      .getRecordingSegmentsByCommercial(commercialId)
+      .then(segments => {
+        if (active) setRecordingSegments(segments || [])
+      })
+      .catch(error => {
+        console.error('Erreur chargement segments audio du commercial:', error)
+        if (active) setRecordingSegments([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
 
   // Utiliser le hook pour calculer les stats personnelles du commercial
   const { personalStats } = usePersonalStats(commercial, appliedStartDate, appliedEndDate)
@@ -201,6 +224,15 @@ export function useCommercialDetailsLogic() {
   // Données des portes
   const allPortes = useFilteredPortes(commercial?.immeubles, appliedStartDate, appliedEndDate)
 
+  const porteSegmentCounts = useMemo(() => {
+    const counts = new Map()
+    recordingSegments.forEach(segment => {
+      if (!segment.porteId) return
+      counts.set(segment.porteId, (counts.get(segment.porteId) || 0) + 1)
+    })
+    return counts
+  }, [recordingSegments])
+
   // Colonnes des portes
   const doorsColumns = [
     {
@@ -253,6 +285,26 @@ export function useCommercialDetailsLogic() {
       accessor: 'lastVisit',
       sortable: true,
       cell: row => row.visitedAt || <span className="text-muted-foreground">-</span>,
+    },
+    {
+      header: 'Audio',
+      accessor: 'audio',
+      sortable: false,
+      className: 'text-center',
+      cell: row => {
+        const count = porteSegmentCounts.get(row.porteId) || 0
+        if (!count || !row.immeubleId) return <span className="text-muted-foreground">-</span>
+
+        return (
+          <span
+            className="inline-flex items-center justify-center gap-1 text-primary"
+            title={`${count} audio${count > 1 ? 's' : ''} disponible${count > 1 ? 's' : ''}. Clique la ligne pour ouvrir les détails.`}
+          >
+            <Mic className="h-4 w-4" />
+            <span className="text-sm font-medium">{count}</span>
+          </span>
+        )
+      },
     },
   ]
 

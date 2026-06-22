@@ -135,6 +135,7 @@ export function useImmeublesTableData(immeubles, appliedStartDate, appliedEndDat
           ...porte,
           id: porte.id,
           porteId: porte.id,
+          immeubleId: porte.immeubleId || immeuble.id,
           tableId: `door-nested-${porte.id}`,
           number: porte.numero,
           etage: `Étage ${porte.etage}`,

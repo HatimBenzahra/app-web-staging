@@ -120,6 +120,7 @@ export class RecordingSegmentDto {
   @Field(() => Int, { nullable: true }) porteEtage?: number;
   @Field({ nullable: true }) immeubleAdresse?: string;
   @Field({ nullable: true }) commercialNom?: string;
+  @Field({ nullable: true }) s3KeyOriginal?: string;
   @Field({ nullable: true }) s3KeySegment?: string;
   @Field({ nullable: true }) statut?: string;
   @Field(() => Float) startTime: number;
@@ -130,6 +131,8 @@ export class RecordingSegmentDto {
   @Field() status: string;
   @Field({ nullable: true }) streamingUrl?: string;
   @Field(() => Int, { nullable: true }) immeubleId?: number;
+  @Field(() => Int, { nullable: true }) commercialId?: number;
+  @Field(() => Int, { nullable: true }) managerId?: number;
   @Field() createdAt: Date;
 }
 

@@ -364,6 +364,38 @@ export class RecordingService {
     }
   }
 
+  private mapSegmentMetadata(segment: any): RecordingSegmentDto {
+    const comm = segment.porte?.immeuble?.commercial;
+    const mgr = segment.porte?.immeuble?.manager;
+    const commercialNom = comm
+      ? `${comm.prenom} ${comm.nom}`
+      : mgr
+        ? `${mgr.prenom} ${mgr.nom}`
+        : undefined;
+
+    return {
+      id: segment.id,
+      porteId: segment.porteId,
+      porteNumero: segment.porte?.numero,
+      porteEtage: segment.porte?.etage,
+      immeubleAdresse: segment.porte?.immeuble?.adresse,
+      commercialNom,
+      s3KeyOriginal: segment.s3KeyOriginal ?? undefined,
+      s3KeySegment: segment.s3KeySegment ?? undefined,
+      statut: segment.statut ?? undefined,
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+      durationSec: segment.durationSec,
+      transcription: segment.transcription ?? undefined,
+      speechScore: segment.speechScore ?? undefined,
+      status: segment.status,
+      createdAt: segment.createdAt,
+      immeubleId: segment.immeubleId ?? segment.porte?.immeuble?.id,
+      commercialId: segment.commercialId ?? comm?.id,
+      managerId: segment.managerId ?? mgr?.id,
+    };
+  }
+
   /**
    * Démarre un enregistrement audio-only (par défaut) vers S3.
    * - Si `participantIdentity` est fourni → Participant Egress (cible unique)
@@ -753,6 +785,7 @@ export class RecordingService {
     return withUrls.map((segment) => ({
       id: segment.id,
       porteId: segment.porteId,
+      s3KeyOriginal: segment.s3KeyOriginal,
       s3KeySegment: segment.s3KeySegment ?? undefined,
       statut: segment.statut ?? undefined,
       startTime: segment.startTime,
@@ -808,6 +841,7 @@ export class RecordingService {
       porteNumero: segment.porte.numero,
       porteEtage: segment.porte.etage,
       immeubleAdresse: segment.porte.immeuble.adresse,
+      s3KeyOriginal: segment.s3KeyOriginal,
       s3KeySegment: segment.s3KeySegment ?? undefined,
       statut: segment.statut ?? undefined,
       startTime: segment.startTime,
@@ -819,6 +853,113 @@ export class RecordingService {
       streamingUrl: segment.streamingUrl,
       createdAt: segment.createdAt,
     }));
+  }
+
+  async getSegmentsByCommercial(
+    commercialId: number,
+    currentUser: { id: number; role: string },
+  ): Promise<RecordingSegmentDto[]> {
+    if (currentUser.role !== 'admin' && currentUser.role !== 'directeur') {
+      throw new ForbiddenException('Access denied to recording segments');
+    }
+
+    const commercial = await this.prisma.commercial.findUnique({
+      where: { id: commercialId },
+      select: { id: true, directeurId: true },
+    });
+
+    if (!commercial) {
+      throw new NotFoundException('Commercial not found');
+    }
+
+    if (
+      currentUser.role === 'directeur' &&
+      commercial.directeurId !== Number(currentUser.id)
+    ) {
+      throw new ForbiddenException('Access denied to recording segments');
+    }
+
+    const segments = await this.prisma.recordingSegment.findMany({
+      where: {
+        OR: [
+          { commercialId },
+          { porte: { immeuble: { commercialId } } },
+        ],
+      },
+      include: {
+        porte: {
+          select: {
+            numero: true,
+            etage: true,
+            immeuble: {
+              select: {
+                id: true,
+                adresse: true,
+                commercial: { select: { id: true, nom: true, prenom: true } },
+                manager: { select: { id: true, nom: true, prenom: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return segments.map((segment) => this.mapSegmentMetadata(segment));
+  }
+
+  async getSegmentsByManager(
+    managerId: number,
+    currentUser: { id: number; role: string },
+  ): Promise<RecordingSegmentDto[]> {
+    if (currentUser.role !== 'admin' && currentUser.role !== 'directeur') {
+      throw new ForbiddenException('Access denied to recording segments');
+    }
+
+    const manager = await this.prisma.manager.findUnique({
+      where: { id: managerId },
+      select: { id: true, directeurId: true },
+    });
+
+    if (!manager) {
+      throw new NotFoundException('Manager not found');
+    }
+
+    if (
+      currentUser.role === 'directeur' &&
+      manager.directeurId !== Number(currentUser.id)
+    ) {
+      throw new ForbiddenException('Access denied to recording segments');
+    }
+
+    const segments = await this.prisma.recordingSegment.findMany({
+      where: {
+        OR: [
+          { managerId },
+          { porte: { immeuble: { managerId } } },
+          { porte: { immeuble: { commercial: { managerId } } } },
+        ],
+      },
+      include: {
+        porte: {
+          select: {
+            numero: true,
+            etage: true,
+            immeuble: {
+              select: {
+                id: true,
+                adresse: true,
+                commercial: { select: { id: true, nom: true, prenom: true } },
+                manager: { select: { id: true, nom: true, prenom: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return segments.map((segment) => this.mapSegmentMetadata(segment));
   }
 
   async getSegmentsToday(
@@ -884,6 +1025,7 @@ export class RecordingService {
           porteEtage: segment.porte.etage,
           immeubleAdresse: segment.porte.immeuble.adresse,
           commercialNom,
+          s3KeyOriginal: segment.s3KeyOriginal,
           s3KeySegment: segment.s3KeySegment ?? undefined,
           statut: segment.statut ?? undefined,
           startTime: segment.startTime,
@@ -992,6 +1134,7 @@ export class RecordingService {
       porteNumero: segment.porte.numero,
       porteEtage: segment.porte.etage,
       immeubleAdresse: segment.porte.immeuble.adresse,
+      s3KeyOriginal: segment.s3KeyOriginal,
       s3KeySegment: segment.s3KeySegment ?? undefined,
       statut: segment.statut ?? undefined,
       startTime: segment.startTime,

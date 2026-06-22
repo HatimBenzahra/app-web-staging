@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Award,
   BadgeCheck,
+  AlertTriangle,
   Mail,
   Phone,
   MapPin,
@@ -17,11 +18,14 @@ import {
   DoorOpen,
   FileText,
   KeyRound,
+  Loader2,
   MessageCircle,
+  Mic,
   Search,
   Filter,
   ChevronDown,
   ChevronRight,
+  PlayCircle,
   ShieldCheck,
   Star,
   Target,
@@ -62,6 +66,11 @@ import PortesProspectionChart from './charts/PortesProspectionChart'
 import PortesWeeklyChart from './charts/PortesWeeklyChart'
 import PortesStatusChart from './charts/PortesStatusChart'
 import PorteHistoriqueTimeline from '@/pages-ADMIN-DIRECTEUR/immeubles/components/PorteHistoriqueTimeline'
+import AudioPlayer from '@/components/AudioPlayer'
+import { useRecordingSegmentsByPorte } from '@/hooks/metier/api/portes'
+import { RecordingService } from '@/services/audio'
+import { getStatusColor, getStatusLabel } from '@/constants/domain/porte-status'
+import { formatDuration } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
 import { cn } from '@/lib/utils'
 
 const AssignedZoneCard = lazy(() => import('./AssignedZoneCard'))
@@ -220,6 +229,207 @@ function ProspectionChartsSection({ charts = [] }) {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">{trendCharts.map(renderChart)}</div>
+    </div>
+  )
+}
+
+function InlineRecordingSegment({ segment }) {
+  const [originalUrl, setOriginalUrl] = useState(null)
+  const [loadingOriginal, setLoadingOriginal] = useState(false)
+  const [originalError, setOriginalError] = useState(null)
+  const hasSegmentAudio = Boolean(segment.streamingUrl)
+  const canLoadOriginal = !hasSegmentAudio && segment.s3KeyOriginal
+
+  const handleLoadOriginal = async () => {
+    if (!segment.s3KeyOriginal || loadingOriginal) return
+
+    setLoadingOriginal(true)
+    setOriginalError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
+      setOriginalUrl(url)
+    } catch {
+      setOriginalError("Impossible de charger l'audio complet.")
+    } finally {
+      setLoadingOriginal(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-background p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Mic className="h-3.5 w-3.5" />
+          <span className="font-mono tabular-nums">
+            {formatDuration(segment.startTime)} → {formatDuration(segment.endTime)}
+          </span>
+          {segment.durationSec != null && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">
+              {formatDuration(segment.durationSec)}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {segment.statut && (
+            <Badge className={`text-[10px] ${getStatusColor(segment.statut)}`}>
+              {getStatusLabel(segment.statut)}
+            </Badge>
+          )}
+          {segment.status && (
+            <Badge variant="outline" className="text-[10px]">
+              {segment.status}
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {hasSegmentAudio ? (
+        <AudioPlayer src={segment.streamingUrl} />
+      ) : originalUrl ? (
+        <div className="space-y-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            Segment indisponible. Audio complet chargé, passage autour de{' '}
+            <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+          </div>
+          <AudioPlayer src={originalUrl} />
+        </div>
+      ) : segment.status === 'PENDING' || segment.status === 'PROCESSING' ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Traitement audio en cours...
+        </div>
+      ) : canLoadOriginal ? (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-start gap-2 text-[11px] leading-relaxed text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Le découpage porte n'est pas disponible. Charge l'audio complet et écoute autour de{' '}
+              <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleLoadOriginal}
+            disabled={loadingOriginal}
+            className="h-8 gap-1.5 bg-background"
+          >
+            {loadingOriginal ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlayCircle className="h-3.5 w-3.5" />
+            )}
+            Charger l'audio complet
+          </Button>
+          {originalError && <p className="text-[11px] text-destructive">{originalError}</p>}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          Aucun lecteur disponible pour ce segment.
+        </div>
+      )}
+
+      {segment.transcription && (
+        <p className="mt-2 line-clamp-2 rounded-lg bg-muted/30 px-3 py-2 text-xs italic text-muted-foreground">
+          {segment.transcription}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function InlineDoorDetails({ door }) {
+  const porteId = Number(door.porteId || door.id)
+  const { data: segments = [], loading: segmentsLoading } = useRecordingSegmentsByPorte(porteId)
+  const normalizedStatus = String(door.status || door.statut || '').toUpperCase()
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+      <div className="space-y-3 rounded-xl border border-border/60 bg-background p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <DoorOpen className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold">Porte {door.number || door.numero}</h3>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {door.etage || (door.floor != null ? `Étage ${door.floor}` : 'Étage non renseigné')}
+              {door.address && ` · ${door.address}`}
+            </p>
+          </div>
+          {normalizedStatus && (
+            <Badge className={getStatusColor(normalizedStatus)}>
+              {getStatusLabel(normalizedStatus)}
+            </Badge>
+          )}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Dernière visite
+            </p>
+            <p className="mt-1 text-xs font-medium">{door.visitedAt || door.lastVisit || '-'}</p>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">RDV</p>
+            <p className="mt-1 text-xs font-medium">
+              {door.rdvDate ? `${door.rdvDate}${door.rdvTime ? ` à ${door.rdvTime}` : ''}` : '-'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Audios</p>
+            <p className="mt-1 text-xs font-medium">
+              {segmentsLoading ? 'Chargement...' : `${segments.length} segment${segments.length > 1 ? 's' : ''}`}
+            </p>
+          </div>
+        </div>
+
+        {door.commentaire && (
+          <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Commentaire</p>
+            <p className="mt-1 text-xs text-muted-foreground">{door.commentaire}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mic className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold">Enregistrements</h3>
+            </div>
+            {!segmentsLoading && (
+              <Badge variant="secondary" className="text-[10px]">
+                {segments.length}
+              </Badge>
+            )}
+          </div>
+
+          {segmentsLoading ? (
+            <div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Chargement des enregistrements...
+            </div>
+          ) : segments.length > 0 ? (
+            <div className="space-y-2">
+              {segments.map(segment => (
+                <InlineRecordingSegment key={segment.id} segment={segment} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+              Aucun enregistrement lié à cette porte.
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <PorteHistoriqueTimeline porteId={porteId} porteNumero={door.number || door.numero} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -479,16 +689,29 @@ function DoorsTableContent({
                   // Vérifier si c'est une ligne 'Immeuble' avec des portes imbriquées (via nestedDataKey)
                   // OU fallback sur le comportement par défaut (PorteHistoriqueTimeline)
                   const hasNestedData = nestedDataKey && row[nestedDataKey] && row[nestedDataKey].length > 0;
+                  const isDoorRow = !hasNestedData && Boolean(row.porteId || row.number || row.numero)
 
                   return (
                     <React.Fragment key={rowKey}>
-                      <TableRow className="hover:bg-muted/50">
+                      <TableRow
+                        className={cn(
+                          'hover:bg-muted/50',
+                          isDoorRow && 'cursor-pointer'
+                        )}
+                        onClick={() => {
+                          if (isDoorRow) toggleRow(rowKey)
+                        }}
+                      >
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => toggleRow(rowKey)}
+                            onClick={event => {
+                              event.stopPropagation()
+                              toggleRow(rowKey)
+                            }}
                             className="h-8 w-8 p-0"
+                            aria-label={isExpanded ? 'Replier la ligne' : 'Déplier la ligne'}
                           >
                             <ChevronRight
                               className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
@@ -522,6 +745,8 @@ function DoorsTableContent({
                                   searchPlaceholder="Rechercher porte..."
                                   searchKey="number"
                                 />
+                              ) : isDoorRow ? (
+                                <InlineDoorDetails door={row} />
                               ) : (
                                 <PorteHistoriqueTimeline porteId={porteId} porteNumero={row.number} />
                               )}

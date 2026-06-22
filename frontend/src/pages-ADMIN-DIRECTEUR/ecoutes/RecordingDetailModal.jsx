@@ -379,46 +379,64 @@ export default function RecordingDetailModal({
                 </Badge>
               </div>
               <div className="divide-y max-h-56 overflow-y-auto">
-                {segments.map(seg => (
-                  <button
-                    type="button"
-                    key={seg.id}
-                    onClick={() => handleSegmentSeek(seg.startTime)}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-primary/5 cursor-pointer transition-colors group w-full text-left"
-                  >
-                    <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                      <Play className="w-3 h-3" />
-                    </div>
-                    <div className="flex-shrink-0 w-20">
-                      <span className="text-xs font-mono tabular-nums text-muted-foreground">
-                        {formatDuration(seg.startTime)} → {formatDuration(seg.endTime)}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium">Porte {seg.porteNumero}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          Ét. {seg.porteEtage}
-                        </span>
-                        {seg.statut && (
-                          <Badge
-                            className={`text-[10px] px-1.5 py-0 h-4 ${getStatusColor(seg.statut)}`}
-                          >
-                            {getStatusLabel(seg.statut)}
-                          </Badge>
-                        )}
+                {segments.map(seg => {
+                  return (
+                    <div
+                      key={seg.id}
+                      className="group flex flex-col gap-2 px-4 py-3 hover:bg-muted/30 transition-colors sm:flex-row sm:items-center"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                          <Play className="h-3 w-3" />
+                        </div>
+                        <div className="w-20 flex-shrink-0">
+                          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                            {formatDuration(seg.startTime)} → {formatDuration(seg.endTime)}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-medium">Porte {seg.porteNumero}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              Ét. {seg.porteEtage}
+                            </span>
+                            {seg.statut && (
+                              <Badge
+                                className={`text-[10px] px-1.5 py-0 h-4 ${getStatusColor(seg.statut)}`}
+                              >
+                                {getStatusLabel(seg.statut)}
+                              </Badge>
+                            )}
+                          </div>
+                          {seg.transcription && (
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                              {seg.transcription}
+                            </p>
+                          )}
+                        </div>
+                        <div className="hidden flex-shrink-0 md:block">
+                          {seg.speechScore != null && <SpeechScoreBar score={seg.speechScore} />}
+                        </div>
                       </div>
-                      {seg.transcription && (
-                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {seg.transcription}
-                        </p>
-                      )}
+                      <div className="flex flex-shrink-0 items-center justify-end gap-1 sm:justify-start">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 gap-1.5 px-2 text-xs"
+                          onClick={() => handleSegmentSeek(seg.startTime)}
+                          aria-label={`Écouter le passage porte ${seg.porteNumero}`}
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          Écouter
+                        </Button>
+                        <div className="md:hidden">
+                          {seg.speechScore != null && <SpeechScoreBar score={seg.speechScore} />}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-shrink-0">
-                      {seg.speechScore != null && <SpeechScoreBar score={seg.speechScore} />}
-                    </div>
-                  </button>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

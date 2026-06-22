@@ -14,6 +14,8 @@ import {
   GET_STATUS_HISTORIQUE_BY_IMMEUBLE,
   GET_RECORDING_SEGMENTS_BY_PORTE,
   GET_RECORDING_SEGMENTS_BY_IMMEUBLE,
+  GET_RECORDING_SEGMENTS_BY_COMMERCIAL,
+  GET_RECORDING_SEGMENTS_BY_MANAGER,
 } from './porte.queries'
 import {
   CREATE_PORTE,
@@ -113,5 +115,15 @@ export const porteApi = {
   async getRecordingSegmentsByImmeuble(immeubleId: number): Promise<any[]> {
     const response = await gql<any, { immeubleId: number }>(GET_RECORDING_SEGMENTS_BY_IMMEUBLE, { immeubleId })
     return response.recordingSegmentsByImmeuble
+  },
+
+  async getRecordingSegmentsByCommercial(commercialId: number): Promise<any[]> {
+    const response = await gql<any, { commercialId: number }>(GET_RECORDING_SEGMENTS_BY_COMMERCIAL, { commercialId })
+    return response.recordingSegmentsByCommercial
+  },
+
+  async getRecordingSegmentsByManager(managerId: number): Promise<any[]> {
+    const response = await gql<any, { managerId: number }>(GET_RECORDING_SEGMENTS_BY_MANAGER, { managerId })
+    return response.recordingSegmentsByManager
   },
 }

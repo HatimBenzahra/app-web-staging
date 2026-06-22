@@ -205,6 +205,24 @@ export class RecordingResolver {
 
   @Query(() => [RecordingSegmentDto])
   @Roles('admin', 'directeur')
+  async recordingSegmentsByCommercial(
+    @Args('commercialId', { type: () => Int }) commercialId: number,
+    @CurrentUser() user: any,
+  ): Promise<RecordingSegmentDto[]> {
+    return this.svc.getSegmentsByCommercial(commercialId, user);
+  }
+
+  @Query(() => [RecordingSegmentDto])
+  @Roles('admin', 'directeur')
+  async recordingSegmentsByManager(
+    @Args('managerId', { type: () => Int }) managerId: number,
+    @CurrentUser() user: any,
+  ): Promise<RecordingSegmentDto[]> {
+    return this.svc.getSegmentsByManager(managerId, user);
+  }
+
+  @Query(() => [RecordingSegmentDto])
+  @Roles('admin', 'directeur')
   async recordingSegmentsToday(
     @Args('statut', { nullable: true }) statut: string,
     @Args('limit', { type: () => Int, defaultValue: 20 }) limit: number,
