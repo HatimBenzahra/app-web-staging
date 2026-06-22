@@ -11,6 +11,18 @@ Stack:
 - Backend: NestJS 11, GraphQL code-first, Prisma, PostgreSQL.
 - Deployment: VPS-based deployment, not serverless/platform deployment.
 
+## Local Coaching IA Test Dataset
+
+For AI coaching, Whisper, sales-plan scoring, or UI work around conversation analysis, first check the local test dataset at `designs/test-datasets/coaching-ia-v1/`.
+
+- Start with `manifest.csv` or `manifest.json` to see the available cases.
+- Audio files are in `audio/`.
+- Expected Whisper transcripts are in `expected_transcriptions/`.
+- Expected structured coach-agent outputs are in `expected_agent_outputs/`.
+- `osny_2` is the negative quality-gate case: short/noisy audio, expected not scoreable.
+- `grigny_14_30m00_41m24` is the richer analysis case: one door audio slice from 30:00 to 41:24, expected scoreable coaching analysis.
+- Treat this as local agent memory/test material. If the folder is missing in another checkout or session, ask the user before recreating or replacing it.
+
 ## Frontend Rules
 
 Frontend lives in `frontend/` and intentionally uses JSX, not TSX.
