@@ -208,7 +208,7 @@ export function useAdressesAcquiscanLogic() {
     setFilters(prev => ({ ...prev, commune: '' }))
   }, [filters.commune, filters.dept])
 
-  const hasAddressMapContext = Boolean(selectedSuggestion || selectedCommune)
+  const hasAddressMapContext = Boolean(selectedCommune) && !selectedSuggestion
 
   const mapInput = useMemo(() => {
     if (!hasAddressMapContext) return null
@@ -686,7 +686,6 @@ export function useAdressesAcquiscanLogic() {
     },
     [hasSearchMode, mapRows, remoteCoordinateRows, searchRows]
   )
-  const clusters = mapData?.clusters || []
   const selectedAddress = useMemo(
     () => rows.find(row => row.immeubleId === selectedId) || null,
     [rows, selectedId]
@@ -949,7 +948,6 @@ export function useAdressesAcquiscanLogic() {
     stepBackFromMapZoom,
     releaseMapStepBackLock,
     rows,
-    clusters,
     selectedAddress,
     setSelectedId,
     zoneMode,

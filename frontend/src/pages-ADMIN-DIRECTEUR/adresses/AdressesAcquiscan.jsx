@@ -78,50 +78,6 @@ const createCircleGeoJson = circle => {
   }
 }
 
-const clusterLayer = {
-  id: 'acquiscan-clusters',
-  type: 'circle',
-  paint: {
-    'circle-color': ['step', ['get', 'count'], '#475569', 50, '#f59e0b', 250, '#ef4444'],
-    'circle-radius': ['step', ['get', 'count'], 18, 50, 25, 250, 34],
-    'circle-stroke-color': '#ffffff',
-    'circle-stroke-width': 2,
-  },
-}
-
-const clusterCountLayer = {
-  id: 'acquiscan-cluster-count',
-  type: 'symbol',
-  layout: {
-    'text-field': ['to-string', ['get', 'count']],
-    'text-size': 12,
-    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-  },
-  paint: {
-    'text-color': '#ffffff',
-  },
-}
-
-const nationalClusterLayer = {
-  ...clusterLayer,
-  paint: {
-    'circle-color': ['step', ['get', 'count'], '#475569', 100000, '#f59e0b', 250000, '#ef4444'],
-    'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 11, 100000, 15, 300000, 19, 700000, 23],
-    'circle-stroke-color': '#ffffff',
-    'circle-stroke-width': 2,
-    'circle-opacity': 0.9,
-  },
-}
-
-const nationalClusterCountLayer = {
-  ...clusterCountLayer,
-  layout: {
-    ...clusterCountLayer.layout,
-    'text-field': ['concat', ['to-string', ['round', ['/', ['get', 'count'], 1000]]], 'k'],
-    'text-size': 11,
-  },
-}
-
 const pointLayer = {
   id: 'acquiscan-points',
   type: 'circle',
@@ -448,13 +404,11 @@ export default function AdressesAcquiscan() {
     searchPreview,
     searchPreviewLoading,
     searchPreviewError,
-    hasSearchMode,
     initialViewState,
     updateMapViewport,
     stepBackFromMapZoom,
     releaseMapStepBackLock,
     rows,
-    clusters,
     selectedAddress,
     setSelectedId,
     zoneMode,
@@ -487,6 +441,7 @@ export default function AdressesAcquiscan() {
     refetch,
   } = useAdressesAcquiscanLogic()
   const mapRef = useRef(null)
+  const mapShellRef = useRef(null)
   const lastFocusedSuggestionId = useRef(null)
   const lastFocusedAddressId = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -526,6 +481,19 @@ export default function AdressesAcquiscan() {
     setOpenSections(current => ({ ...current, details: true }))
   }, [selectedAddress])
 
+  useEffect(() => {
+    if (!mapShellRef.current) return undefined
+    const resizeMap = () => mapRef.current?.resize?.()
+    resizeMap()
+    const frame = window.requestAnimationFrame(resizeMap)
+    const observer = new ResizeObserver(resizeMap)
+    observer.observe(mapShellRef.current)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [mapLoaded])
+
   const pointsGeoJson = useMemo(
     () => ({
       type: 'FeatureCollection',
@@ -544,24 +512,6 @@ export default function AdressesAcquiscan() {
       })),
     }),
     [rows, zoneMode]
-  )
-
-  const clustersGeoJson = useMemo(
-    () => ({
-      type: 'FeatureCollection',
-      features: clusters.map(cluster => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [cluster.longitude, cluster.latitude],
-        },
-        properties: {
-          id: cluster.id,
-          count: cluster.count,
-        },
-      })),
-    }),
-    [clusters]
   )
 
   const selectedGeoJson = useMemo(
@@ -678,15 +628,6 @@ export default function AdressesAcquiscan() {
       }
     }
 
-    if (feature.layer.id === 'acquiscan-clusters' || feature.layer.id === 'acquiscan-cluster-count') {
-      mapRef.current?.flyTo({
-        center: feature.geometry.coordinates,
-        zoom: Math.min((mapRef.current?.getZoom?.() || initialViewState.zoom) + 2.2, 14),
-        duration: 650,
-      })
-      return
-    }
-
     if (feature.layer.id === 'acquiscan-points') {
       setSelectedId(feature.properties.id)
     }
@@ -727,7 +668,6 @@ export default function AdressesAcquiscan() {
   const searchHasPostcode = /\b\d{5}\b/.test(addressQuery)
   const showSuggestions = searchFocused && hasSearchQuery
   const isSatellite = mapStyle.includes('satellite')
-  const isNationalAggregateView = !filters.dept && !hasSearchMode && clusters.length > 0
 
   const toggleMapStyle = () => {
     setMapStyle(current => (
@@ -1242,7 +1182,7 @@ export default function AdressesAcquiscan() {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Adresses Acquiscan</h1>
@@ -1278,12 +1218,12 @@ export default function AdressesAcquiscan() {
         </SheetContent>
       </Sheet>
 
-      <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="-mx-4 grid min-w-0 gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="scrollbar-hidden hidden max-h-[calc(100svh-96px)] overflow-y-auto rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:block xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
           {renderSidebarContent()}
         </aside>
 
-        <div className="relative min-h-[560px] overflow-hidden rounded-lg border bg-muted shadow-sm sm:min-h-[680px] xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
+        <div ref={mapShellRef} className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-128px)] xl:min-h-[720px] xl:rounded-lg">
           {loading && mapLoaded && (
             <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
               <div className="h-full w-1/3 animate-pulse rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]" />
@@ -1306,7 +1246,7 @@ export default function AdressesAcquiscan() {
                 onMove={handleMapMove}
                 onMoveEnd={handleMoveEnd}
                 onClick={handleMapClick}
-                interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}
+                interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-points']}
                 attributionControl={false}
               >
                 <NavigationControl position="bottom-right" />
@@ -1318,10 +1258,6 @@ export default function AdressesAcquiscan() {
                     <Layer {...territoryLabelLayer} />
                   </Source>
                 )}
-                <Source id="acquiscan-cluster-source" type="geojson" data={clustersGeoJson}>
-                  <Layer {...(isNationalAggregateView ? nationalClusterLayer : clusterLayer)} />
-                  <Layer {...(isNationalAggregateView ? nationalClusterCountLayer : clusterCountLayer)} />
-                </Source>
                 <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
                   <Layer {...pointLayer} />
                 </Source>
