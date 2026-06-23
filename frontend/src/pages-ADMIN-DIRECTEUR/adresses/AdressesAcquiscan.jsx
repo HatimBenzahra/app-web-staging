@@ -11,7 +11,6 @@ import {
   Layers,
   LocateFixed,
   MapPin,
-  PanelLeftOpen,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -30,13 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAdressesAcquiscanLogic } from './useAdressesAcquiscanLogic'
 
@@ -318,16 +310,6 @@ const FILTER_LABELS = {
   },
 }
 
-const FILTER_RESET_VALUES = {
-  dept: '',
-  commune: '',
-  segment: 'all',
-  fiber: 'all',
-  annee: 'all',
-  coverage4g: 'all',
-  coverage5g: 'all',
-}
-
 const FILTER_GROUPS = [
   {
     title: 'Signaux adresse',
@@ -463,7 +445,6 @@ export default function AdressesAcquiscan() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/streets-v12')
   const [isPitched, setIsPitched] = useState(false)
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [openSections, setOpenSections] = useState({
     search: true,
     territory: true,
@@ -724,113 +705,183 @@ export default function AdressesAcquiscan() {
     })
   }
 
-  const clearFilter = key => {
-    updateFilter(key, FILTER_RESET_VALUES[key] ?? 'all')
-  }
-
-  const renderSidebarContent = () => (
-    <>
-      <div className="space-y-3 border-b p-3">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => toggleSection('search')}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-semibold"
-          >
-            <Search className="h-4 w-4 text-muted-foreground" />
-            Recherche
+  const renderSelectedAddressPanel = () => (
+    <div
+      className={`space-y-2 rounded-md border bg-background p-2.5 transition-shadow ${
+        listLoading || searchPreviewLoading ? 'ring-2 ring-primary/10' : ''
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => toggleSection('details')}
+          className="min-w-0 flex-1 text-left"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            Immeuble sélectionné
+            {(listLoading || searchPreviewLoading) && (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+            )}
             <ChevronDown
-              className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.search ? 'rotate-180' : ''}`}
+              className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.details ? 'rotate-180' : ''}`}
             />
-          </button>
-          {selectedSuggestion && openSections.search && (
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {selectedAddress
+              ? 'Adresse cliquée sur la carte'
+              : selectedCommune
+                ? `${fmtInt(stats.listTotal)} adresses sur cette commune`
+                : 'Clique une commune puis un point'}
+          </p>
+        </button>
+        <Badge variant={selectedAddress ? 'secondary' : 'outline'} className="h-6 shrink-0">
+          {selectedAddress ? 'sélection' : fmtInt(rows.length)}
+        </Badge>
+      </div>
+
+      {openSections.details && (
+        selectedAddress ? (
+          <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
+        ) : (
+          <div className="rounded-md border border-dashed px-2.5 py-2 text-xs text-muted-foreground">
+            {selectedCommune
+              ? 'Clique un point pour voir l’adresse.'
+              : 'Sélectionne une commune pour charger les points.'}
+          </div>
+        )
+      )}
+    </div>
+  )
+
+  const renderMapToolbar = () => {
+    const toolbarFields = FILTER_GROUPS.flatMap(group => group.fields)
+    return (
+      <div className="rounded-lg border bg-background shadow-sm">
+        <div className="flex flex-col gap-2 p-2 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1 lg:max-w-[420px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={addressQuery}
+              onChange={event => setAddressQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+              placeholder="Rechercher une adresse"
+              className="h-9 pl-9"
+            />
+            {showSuggestions && (
+              <div className="absolute left-0 right-0 top-10 z-50 max-h-72 overflow-y-auto rounded-md border bg-background shadow-xl animate-in fade-in-0 zoom-in-95">
+                {suggestionsLoading && (
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Recherche...
+                  </div>
+                )}
+                {suggestionsError && (
+                  <div className="px-3 py-2 text-sm text-destructive">{suggestionsError}</div>
+                )}
+                {!suggestionsLoading && !suggestionsError && suggestions.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    {searchHasPostcode
+                      ? 'Aucune adresse trouvée pour cette saisie.'
+                      : 'Aucune adresse trouvée. Ajoute la ville si besoin.'}
+                  </div>
+                )}
+                {!suggestionsLoading &&
+                  !suggestionsError &&
+                  suggestions.map(suggestion => (
+                    <button
+                      type="button"
+                      key={suggestion.id}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => selectSuggestion(suggestion)}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
+                    >
+                      <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{suggestion.label}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {[suggestion.postcode, suggestion.city, suggestion.codeInsee]
+                            .filter(Boolean)
+                            .join(' · ') || 'Adresse géocodée'}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <div className="scrollbar-hidden flex min-w-0 items-center gap-1.5 overflow-x-auto">
+            <Badge variant={territoryLevel === 'france' ? 'secondary' : 'outline'} className="h-8 shrink-0">
+              France
+            </Badge>
+            {selectedDept && (
+              <Badge variant={territoryLevel === 'department' ? 'secondary' : 'outline'} className="h-8 shrink-0">
+                {selectedDept.code}
+              </Badge>
+            )}
+            {selectedCommune && (
+              <Badge variant="secondary" className="h-8 max-w-[180px] shrink-0 truncate">
+                {selectedCommune.name || selectedCommune.code}
+              </Badge>
+            )}
+            {territoryLoading && <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />}
+            {territoryLevel !== 'france' && (
+              <Button type="button" variant="outline" size="sm" onClick={goBackTerritory} className="h-8 shrink-0">
+                Retour
+              </Button>
+            )}
+          </div>
+
+          <div className="scrollbar-hidden flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+            <Badge variant={activeFilters.length ? 'secondary' : 'outline'} className="h-8 shrink-0 gap-1.5">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {activeFilters.length ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}` : 'Filtres'}
+            </Badge>
+            {toolbarFields.map(field => (
+              <ToolbarSelect
+                key={field.key}
+                field={field}
+                value={filters[field.key]}
+                active={filters[field.key] !== 'all'}
+                onChange={value => updateFilter(field.key, value)}
+              />
+            ))}
+            {activeFilters.length > 0 && (
+              <Button type="button" variant="ghost" size="sm" onClick={resetFilters} className="h-8 shrink-0 px-2">
+                Réinitialiser
+              </Button>
+            )}
             <Button
               type="button"
-              variant="ghost"
               size="sm"
-              onClick={clearSearchSelection}
-              className="h-8 px-2"
+              variant={zoneMode ? 'secondary' : 'outline'}
+              onClick={zoneMode ? stopZoneMode : startZoneMode}
+              className="h-8 shrink-0 gap-1.5"
             >
-              <X className="h-4 w-4" />
+              <MapPin className="h-3.5 w-3.5" />
+              {zoneMode ? 'Fermer zone' : 'Ciblage zone'}
             </Button>
-          )}
+          </div>
         </div>
 
-        {openSections.search && (
-          <>
-            <div
-              className={`relative transition-all duration-300 ${
-                searchFocused ? 'ring-2 ring-primary/10' : ''
-              }`}
-            >
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={addressQuery}
-                onChange={event => setAddressQuery(event.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-                placeholder="Rechercher une adresse"
-                className="h-10 pl-9"
-              />
-              {showSuggestions && (
-                <div className="absolute left-0 right-0 top-11 z-40 max-h-80 overflow-y-auto rounded-md border bg-background shadow-xl animate-in fade-in-0 zoom-in-95">
-                  {suggestionsLoading && (
-                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      Recherche...
-                    </div>
-                  )}
-                  {suggestionsError && (
-                    <div className="px-3 py-2 text-sm text-destructive">{suggestionsError}</div>
-                  )}
-                  {!suggestionsLoading && !suggestionsError && suggestions.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      {searchHasPostcode
-                        ? 'Aucune adresse trouvée pour cette saisie.'
-                        : 'Aucune adresse trouvée. Ajoute la ville si la voie existe dans plusieurs communes.'}
-                    </div>
-                  )}
-                  {!suggestionsLoading &&
-                    !suggestionsError &&
-                    suggestions.map(suggestion => (
-                      <button
-                        type="button"
-                        key={suggestion.id}
-                        onMouseDown={event => event.preventDefault()}
-                        onClick={() => selectSuggestion(suggestion)}
-                        className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
-                      >
-                        <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">
-                            {suggestion.label}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {[suggestion.postcode, suggestion.city, suggestion.codeInsee]
-                              .filter(Boolean)
-                              .join(' · ') || 'Adresse géocodée'}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-
+        {(selectedSuggestion || territoryError) && (
+          <div className="border-t px-2 py-1.5">
+            {territoryError && (
+              <p className="text-xs font-medium text-destructive">{territoryError}</p>
+            )}
             {selectedSuggestion && (
-              <div className="rounded-md border border-red-200 bg-red-50/70 p-2 text-sm animate-in fade-in-0 slide-in-from-top-1">
-                <div className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-red-950">{selectedSuggestion.label}</p>
-                    <p className="mt-0.5 text-xs text-red-700">
-                      {searchPreviewLoading
-                        ? 'Chargement des adresses proches...'
-                        : `${fmtInt(searchPreview?.totalInCircle || 0)} adresse${(searchPreview?.totalInCircle || 0) > 1 ? 's' : ''} dans ${fmtInt(committedSearchRadiusMeters)} m.`}
-                    </p>
-                  </div>
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-red-950">{selectedSuggestion.label}</p>
+                  <p className="text-xs text-red-700">
+                    {searchPreviewLoading
+                      ? 'Chargement des adresses proches...'
+                      : `${fmtInt(searchPreview?.totalInCircle || 0)} adresse${(searchPreview?.totalInCircle || 0) > 1 ? 's' : ''} dans ${fmtInt(committedSearchRadiusMeters)} m.`}
+                  </p>
                 </div>
-                <div className="mt-3 grid grid-cols-[1fr_86px] gap-2">
+                <div className="grid min-w-0 flex-1 grid-cols-[minmax(160px,1fr)_78px] items-end gap-2 lg:max-w-sm">
                   <FilterField label="Rayon">
                     <input
                       type="range"
@@ -854,179 +905,37 @@ export default function AdressesAcquiscan() {
                     />
                   </FilterField>
                 </div>
-                {searchPreviewError && (
-                  <p className="mt-2 text-xs font-medium text-red-700">{searchPreviewError}</p>
-                )}
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={recenterOnSearch}
-                    className="h-8 flex-1 gap-2"
-                  >
+                <div className="flex gap-1.5">
+                  <Button type="button" size="sm" variant="secondary" onClick={recenterOnSearch} className="h-8 gap-1.5">
                     <LocateFixed className="h-3.5 w-3.5" />
                     Recentrer
                   </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={clearSearchSelection}
-                    className="h-8"
-                  >
+                  <Button type="button" size="sm" variant="outline" onClick={clearSearchSelection} className="h-8">
                     Effacer
                   </Button>
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="space-y-3 border-b p-3">
-        <div className="flex items-start justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => toggleSection('territory')}
-            className="min-w-0 flex-1 text-left"
-          >
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <MapPin className="h-4 w-4 text-red-600" />
-              Territoire
-              {territoryLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
-              <ChevronDown
-                className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.territory ? 'rotate-180' : ''}`}
-              />
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {territoryLevel === 'france'
-                ? 'Clique un département pour afficher ses communes.'
-                : territoryLevel === 'department'
-                  ? `${selectedDept?.name || selectedDept?.code} · clique une commune pour charger les adresses. Dézoome pour revenir à la France.`
-                  : `${selectedDept?.name || selectedDept?.code} · ${selectedCommune?.name || selectedCommune?.code} · dézoome pour revenir aux communes.`}
-            </p>
-          </button>
-          {territoryLevel !== 'france' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={goBackTerritory}
-              className="h-8 shrink-0"
-            >
-              Retour
-            </Button>
-          )}
-        </div>
-        {openSections.territory && (
-          <>
-            <div className="flex flex-wrap gap-1.5">
-              <Badge variant={territoryLevel === 'france' ? 'secondary' : 'outline'}>France</Badge>
-              {selectedDept && (
-                <Badge variant={territoryLevel === 'department' ? 'secondary' : 'outline'}>
-                  {selectedDept.code}
-                </Badge>
-              )}
-              {selectedCommune && (
-                <Badge variant="secondary">{selectedCommune.name || selectedCommune.code}</Badge>
-              )}
-            </div>
-            {territoryError && (
-              <p className="text-xs font-medium text-destructive">{territoryError}</p>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="border-b bg-muted/20 p-3">
-        <div className="rounded-lg border bg-background shadow-sm">
-          <div className="flex items-start justify-between gap-3 border-b px-3 py-2.5">
-            <div className="min-w-0">
-              <button
-                type="button"
-                onClick={() => toggleSection('filters')}
-                className="flex w-full items-center gap-2 text-left text-sm font-semibold"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 text-red-600">
-                  <SlidersHorizontal className="h-4 w-4" />
-                </span>
-                Filtres
-                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
-                <ChevronDown
-                  className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.filters ? 'rotate-180' : ''}`}
-                />
-              </button>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Priorise les adresses selon cuivre, fibre et couverture mobile.
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetFilters}
-              className="h-8 shrink-0 px-2 text-xs"
-            >
-              Réinitialiser
-            </Button>
-          </div>
-
-          {openSections.filters && (
-            <div className="space-y-3 p-3">
-              <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md bg-muted/50 p-1.5">
-                {activeFilters.length === 0 ? (
-                  <span className="px-1.5 text-xs text-muted-foreground">
-                    Aucun filtre restrictif
-                  </span>
-                ) : (
-                  <>
-                    <Badge variant="secondary" className="h-6 rounded-md px-2 text-[11px]">
-                      {activeFilters.length} actif{activeFilters.length > 1 ? 's' : ''}
-                    </Badge>
-                    {activeFilters.map(filter => (
-                      <button
-                        type="button"
-                        key={filter.key}
-                        onClick={() => clearFilter(filter.key)}
-                        className="inline-flex h-6 max-w-full items-center gap-1 rounded-md border border-red-200 bg-background px-2 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 animate-in fade-in-0 zoom-in-95"
-                      >
-                        <span className="truncate">{filter.label}</span>
-                        <X className="h-3 w-3 shrink-0" />
-                      </button>
-                    ))}
-                  </>
+                {searchPreviewError && (
+                  <p className="text-xs font-medium text-red-700">{searchPreviewError}</p>
                 )}
               </div>
+            )}
+          </div>
+        )}
 
-              {FILTER_GROUPS.map(group => (
-                <div key={group.title} className="space-y-2">
-                  <div className="flex items-end justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground">{group.title}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {group.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    {group.fields.map(field => (
-                      <FilterSelect
-                        key={field.key}
-                        field={field}
-                        value={filters[field.key]}
-                        active={filters[field.key] !== 'all'}
-                        onChange={value => updateFilter(field.key, value)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {(selectedAddress || zoneMode) && (
+          <div className="grid gap-2 border-t bg-muted/20 p-2 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
+            {renderToolbarContextPanels()}
+          </div>
+        )}
       </div>
+    )
+  }
 
-      <div className="space-y-3 border-b p-3">
+  const renderToolbarContextPanels = () => (
+    <>
+      {selectedAddress && renderSelectedAddressPanel()}
+
+      {zoneMode && <div className="space-y-2.5 rounded-md border bg-background p-2.5">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -1049,18 +958,9 @@ export default function AdressesAcquiscan() {
                 : 'Trace un cercle et garde les adresses Acquiscan incluses.'}
             </p>
           </button>
-          <Button
-            type="button"
-            size="sm"
-            variant={zoneMode ? 'secondary' : 'outline'}
-            onClick={zoneMode ? stopZoneMode : startZoneMode}
-            className="h-8 shrink-0"
-          >
-            {zoneMode ? 'Fermer' : 'Créer'}
-          </Button>
         </div>
 
-        {zoneMode && openSections.zone && (
+        {openSections.zone && (
           <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
             {!draftCircle ? (
               <button
@@ -1257,53 +1157,8 @@ export default function AdressesAcquiscan() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
-      <div
-        className={`space-y-3 border-b p-3 transition-shadow ${listLoading || searchPreviewLoading ? 'ring-2 ring-primary/10' : ''}`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => toggleSection('details')}
-            className="min-w-0 flex-1 text-left"
-          >
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              Immeuble sélectionné
-              {(listLoading || searchPreviewLoading) && (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
-              )}
-              <ChevronDown
-                className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.details ? 'rotate-180' : ''}`}
-              />
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {selectedAddress
-                ? 'Détail de l’adresse cliquée sur la carte'
-                : selectedCommune
-                  ? `${fmtInt(stats.listTotal)} adresses chargées sur la carte`
-                  : 'Clique une commune puis un point adresse'}
-            </p>
-          </button>
-          <Badge variant={selectedAddress ? 'secondary' : 'outline'}>
-            {selectedAddress ? 'sélection' : fmtInt(rows.length)}
-          </Badge>
-        </div>
-
-        {openSections.details && (
-          <>
-            {selectedAddress ? (
-              <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
-            ) : (
-              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                {selectedCommune
-                  ? 'Clique un point sur la carte pour afficher l’adresse et ses signaux.'
-                  : 'Sélectionne d’abord une commune pour afficher les points adresse.'}
-              </div>
-            )}
-          </>
-        )}
-      </div>
     </>
   )
 
@@ -1332,26 +1187,13 @@ export default function AdressesAcquiscan() {
         </div>
       </div>
 
-      <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
-        <SheetContent side="left" className="w-[92vw] max-w-md gap-0 p-0 sm:max-w-md xl:hidden">
-          <SheetHeader className="border-b px-4 py-3 text-left">
-            <SheetTitle className="text-base">Filtres / Détails</SheetTitle>
-            <SheetDescription>
-              Recherche, territoire, filtres et immeuble sélectionné.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="scrollbar-hidden flex-1 overflow-y-auto">{renderSidebarContent()}</div>
-        </SheetContent>
-      </Sheet>
-
-      <div className="-mx-4 grid min-w-0 gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="scrollbar-hidden hidden max-h-[calc(100svh-96px)] overflow-y-auto rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:block xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
-          {renderSidebarContent()}
-        </aside>
+      <div className="-mx-4 min-w-0 xl:ml-0 xl:-mr-4">
+        <div className="flex min-w-0 flex-col gap-2">
+          {renderMapToolbar()}
 
         <div
           ref={mapShellRef}
-          className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-128px)] xl:min-h-[720px] xl:rounded-lg"
+          className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-248px)] xl:min-h-[560px] xl:rounded-lg"
         >
           {loading && mapLoaded && (
             <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
@@ -1414,24 +1256,6 @@ export default function AdressesAcquiscan() {
             </>
           )}
 
-          <div className="absolute left-3 top-3 z-20 xl:hidden">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setMobilePanelOpen(true)}
-              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-              Filtres / Détails
-              {activeFilters.length > 0 && (
-                <Badge variant="destructive" className="ml-1 h-5 rounded-full px-1.5 text-[10px]">
-                  {activeFilters.length}
-                </Badge>
-              )}
-            </Button>
-          </div>
-
           <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
             <Button
               type="button"
@@ -1472,6 +1296,7 @@ export default function AdressesAcquiscan() {
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
   )
@@ -1492,11 +1317,11 @@ function LegendDot({ color, label }) {
 function AddressDetailCard({ row, onClose }) {
   const segment = copperSegment(row)
   return (
-    <div className="rounded-md border bg-background p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-md border bg-background p-2.5 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold leading-snug">{formatAddress(row)}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
+          <p className="truncate text-sm font-semibold leading-snug">{formatAddress(row)}</p>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
             Dép. {row.dept} · {row.codeInsee || 'INSEE ?'} · {row.imbCode || row.immeubleId}
           </p>
         </div>
@@ -1504,37 +1329,37 @@ function AddressDetailCard({ row, onClose }) {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0"
+          className="h-6 w-6 shrink-0"
           onClick={onClose}
         >
-          <X className="h-4 w-4" />
+          <X className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge variant="outline" className={segment.className} title={segment.title}>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <Badge variant="outline" className={`h-6 ${segment.className}`} title={segment.title}>
           {segment.label}
         </Badge>
-        <Badge variant="outline" className="gap-1.5">
+        <Badge variant="outline" className="h-6 gap-1">
           <Building2 className="h-3 w-3" />
           {row.nbrLogements || 'N/A'} log.
         </Badge>
-        <Badge variant="outline" className="gap-1.5">
+        <Badge variant="outline" className="h-6 gap-1">
           <CheckCircle2 className="h-3 w-3" />
           FO {row.eligFo === '1' ? 'oui' : row.eligFo === '0' ? 'non' : 'N/A'}
         </Badge>
-        <Badge variant="outline" className="gap-1.5">
+        <Badge variant="outline" className="h-6 gap-1">
           <Wifi className="h-3 w-3" />
           {row.sites4g ?? 'N/A'} 4G · {row.sites5g ?? 'N/A'} 5G
         </Badge>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-md bg-muted px-2 py-1.5">
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+        <div className="rounded-md bg-muted px-2 py-1">
           <p className="text-muted-foreground">Migration urgente</p>
           <p className="font-medium">{row.fermetureTechnique === '1' ? 'Oui' : 'Non'}</p>
         </div>
-        <div className="rounded-md bg-muted px-2 py-1.5">
+        <div className="rounded-md bg-muted px-2 py-1">
           <p className="text-muted-foreground">Année fibre</p>
           <p className="font-medium">{row.anneeFt || 'N/A'}</p>
         </div>
@@ -1554,25 +1379,16 @@ function FilterField({ label, children }) {
   )
 }
 
-function FilterSelect({ field, value, active, onChange }) {
+function ToolbarSelect({ field, value, active, onChange }) {
   return (
-    <label
-      className={`group rounded-md border bg-background p-2 transition-colors ${
-        active ? 'border-red-200 bg-red-50/40 shadow-sm ring-1 ring-red-100' : 'hover:bg-muted/40'
-      }`}
-    >
-      <span className="mb-1 flex items-center justify-between gap-2">
-        <span
-          className={`text-[11px] font-medium uppercase tracking-wide ${
-            active ? 'text-red-700' : 'text-muted-foreground'
+    <label className="shrink-0">
+      <span className="sr-only">{field.label}</span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          className={`h-8 w-[132px] gap-1 rounded-md px-2 text-xs shadow-none ${
+            active ? 'border-red-200 bg-red-50 text-red-800' : 'bg-background'
           }`}
         >
-          {field.label}
-        </span>
-        {active && <span className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-      </span>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-8 w-full border-0 bg-transparent px-0 text-sm shadow-none focus:ring-0 data-[placeholder]:text-muted-foreground">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
