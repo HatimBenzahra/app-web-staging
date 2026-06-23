@@ -911,15 +911,6 @@ export class AcquiscanService {
     };
   }
 
-  private async findDepartmentMapPoints(
-    input: AcquiscanMapInput,
-    bounds: AcquiscanBoundsInput,
-    dept: string,
-    limit: number,
-  ) {
-    return (await this.findFilteredDepartmentMapPoints(input, bounds, dept, limit)).points;
-  }
-
   private async findFilteredDepartmentMapPoints(
     input: AcquiscanMapInput,
     bounds: AcquiscanBoundsInput,
@@ -1386,89 +1377,6 @@ export class AcquiscanService {
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, MAP_MAX_CLUSTERS);
-  }
-
-  private async getMapCoverage(where: Prisma.AcquiscanAddressCoordinateWhereInput) {
-    const coverage = await this.prisma.acquiscanAddressCoordinate.groupBy({
-      by: ['dept'],
-      where,
-      _count: { _all: true },
-      _max: { importedAt: true },
-      orderBy: { dept: 'asc' },
-      take: 80,
-    });
-
-    return coverage.map(item => ({
-      dept: item.dept,
-      importedCount: item._count._all,
-      importedAt: item._max.importedAt,
-    }));
-  }
-
-  private async findMapClusters(input: {
-    bounds: AcquiscanBoundsInput;
-    zoom: number;
-    dept?: string;
-    commune?: string;
-    search?: string;
-  }) {
-    const cellSize = this.getClusterCellSize(input.zoom);
-    const clauses: Prisma.Sql[] = [
-      Prisma.sql`"latitude" IS NOT NULL`,
-      Prisma.sql`"longitude" IS NOT NULL`,
-      Prisma.sql`"latitude" BETWEEN ${input.bounds.south} AND ${input.bounds.north}`,
-      Prisma.sql`"longitude" BETWEEN ${input.bounds.west} AND ${input.bounds.east}`,
-    ];
-
-    if (input.dept) {
-      clauses.push(Prisma.sql`"dept" = ${input.dept}`);
-    }
-
-    if (input.commune) {
-      clauses.push(Prisma.sql`"code_insee" = ${input.commune}`);
-    }
-
-    const search = input.search?.trim();
-    if (search) {
-      const like = `%${search}%`;
-      clauses.push(Prisma.sql`(
-        "immeuble_id" ILIKE ${like}
-        OR "imb_code" ILIKE ${like}
-        OR "addr_numero" ILIKE ${like}
-        OR "addr_nom_voie" ILIKE ${like}
-        OR "addr_nom_commune" ILIKE ${like}
-        OR "code_insee" ILIKE ${like}
-      )`);
-    }
-
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        lat_bucket: number;
-        lng_bucket: number;
-        latitude: number;
-        longitude: number;
-        count: number;
-      }>
-    >(Prisma.sql`
-      SELECT
-        FLOOR(("latitude" - ${input.bounds.south}) / ${cellSize})::int AS "lat_bucket",
-        FLOOR(("longitude" - ${input.bounds.west}) / ${cellSize})::int AS "lng_bucket",
-        AVG("latitude")::float AS "latitude",
-        AVG("longitude")::float AS "longitude",
-        COUNT(*)::int AS "count"
-      FROM "acquiscan_address_coordinates"
-      WHERE ${Prisma.join(clauses, ' AND ')}
-      GROUP BY "lat_bucket", "lng_bucket"
-      ORDER BY "count" DESC
-      LIMIT ${MAP_MAX_CLUSTERS}
-    `);
-
-    return rows.map(row => ({
-      id: `${row.lat_bucket}:${row.lng_bucket}`,
-      latitude: Number(row.latitude),
-      longitude: Number(row.longitude),
-      count: Number(row.count),
-    }));
   }
 
   private validateBounds(bounds: AcquiscanBoundsInput): AcquiscanBoundsInput {

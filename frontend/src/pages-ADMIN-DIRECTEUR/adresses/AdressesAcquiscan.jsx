@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Building2,
   CheckCircle2,
-  CircleOff,
   Crosshair,
   Layers,
   LocateFixed,
@@ -388,7 +387,6 @@ export default function AdressesAcquiscan() {
     rows,
     clusters,
     selectedAddress,
-    selectedId,
     setSelectedId,
     zoneMode,
     startZoneMode,
@@ -1326,7 +1324,7 @@ function MiniStat({ icon: Icon, label, value }) {
   return (
     <div className="min-w-0 rounded-md border bg-background px-2 py-1.5">
       <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-        <Icon className="h-3 w-3 shrink-0" />
+        {React.createElement(Icon, { className: 'h-3 w-3 shrink-0' })}
         <span className="truncate">{label}</span>
       </div>
       <p className="mt-0.5 truncate text-sm font-semibold tabular-nums leading-none sm:text-base">{value}</p>

@@ -181,7 +181,6 @@ export function useAdressesAcquiscanLogic() {
   })
   const [mapData, setMapData] = useState(null)
   const [listData, setListData] = useState(null)
-  const [listPage, setListPage] = useState(1)
   const [mapLoading, setMapLoading] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [mapError, setMapError] = useState(null)
@@ -349,9 +348,9 @@ export function useAdressesAcquiscanLogic() {
       coverage5g: normalized.coverage5g,
       segment: normalized.segment,
       limit: Math.min(normalized.limit, 500),
-      offset: (listPage - 1) * Math.min(normalized.limit, 500),
+      offset: 0,
     }
-  }, [filters, listPage])
+  }, [filters])
 
   const zonePreviewInput = useMemo(() => {
     if (!zoneMode || !draftCircle) return null
@@ -511,7 +510,6 @@ export function useAdressesAcquiscanLogic() {
   }, [loadSearchPreview])
 
   const updateFilter = useCallback((key, value) => {
-    setListPage(1)
     setFilters(prev => {
       const next = { ...prev, [key]: value }
       if (key === 'dept') next.commune = ''
@@ -524,7 +522,6 @@ export function useAdressesAcquiscanLogic() {
     setSelectedDept({ code: department.code, name: department.name || department.nom || department.code })
     setSelectedCommune(null)
     setTerritoryLevel('department')
-    setListPage(1)
     setListData(null)
     setMapData(emptyMapData)
     setFilters(prev => ({ ...prev, dept: department.code, commune: '' }))
@@ -534,7 +531,6 @@ export function useAdressesAcquiscanLogic() {
     if (!selectedDept?.code || !commune?.code) return
     setSelectedCommune({ code: commune.code, name: commune.name || commune.nom || commune.code })
     setTerritoryLevel('commune')
-    setListPage(1)
     setMapData(null)
     setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: commune.code }))
   }, [selectedDept])
@@ -588,7 +584,6 @@ export function useAdressesAcquiscanLogic() {
     setSearchPreview(null)
     setSearchPreviewError(null)
     setSelectedId(null)
-    setListPage(1)
   }, [])
 
   const clearSearchSelection = useCallback(() => {
@@ -624,20 +619,10 @@ export function useAdressesAcquiscanLogic() {
     },
     [hasSearchMode, mapRows, remoteCoordinateRows, searchRows]
   )
-  const listRows = useMemo(
-    () => {
-      if (hasSearchMode) return searchRows
-      return listData?.rows?.length ? listData.rows : rows
-    },
-    [hasSearchMode, listData?.rows, rows, searchRows]
-  )
   const clusters = mapData?.clusters || []
-  const coverage = mapData?.coverage || []
   const selectedAddress = useMemo(
-    () => rows.find(row => row.immeubleId === selectedId)
-      || listRows.find(row => row.immeubleId === selectedId && row.coordinates?.latitude && row.coordinates?.longitude)
-      || null,
-    [listRows, rows, selectedId]
+    () => rows.find(row => row.immeubleId === selectedId) || null,
+    [rows, selectedId]
   )
 
   const territoryGeoJson = useMemo(() => {
@@ -661,47 +646,11 @@ export function useAdressesAcquiscanLogic() {
       total: hasSearchMode ? (searchPreview?.totalInCircle || 0) : (mapData?.totalInBounds || 0),
       shown: hasSearchMode ? rows.length : (mapData?.returnedCount || rows.length),
       rows: rows.length,
-      listRows: listRows.length,
-      clusters: clusters.length,
       shutdownCount,
       fiberCount,
-      departments: coverage.length,
       listTotal: hasSearchMode ? (searchPreview?.totalInCircle || rows.length) : (listData?.total || mapData?.totalInBounds || 0),
     }
-  }, [clusters.length, coverage.length, hasSearchMode, listData?.total, listRows.length, mapData?.returnedCount, mapData?.totalInBounds, rows, searchPreview?.totalInCircle])
-
-  const listPagination = useMemo(() => {
-    const pageSize = listInput?.limit || ADDRESS_LIMIT
-    const total = listData?.total || 0
-    const pageCount = total > 0 ? Math.ceil(total / pageSize) : 1
-    const safePage = Math.min(listPage, pageCount)
-    const start = total > 0 ? ((safePage - 1) * pageSize) + 1 : 0
-    const end = Math.min(safePage * pageSize, total)
-    return {
-      page: safePage,
-      pageSize,
-      pageCount,
-      total,
-      start,
-      end,
-      hasPrevious: safePage > 1,
-      hasNext: safePage < pageCount,
-    }
-  }, [listData?.total, listInput?.limit, listPage])
-
-  useEffect(() => {
-    if (listPage !== listPagination.page) {
-      setListPage(listPagination.page)
-    }
-  }, [listPage, listPagination.page])
-
-  const goToPreviousListPage = useCallback(() => {
-    setListPage(current => Math.max(1, current - 1))
-  }, [])
-
-  const goToNextListPage = useCallback(() => {
-    setListPage(current => current + 1)
-  }, [])
+  }, [hasSearchMode, listData?.total, mapData?.returnedCount, mapData?.totalInBounds, rows, searchPreview?.totalInCircle])
 
   const updateSearchRadius = useCallback(radiusMeters => {
     const nextRadius = Number(radiusMeters)
@@ -923,15 +872,8 @@ export function useAdressesAcquiscanLogic() {
     initialViewState: INITIAL_VIEW_STATE,
     updateMapViewport,
     rows,
-    listRows,
-    listPagination,
-    goToPreviousListPage,
-    goToNextListPage,
-    rowsWithCoordinates: rows,
     clusters,
-    coverage,
     selectedAddress,
-    selectedId,
     setSelectedId,
     zoneMode,
     startZoneMode,
@@ -956,7 +898,6 @@ export function useAdressesAcquiscanLogic() {
     zoneCreateError,
     createdZone,
     stats,
-    mapData,
     loading: mapLoading || listLoading || searchPreviewLoading,
     mapLoading,
     listLoading,
@@ -968,7 +909,5 @@ export function useAdressesAcquiscanLogic() {
       loadList()
       loadSearchPreview()
     },
-    tooManyResults: hasSearchMode ? Boolean(searchPreview?.tooManyResults) : Boolean(mapData?.tooManyResults),
-    clustered: hasSearchMode ? false : Boolean(mapData?.clustered),
   }
 }
