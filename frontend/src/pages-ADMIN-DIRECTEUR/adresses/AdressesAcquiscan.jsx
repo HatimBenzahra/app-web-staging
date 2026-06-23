@@ -5,11 +5,13 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   AlertCircle,
   Building2,
+  ChevronDown,
   CheckCircle2,
   Crosshair,
   Layers,
   LocateFixed,
   MapPin,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -22,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAdressesAcquiscanLogic } from './useAdressesAcquiscanLogic'
 
@@ -279,27 +282,27 @@ const territoryLabelLayer = {
 const copperSegment = row => {
   if (row.fermetureTechnique === '1') {
     return {
-      label: 'Fermeture technique',
+      label: 'Migration urgente',
       className: 'border-red-200 bg-red-50 text-red-700',
       title: 'DSLAM en cours de démantèlement - migration fibre obligatoire',
     }
   }
   if (row.fermetureComAddr === '1') {
     return {
-      label: 'Commerciale adresse',
+      label: 'Priorité adresse',
       className: 'border-orange-200 bg-orange-50 text-orange-700',
       title: 'Fermeture commerciale annoncée pour cette adresse',
     }
   }
   if (row.fermetureComZone === '1') {
     return {
-      label: 'Commerciale zone',
+      label: 'Zone à préparer',
       className: 'border-amber-200 bg-amber-50 text-amber-700',
       title: 'Fermeture commerciale annoncée sur la zone',
     }
   }
   return {
-    label: 'Cuivre actif',
+    label: 'Cuivre maintenu',
     className: 'border-slate-200 bg-slate-50 text-slate-700',
     title: "Aucune fermeture annoncée par l'ARCEP",
   }
@@ -314,15 +317,15 @@ const scoreTone = score => {
 const FILTER_LABELS = {
   segment: {
     all: 'Étape cuivre: toutes',
-    urgent: 'Fermeture technique',
-    chaud: 'Commerciale adresse',
-    tiede: 'Commerciale zone',
-    froid: 'Cuivre actif',
+    urgent: 'Migration urgente',
+    chaud: 'Priorité adresse',
+    tiede: 'Zone à préparer',
+    froid: 'Cuivre maintenu',
   },
   fiber: {
     all: 'Fibre: toutes',
     yes: 'Fibre: oui',
-    no: 'Fibre: non',
+    no: 'Migration à qualifier',
   },
   annee: {
     all: 'Toutes années',
@@ -352,6 +355,70 @@ const FILTER_RESET_VALUES = {
   coverage4g: 'all',
   coverage5g: 'all',
 }
+
+const FILTER_GROUPS = [
+  {
+    title: 'Signaux adresse',
+    description: 'Priorise selon cuivre, fibre et timing',
+    fields: [
+      {
+        key: 'segment',
+        label: 'Cuivre',
+        options: [
+          ['all', 'Toutes étapes'],
+          ['urgent', 'Migration urgente'],
+          ['chaud', 'Priorité adresse'],
+          ['tiede', 'Zone à préparer'],
+          ['froid', 'Cuivre maintenu'],
+        ],
+      },
+      {
+        key: 'fiber',
+        label: 'Fibre',
+        options: [
+          ['all', 'Toutes éligibilités'],
+          ['yes', 'Fibre disponible'],
+          ['no', 'Migration à qualifier'],
+        ],
+      },
+      {
+        key: 'annee',
+        label: 'Fermeture',
+        options: [
+          ['all', 'Toutes années'],
+          ['current', 'Année courante'],
+          ['future', 'Après année courante'],
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Couverture réseau',
+    description: 'Signal mobile complémentaire',
+    fields: [
+      {
+        key: 'coverage4g',
+        label: '4G',
+        options: [
+          ['all', 'Toutes couvertures'],
+          ['eleve', '4G élevée'],
+          ['moyen', '4G moyenne'],
+          ['faible', '4G faible'],
+        ],
+      },
+      {
+        key: 'coverage5g',
+        label: '5G',
+        options: [
+          ['all', 'Toutes couvertures'],
+          ['eleve', '5G élevée'],
+          ['moyen', '5G moyenne'],
+          ['faible', '5G faible'],
+        ],
+      },
+    ],
+  },
+]
 
 export default function AdressesAcquiscan() {
   const {
@@ -385,6 +452,7 @@ export default function AdressesAcquiscan() {
     initialViewState,
     updateMapViewport,
     stepBackFromMapZoom,
+    releaseMapStepBackLock,
     rows,
     clusters,
     selectedAddress,
@@ -425,6 +493,14 @@ export default function AdressesAcquiscan() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/streets-v12')
   const [isPitched, setIsPitched] = useState(false)
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [openSections, setOpenSections] = useState({
+    search: true,
+    territory: true,
+    filters: true,
+    zone: false,
+    details: false,
+  })
 
   const activeFilters = useMemo(() => {
     const entries = []
@@ -435,6 +511,20 @@ export default function AdressesAcquiscan() {
     if (filters.coverage5g !== 'all') entries.push({ key: 'coverage5g', label: FILTER_LABELS.coverage5g[filters.coverage5g] })
     return entries
   }, [filters])
+
+  const toggleSection = key => {
+    setOpenSections(current => ({ ...current, [key]: !current[key] }))
+  }
+
+  useEffect(() => {
+    if (!zoneMode) return
+    setOpenSections(current => ({ ...current, zone: true }))
+  }, [zoneMode])
+
+  useEffect(() => {
+    if (!selectedAddress) return
+    setOpenSections(current => ({ ...current, details: true }))
+  }, [selectedAddress])
 
   const pointsGeoJson = useMemo(
     () => ({
@@ -556,6 +646,7 @@ export default function AdressesAcquiscan() {
       },
       zoom
     )
+    releaseMapStepBackLock()
   }
 
   const handleMapMove = event => {
@@ -672,38 +763,20 @@ export default function AdressesAcquiscan() {
     updateFilter(key, FILTER_RESET_VALUES[key] ?? 'all')
   }
 
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Adresses Acquiscan</h1>
-          <p className="max-w-3xl text-xs text-muted-foreground">
-            Carte des adresses Acquiscan avec clustering, filtres et signaux cuivre/fibre.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {error && (
-            <Badge variant="destructive" className="gap-2">
-              <AlertCircle className="h-3 w-3" />
-              {error}
-            </Badge>
-          )}
-          <Button variant="outline" onClick={refetch} disabled={mapLoading} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${mapLoading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="scrollbar-hidden max-h-[calc(100svh-96px)] overflow-y-auto rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
+  const renderSidebarContent = () => (
+    <>
           <div className="space-y-3 border-b p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
+              <button
+                type="button"
+                onClick={() => toggleSection('search')}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-semibold"
+              >
                 <Search className="h-4 w-4 text-muted-foreground" />
                 Recherche
-              </div>
-              {selectedSuggestion && (
+                <ChevronDown className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.search ? 'rotate-180' : ''}`} />
+              </button>
+              {selectedSuggestion && openSections.search && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -716,6 +789,8 @@ export default function AdressesAcquiscan() {
               )}
             </div>
 
+            {openSections.search && (
+              <>
             <div className={`relative transition-all duration-300 ${
               searchFocused ? 'ring-2 ring-primary/10' : ''
             }`}>
@@ -818,15 +893,22 @@ export default function AdressesAcquiscan() {
                 </div>
               </div>
             )}
+              </>
+            )}
           </div>
 
           <div className="space-y-3 border-b p-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleSection('territory')}
+                className="min-w-0 flex-1 text-left"
+              >
                 <p className="flex items-center gap-2 text-sm font-semibold">
                   <MapPin className="h-4 w-4 text-red-600" />
                   Territoire
                   {territoryLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                  <ChevronDown className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.territory ? 'rotate-180' : ''}`} />
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {territoryLevel === 'france'
@@ -835,13 +917,15 @@ export default function AdressesAcquiscan() {
                       ? `${selectedDept?.name || selectedDept?.code} · clique une commune pour charger les adresses. Dézoome pour revenir à la France.`
                       : `${selectedDept?.name || selectedDept?.code} · ${selectedCommune?.name || selectedCommune?.code} · dézoome pour revenir aux communes.`}
                 </p>
-              </div>
+              </button>
               {territoryLevel !== 'france' && (
                 <Button type="button" variant="outline" size="sm" onClick={goBackTerritory} className="h-8 shrink-0">
                   Retour
                 </Button>
               )}
             </div>
+            {openSections.territory && (
+              <>
             <div className="flex flex-wrap gap-1.5">
               <Badge variant={territoryLevel === 'france' ? 'secondary' : 'outline'}>France</Badge>
               {selectedDept && <Badge variant={territoryLevel === 'department' ? 'secondary' : 'outline'}>{selectedDept.code}</Badge>}
@@ -850,118 +934,105 @@ export default function AdressesAcquiscan() {
             {territoryError && (
               <p className="text-xs font-medium text-destructive">{territoryError}</p>
             )}
+              </>
+            )}
           </div>
 
-          <div className="space-y-3 border-b p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                Filtres
-                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
-              </div>
-              <div className="flex items-center gap-2">
-                {activeFilters.length > 0 && (
-                  <Badge variant="secondary" className="animate-in fade-in-0 zoom-in-95">
-                    {activeFilters.length} actif{activeFilters.length > 1 ? 's' : ''}
-                  </Badge>
-                )}
-                <Button variant="outline" size="sm" onClick={resetFilters} className="h-8">
+          <div className="border-b bg-muted/20 p-3">
+            <div className="rounded-lg border bg-background shadow-sm">
+              <div className="flex items-start justify-between gap-3 border-b px-3 py-2.5">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('filters')}
+                    className="flex w-full items-center gap-2 text-left text-sm font-semibold"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 text-red-600">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </span>
+                    Filtres
+                    {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                    <ChevronDown className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.filters ? 'rotate-180' : ''}`} />
+                  </button>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Priorise les adresses selon cuivre, fibre et couverture mobile.
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="h-8 shrink-0 px-2 text-xs">
                   Réinitialiser
                 </Button>
               </div>
-            </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-              <FilterField label="Cuivre">
-                <Select value={filters.segment} onValueChange={value => updateFilter('segment', value)}>
-                  <SelectTrigger className={`h-9 w-full ${filters.segment !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Étape cuivre: toutes</SelectItem>
-                    <SelectItem value="urgent">Fermeture technique</SelectItem>
-                    <SelectItem value="chaud">Commerciale adresse</SelectItem>
-                    <SelectItem value="tiede">Commerciale zone</SelectItem>
-                    <SelectItem value="froid">Cuivre actif</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterField>
-              <FilterField label="Fibre">
-                <Select value={filters.fiber} onValueChange={value => updateFilter('fiber', value)}>
-                  <SelectTrigger className={`h-9 w-full ${filters.fiber !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Fibre: toutes</SelectItem>
-                    <SelectItem value="yes">Fibre: oui</SelectItem>
-                    <SelectItem value="no">Fibre: non</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterField>
-              <FilterField label="Année fermeture">
-                <Select value={filters.annee} onValueChange={value => updateFilter('annee', value)}>
-                  <SelectTrigger className={`h-9 w-full ${filters.annee !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toutes années</SelectItem>
-                    <SelectItem value="current">Année courante</SelectItem>
-                    <SelectItem value="future">Après année courante</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterField>
-              <FilterField label="Couverture 4G">
-                <Select value={filters.coverage4g} onValueChange={value => updateFilter('coverage4g', value)}>
-                  <SelectTrigger className={`h-9 w-full ${filters.coverage4g !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">4G: toutes</SelectItem>
-                    <SelectItem value="eleve">4G élevée</SelectItem>
-                    <SelectItem value="moyen">4G moyenne</SelectItem>
-                    <SelectItem value="faible">4G faible</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterField>
-              <FilterField label="Couverture 5G">
-                <Select value={filters.coverage5g} onValueChange={value => updateFilter('coverage5g', value)}>
-                  <SelectTrigger className={`h-9 w-full ${filters.coverage5g !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">5G: toutes</SelectItem>
-                    <SelectItem value="eleve">5G élevée</SelectItem>
-                    <SelectItem value="moyen">5G moyenne</SelectItem>
-                    <SelectItem value="faible">5G faible</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FilterField>
-            </div>
+              {openSections.filters && (
+              <div className="space-y-3 p-3">
+                <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md bg-muted/50 p-1.5">
+                  {activeFilters.length === 0 ? (
+                    <span className="px-1.5 text-xs text-muted-foreground">Aucun filtre restrictif</span>
+                  ) : (
+                    <>
+                      <Badge variant="secondary" className="h-6 rounded-md px-2 text-[11px]">
+                        {activeFilters.length} actif{activeFilters.length > 1 ? 's' : ''}
+                      </Badge>
+                      {activeFilters.map(filter => (
+                        <button
+                          type="button"
+                          key={filter.key}
+                          onClick={() => clearFilter(filter.key)}
+                          className="inline-flex h-6 max-w-full items-center gap-1 rounded-md border border-red-200 bg-background px-2 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 animate-in fade-in-0 zoom-in-95"
+                        >
+                          <span className="truncate">{filter.label}</span>
+                          <X className="h-3 w-3 shrink-0" />
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
 
-            <div className="flex min-h-7 flex-wrap items-center gap-1.5">
-              {activeFilters.length === 0 ? (
-                <span className="text-xs text-muted-foreground">Aucun filtre restrictif</span>
-              ) : (
-                activeFilters.map(filter => (
-                  <button
-                    type="button"
-                    key={filter.key}
-                    onClick={() => clearFilter(filter.key)}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700 shadow-sm transition-colors hover:bg-red-100 animate-in fade-in-0 zoom-in-95"
-                  >
-                    <MapPin className="h-3 w-3" />
-                    {filter.label}
-                    <X className="h-3 w-3" />
-                  </button>
-                ))
+                {FILTER_GROUPS.map(group => (
+                  <div key={group.title} className="space-y-2">
+                    <div className="flex items-end justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{group.title}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{group.description}</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                      {group.fields.map(field => (
+                        <FilterSelect
+                          key={field.key}
+                          field={field}
+                          value={filters[field.key]}
+                          active={filters[field.key] !== 'all'}
+                          onChange={value => updateFilter(field.key, value)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
               )}
             </div>
           </div>
 
           <div className="space-y-3 border-b p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleSection('zone')}
+                className="min-w-0 flex-1 text-left"
+              >
                 <p className="flex items-center gap-2 text-sm font-semibold">
                   <MapPin className="h-4 w-4 text-red-600" />
                   Ciblage zone
                   {zonePreviewLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                  <ChevronDown className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.zone ? 'rotate-180' : ''}`} />
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {activeFilters.length
                     ? `Sélection filtrée par ${activeFilters.map(filter => filter.label).join(' · ')}`
                     : 'Trace un cercle et garde les adresses Acquiscan incluses.'}
                 </p>
-              </div>
+              </button>
               <Button
                 type="button"
                 size="sm"
@@ -973,7 +1044,7 @@ export default function AdressesAcquiscan() {
               </Button>
             </div>
 
-            {zoneMode && (
+            {zoneMode && openSections.zone && (
               <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
                 {!draftCircle ? (
                   <button
@@ -1009,7 +1080,7 @@ export default function AdressesAcquiscan() {
 
                     <div className="grid grid-cols-2 gap-2">
                       <MiniStat icon={MapPin} label="Targets" value={fmtInt(zonePreview?.summary?.totalTargets || 0)} />
-                      <MiniStat icon={CheckCircle2} label="Sans fibre" value={fmtInt(zonePreview?.summary?.noFiberTargets || 0)} />
+                      <MiniStat icon={CheckCircle2} label="À qualifier" value={fmtInt(zonePreview?.summary?.noFiberTargets || 0)} />
                       <MiniStat icon={Zap} label="Fermeture" value={fmtInt(zonePreview?.summary?.copperClosureTargets || 0)} />
                       <MiniStat icon={Wifi} label="Score" value={fmtInt(zonePreview?.summary?.averageOpportunityScore || 0)} />
                     </div>
@@ -1130,10 +1201,15 @@ export default function AdressesAcquiscan() {
 
           <div className={`space-y-3 border-b p-3 transition-shadow ${listLoading || searchPreviewLoading ? 'ring-2 ring-primary/10' : ''}`}>
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleSection('details')}
+                className="min-w-0 flex-1 text-left"
+              >
                 <p className="flex items-center gap-2 text-sm font-semibold">
                   Immeuble sélectionné
                   {(listLoading || searchPreviewLoading) && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                  <ChevronDown className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.details ? 'rotate-180' : ''}`} />
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {selectedAddress
@@ -1142,12 +1218,14 @@ export default function AdressesAcquiscan() {
                       ? `${fmtInt(stats.listTotal)} adresses chargées sur la carte`
                       : 'Clique une commune puis un point adresse'}
                 </p>
-              </div>
+              </button>
               <Badge variant={selectedAddress ? 'secondary' : 'outline'}>
                 {selectedAddress ? 'sélection' : fmtInt(rows.length)}
               </Badge>
             </div>
 
+            {openSections.details && (
+              <>
             {selectedAddress ? (
               <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
             ) : (
@@ -1157,7 +1235,52 @@ export default function AdressesAcquiscan() {
                   : 'Sélectionne d’abord une commune pour afficher les points adresse.'}
               </div>
             )}
+              </>
+            )}
           </div>
+    </>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Adresses Acquiscan</h1>
+          <p className="max-w-3xl text-xs text-muted-foreground">
+            Carte des adresses Acquiscan avec clustering, filtres et signaux cuivre/fibre.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {error && (
+            <Badge variant="destructive" className="gap-2">
+              <AlertCircle className="h-3 w-3" />
+              {error}
+            </Badge>
+          )}
+          <Button variant="outline" onClick={refetch} disabled={mapLoading} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${mapLoading ? 'animate-spin' : ''}`} />
+            Actualiser
+          </Button>
+        </div>
+      </div>
+
+      <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
+        <SheetContent side="left" className="w-[92vw] max-w-md gap-0 p-0 sm:max-w-md xl:hidden">
+          <SheetHeader className="border-b px-4 py-3 text-left">
+            <SheetTitle className="text-base">Filtres / Détails</SheetTitle>
+            <SheetDescription>
+              Recherche, territoire, filtres et immeuble sélectionné.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="scrollbar-hidden flex-1 overflow-y-auto">
+            {renderSidebarContent()}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="scrollbar-hidden hidden max-h-[calc(100svh-96px)] overflow-y-auto rounded-lg border bg-background shadow-sm xl:sticky xl:top-3 xl:block xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
+          {renderSidebarContent()}
         </aside>
 
         <div className="relative min-h-[560px] overflow-hidden rounded-lg border bg-muted shadow-sm sm:min-h-[680px] xl:h-[calc(100vh-128px)] xl:min-h-[720px]">
@@ -1219,6 +1342,24 @@ export default function AdressesAcquiscan() {
               </MapboxMap>
             </>
           )}
+
+          <div className="absolute left-3 top-3 z-20 xl:hidden">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setMobilePanelOpen(true)}
+              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              Filtres / Détails
+              {activeFilters.length > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 rounded-full px-1.5 text-[10px]">
+                  {activeFilters.length}
+                </Badge>
+              )}
+            </Button>
+          </div>
 
           <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
             <Button
@@ -1306,7 +1447,7 @@ function AddressDetailCard({ row, onClose }) {
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-md bg-muted px-2 py-1.5">
-          <p className="text-muted-foreground">Fermeture tech.</p>
+          <p className="text-muted-foreground">Migration urgente</p>
           <p className="font-medium">{row.fermetureTechnique === '1' ? 'Oui' : 'Non'}</p>
         </div>
         <div className="rounded-md bg-muted px-2 py-1.5">
@@ -1323,6 +1464,35 @@ function FilterField({ label, children }) {
     <label className="space-y-1">
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
       {children}
+    </label>
+  )
+}
+
+function FilterSelect({ field, value, active, onChange }) {
+  return (
+    <label className={`group rounded-md border bg-background p-2 transition-colors ${
+      active ? 'border-red-200 bg-red-50/40 shadow-sm ring-1 ring-red-100' : 'hover:bg-muted/40'
+    }`}>
+      <span className="mb-1 flex items-center justify-between gap-2">
+        <span className={`text-[11px] font-medium uppercase tracking-wide ${
+          active ? 'text-red-700' : 'text-muted-foreground'
+        }`}>
+          {field.label}
+        </span>
+        {active && <span className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+      </span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-8 w-full border-0 bg-transparent px-0 text-sm shadow-none focus:ring-0 data-[placeholder]:text-muted-foreground">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {field.options.map(([optionValue, label]) => (
+            <SelectItem key={optionValue} value={optionValue}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </label>
   )
 }

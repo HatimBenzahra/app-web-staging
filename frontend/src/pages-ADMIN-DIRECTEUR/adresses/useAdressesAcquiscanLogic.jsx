@@ -19,7 +19,6 @@ const SEARCH_RADIUS_DEFAULT = 600
 const SEARCH_RADIUS_MIN = 100
 const SEARCH_RADIUS_MAX = 3000
 const SEARCH_RADIUS_API_DEBOUNCE_MS = 900
-const SEARCH_BACK_ZOOM = 12
 const COMMUNE_BACK_ZOOM = 8.8
 const DEPARTMENT_BACK_ZOOM = 5.7
 
@@ -158,6 +157,7 @@ export function useAdressesAcquiscanLogic() {
   const latestListRequest = useRef(0)
   const latestZonePreviewRequest = useRef(0)
   const latestSearchPreviewRequest = useRef(0)
+  const mapStepBackLocked = useRef(false)
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [territoryLevel, setTerritoryLevel] = useState('france')
   const [selectedDept, setSelectedDept] = useState(null)
@@ -586,20 +586,11 @@ export function useAdressesAcquiscanLogic() {
 
   const stepBackFromMapZoom = useCallback(zoom => {
     if (zoneMode) return false
-
-    if (selectedSuggestion && zoom <= SEARCH_BACK_ZOOM) {
-      setAddressQuery('')
-      setSuggestions([])
-      setSuggestionsError(null)
-      setSelectedSuggestion(null)
-      setSearchPreview(null)
-      setSearchPreviewError(null)
-      setSelectedId(null)
-      restoreSearchReturnContext()
-      return true
-    }
+    if (mapStepBackLocked.current) return false
+    if (selectedSuggestion) return false
 
     if (territoryLevel === 'commune' && zoom <= COMMUNE_BACK_ZOOM) {
+      mapStepBackLocked.current = true
       setSelectedCommune(null)
       setTerritoryLevel('department')
       setListData(null)
@@ -610,6 +601,7 @@ export function useAdressesAcquiscanLogic() {
     }
 
     if (territoryLevel === 'department' && zoom <= DEPARTMENT_BACK_ZOOM) {
+      mapStepBackLocked.current = true
       setSelectedDept(null)
       setSelectedCommune(null)
       setTerritoryLevel('france')
@@ -621,7 +613,11 @@ export function useAdressesAcquiscanLogic() {
     }
 
     return false
-  }, [restoreSearchReturnContext, selectedSuggestion, territoryLevel, zoneMode])
+  }, [selectedSuggestion, territoryLevel, zoneMode])
+
+  const releaseMapStepBackLock = useCallback(() => {
+    mapStepBackLocked.current = false
+  }, [])
 
   const updateMapViewport = useCallback((bounds, zoom) => {
     if (!bounds) return
@@ -697,6 +693,7 @@ export function useAdressesAcquiscanLogic() {
   )
 
   const territoryGeoJson = useMemo(() => {
+    if (hasSearchMode) return null
     if (territoryLevel === 'france' && departmentGeoJson && departmentOpportunities) {
       return enrichTerritoryGeoJson(departmentGeoJson, departmentOpportunities.rows || [], 'france')
     }
@@ -706,7 +703,7 @@ export function useAdressesAcquiscanLogic() {
       return enriched
     }
     return null
-  }, [communeGeoJson, communeOpportunities, departmentGeoJson, departmentOpportunities, selectedCommune, territoryLevel])
+  }, [communeGeoJson, communeOpportunities, departmentGeoJson, departmentOpportunities, hasSearchMode, territoryLevel])
 
   const stats = useMemo(() => {
     const shutdownCount = rows.filter(
@@ -950,6 +947,7 @@ export function useAdressesAcquiscanLogic() {
     initialViewState: INITIAL_VIEW_STATE,
     updateMapViewport,
     stepBackFromMapZoom,
+    releaseMapStepBackLock,
     rows,
     clusters,
     selectedAddress,
