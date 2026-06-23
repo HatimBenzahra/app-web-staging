@@ -9,7 +9,6 @@ import {
   CircleOff,
   Crosshair,
   Layers,
-  List,
   LocateFixed,
   MapPin,
   RefreshCw,
@@ -35,6 +34,22 @@ if (MAPBOX_TOKEN) {
 const fmtInt = value => Number(value || 0).toLocaleString('fr-FR')
 const formatAddress = row =>
   [row.addrNumero, row.addrNomVoie, row.addrNomCommune].filter(Boolean).join(' ') || row.imbCode || row.immeubleId
+
+const collectCoordinates = geometry => {
+  if (!geometry) return []
+  if (geometry.type === 'Point') return [geometry.coordinates]
+  if (geometry.type === 'Polygon') return geometry.coordinates.flat()
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.flat(2)
+  return []
+}
+
+const fitFeature = (map, feature, padding = 48) => {
+  if (!map || !feature?.geometry) return
+  const coordinates = collectCoordinates(feature.geometry)
+  if (!coordinates.length) return
+  const bounds = coordinates.reduce((acc, coord) => acc.extend(coord), new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]))
+  map.fitBounds(bounds, { padding, duration: 650, maxZoom: 15 })
+}
 
 const createCircleGeoJson = circle => {
   if (!circle) return { type: 'FeatureCollection', features: [] }
@@ -82,6 +97,26 @@ const clusterCountLayer = {
   },
   paint: {
     'text-color': '#ffffff',
+  },
+}
+
+const nationalClusterLayer = {
+  ...clusterLayer,
+  paint: {
+    'circle-color': ['step', ['get', 'count'], '#475569', 100000, '#f59e0b', 250000, '#ef4444'],
+    'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 11, 100000, 15, 300000, 19, 700000, 23],
+    'circle-stroke-color': '#ffffff',
+    'circle-stroke-width': 2,
+    'circle-opacity': 0.9,
+  },
+}
+
+const nationalClusterCountLayer = {
+  ...clusterCountLayer,
+  layout: {
+    ...clusterCountLayer.layout,
+    'text-field': ['concat', ['to-string', ['round', ['/', ['get', 'count'], 1000]]], 'k'],
+    'text-size': 11,
   },
 }
 
@@ -194,6 +229,54 @@ const building3dLayer = {
   },
 }
 
+const territoryFillLayer = {
+  id: 'acquiscan-territory-fill',
+  type: 'fill',
+  paint: {
+    'fill-color': [
+      'interpolate',
+      ['linear'],
+      ['coalesce', ['get', 'opportunityScore'], 0],
+      0,
+      '#21465d',
+      45,
+      '#2f6b8b',
+      65,
+      '#3b99c9',
+      82,
+      '#48a878',
+    ],
+    'fill-opacity': 0.9,
+  },
+}
+
+const territoryLineLayer = {
+  id: 'acquiscan-territory-line',
+  type: 'line',
+  paint: {
+    'line-color': '#ffffff',
+    'line-width': 1.8,
+    'line-opacity': 0.95,
+  },
+}
+
+const territoryLabelLayer = {
+  id: 'acquiscan-territory-label',
+  type: 'symbol',
+  minzoom: 6,
+  layout: {
+    'text-field': ['coalesce', ['get', 'name'], ['get', 'code']],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 10, 12],
+    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+  },
+  paint: {
+    'text-color': '#0f2534',
+    'text-halo-color': '#ffffff',
+    'text-halo-width': 1.4,
+    'text-opacity': 0.72,
+  },
+}
+
 const copperSegment = row => {
   if (row.fermetureTechnique === '1') {
     return {
@@ -276,6 +359,15 @@ export default function AdressesAcquiscan() {
     filters,
     updateFilter,
     resetFilters,
+    territoryLevel,
+    selectedDept,
+    selectedCommune,
+    territoryGeoJson,
+    territoryLoading,
+    territoryError,
+    selectDepartment,
+    selectCommune,
+    goBackTerritory,
     clearSearchSelection,
     addressQuery,
     setAddressQuery,
@@ -284,10 +376,16 @@ export default function AdressesAcquiscan() {
     suggestionsError,
     selectedSuggestion,
     selectSuggestion,
+    searchRadiusMeters,
+    committedSearchRadiusMeters,
+    updateSearchRadius,
+    searchPreview,
+    searchPreviewLoading,
+    searchPreviewError,
+    hasSearchMode,
     initialViewState,
     updateMapViewport,
     rows,
-    listRows,
     clusters,
     selectedAddress,
     selectedId,
@@ -320,8 +418,6 @@ export default function AdressesAcquiscan() {
     listLoading,
     error,
     refetch,
-    tooManyResults,
-    clustered,
   } = useAdressesAcquiscanLogic()
   const mapRef = useRef(null)
   const lastFocusedSuggestionId = useRef(null)
@@ -333,8 +429,6 @@ export default function AdressesAcquiscan() {
 
   const activeFilters = useMemo(() => {
     const entries = []
-    if (filters.dept.trim()) entries.push({ key: 'dept', label: `Dépt. ${filters.dept.trim().toUpperCase()}` })
-    if (filters.commune.trim()) entries.push({ key: 'commune', label: `INSEE ${filters.commune.trim()}` })
     if (filters.segment !== 'all') entries.push({ key: 'segment', label: FILTER_LABELS.segment[filters.segment] })
     if (filters.fiber !== 'all') entries.push({ key: 'fiber', label: FILTER_LABELS.fiber[filters.fiber] })
     if (filters.annee !== 'all') entries.push({ key: 'annee', label: FILTER_LABELS.annee[filters.annee] })
@@ -419,7 +513,17 @@ export default function AdressesAcquiscan() {
     [selectedSuggestion]
   )
 
-  const zoneCircleGeoJson = useMemo(() => createCircleGeoJson(draftCircle), [draftCircle])
+  const searchCircle = useMemo(() => (
+    selectedSuggestion
+      ? {
+          longitude: selectedSuggestion.longitude,
+          latitude: selectedSuggestion.latitude,
+          radiusMeters: searchRadiusMeters,
+        }
+      : null
+  ), [searchRadiusMeters, selectedSuggestion])
+  const visibleCircle = draftCircle || searchCircle
+  const zoneCircleGeoJson = useMemo(() => createCircleGeoJson(visibleCircle), [visibleCircle])
 
   const zoneTargetsGeoJson = useMemo(() => {
     const excluded = new Set(excludedTargetIds)
@@ -461,6 +565,23 @@ export default function AdressesAcquiscan() {
       return
     }
     if (!feature) return
+
+    if (feature.layer.id === 'acquiscan-territory-fill') {
+      const territory = {
+        code: feature.properties?.code,
+        name: feature.properties?.name || feature.properties?.nom,
+      }
+      if (territoryLevel === 'france') {
+        selectDepartment(territory)
+        fitFeature(mapRef.current, feature, 64)
+        return
+      }
+      if (territoryLevel === 'department') {
+        selectCommune(territory)
+        fitFeature(mapRef.current, feature, 72)
+        return
+      }
+    }
 
     if (feature.layer.id === 'acquiscan-clusters' || feature.layer.id === 'acquiscan-cluster-count') {
       mapRef.current?.flyTo({
@@ -511,6 +632,7 @@ export default function AdressesAcquiscan() {
   const searchHasPostcode = /\b\d{5}\b/.test(addressQuery)
   const showSuggestions = searchFocused && hasSearchQuery
   const isSatellite = mapStyle.includes('satellite')
+  const isNationalAggregateView = !filters.dept && !hasSearchMode && clusters.length > 0
 
   const toggleMapStyle = () => {
     setMapStyle(current => (
@@ -648,10 +770,39 @@ export default function AdressesAcquiscan() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-red-950">{selectedSuggestion.label}</p>
                     <p className="mt-0.5 text-xs text-red-700">
-                      Marqueur rouge sur la carte. Navigation libre après le zoom.
+                      {searchPreviewLoading
+                        ? 'Chargement des adresses proches...'
+                        : `${fmtInt(searchPreview?.totalInCircle || 0)} adresse${(searchPreview?.totalInCircle || 0) > 1 ? 's' : ''} dans ${fmtInt(committedSearchRadiusMeters)} m.`}
                     </p>
                   </div>
                 </div>
+                <div className="mt-3 grid grid-cols-[1fr_86px] gap-2">
+                  <FilterField label="Rayon">
+                    <input
+                      type="range"
+                      min="100"
+                      max="3000"
+                      step="50"
+                      value={searchRadiusMeters}
+                      onChange={event => updateSearchRadius(event.target.value)}
+                      className="h-8 w-full accent-red-600"
+                    />
+                  </FilterField>
+                  <FilterField label="Mètres">
+                    <Input
+                      type="number"
+                      min="100"
+                      max="3000"
+                      step="50"
+                      value={Math.round(searchRadiusMeters)}
+                      onChange={event => updateSearchRadius(event.target.value)}
+                      className="h-8"
+                    />
+                  </FilterField>
+                </div>
+                {searchPreviewError && (
+                  <p className="mt-2 text-xs font-medium text-red-700">{searchPreviewError}</p>
+                )}
                 <div className="mt-2 flex gap-2">
                   <Button type="button" size="sm" variant="secondary" onClick={recenterOnSearch} className="h-8 flex-1 gap-2">
                     <LocateFixed className="h-3.5 w-3.5" />
@@ -662,6 +813,38 @@ export default function AdressesAcquiscan() {
                   </Button>
                 </div>
               </div>
+            )}
+          </div>
+
+          <div className="space-y-3 border-b p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <MapPin className="h-4 w-4 text-red-600" />
+                  Territoire
+                  {territoryLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {territoryLevel === 'france'
+                    ? 'Clique un département pour afficher ses communes.'
+                    : territoryLevel === 'department'
+                      ? `${selectedDept?.name || selectedDept?.code} · clique une commune pour charger les adresses.`
+                      : `${selectedDept?.name || selectedDept?.code} · ${selectedCommune?.name || selectedCommune?.code}`}
+                </p>
+              </div>
+              {territoryLevel !== 'france' && (
+                <Button type="button" variant="outline" size="sm" onClick={goBackTerritory} className="h-8 shrink-0">
+                  Retour
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant={territoryLevel === 'france' ? 'secondary' : 'outline'}>France</Badge>
+              {selectedDept && <Badge variant={territoryLevel === 'department' ? 'secondary' : 'outline'}>{selectedDept.code}</Badge>}
+              {selectedCommune && <Badge variant="secondary">{selectedCommune.name || selectedCommune.code}</Badge>}
+            </div>
+            {territoryError && (
+              <p className="text-xs font-medium text-destructive">{territoryError}</p>
             )}
           </div>
 
@@ -685,22 +868,6 @@ export default function AdressesAcquiscan() {
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-              <FilterField label="Département">
-                <Input
-                  value={filters.dept}
-                  onChange={event => updateFilter('dept', event.target.value)}
-                  placeholder="75"
-                  className={`h-9 ${filters.dept.trim() ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}
-                />
-              </FilterField>
-              <FilterField label="Commune INSEE">
-                <Input
-                  value={filters.commune}
-                  onChange={event => updateFilter('commune', event.target.value)}
-                  placeholder="75056"
-                  className={`h-9 ${filters.commune.trim() ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}
-                />
-              </FilterField>
               <FilterField label="Cuivre">
                 <Select value={filters.segment} onValueChange={value => updateFilter('segment', value)}>
                   <SelectTrigger className={`h-9 w-full ${filters.segment !== 'all' ? 'border-red-300 bg-red-50/50 ring-1 ring-red-100' : ''}`}><SelectValue /></SelectTrigger>
@@ -957,92 +1124,35 @@ export default function AdressesAcquiscan() {
             )}
           </div>
 
-          <div className="grid grid-cols-4 gap-1 border-b p-2 sm:gap-2 xl:grid-cols-2">
-            <MiniStat icon={MapPin} label="Zone" value={fmtInt(stats.total)} />
-            <MiniStat icon={Layers} label="Clust." value={fmtInt(stats.clusters)} />
-            <MiniStat icon={List} label="Liste" value={fmtInt(stats.listTotal)} />
-            <MiniStat icon={Zap} label="Cuivre" value={fmtInt(stats.shutdownCount)} />
-          </div>
-
-          <div className={`transition-shadow ${listLoading ? 'ring-2 ring-primary/10' : ''}`}>
-            <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <div className={`space-y-3 border-b p-3 transition-shadow ${listLoading || searchPreviewLoading ? 'ring-2 ring-primary/10' : ''}`}>
+            <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold">
-                  Adresses affichées
-                  {listLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                  Immeuble sélectionné
+                  {(listLoading || searchPreviewLoading) && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {filters.dept
-                    ? `${fmtInt(stats.listTotal)} adresses Acquiscan pour ce département`
-                    : clustered
-                      ? 'Clique un cluster ou zoome pour voir les adresses'
-                      : `${rows.length} adresses géocodées dans la vue`}
+                  {selectedAddress
+                    ? 'Détail de l’adresse cliquée sur la carte'
+                    : selectedCommune
+                      ? `${fmtInt(stats.listTotal)} adresses chargées sur la carte`
+                      : 'Clique une commune puis un point adresse'}
                 </p>
               </div>
-              <Badge variant={listRows.length ? 'secondary' : 'outline'}>
-                {tooManyResults && !filters.dept ? 'dense' : `${listRows.length}`}
+              <Badge variant={selectedAddress ? 'secondary' : 'outline'}>
+                {selectedAddress ? 'sélection' : fmtInt(rows.length)}
               </Badge>
             </div>
 
-            <div className="pb-4">
-              {listLoading ? (
-                <div className="space-y-2 p-3">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Skeleton key={index} className="h-20 w-full rounded-md" />
-                  ))}
-                </div>
-              ) : listRows.length === 0 ? (
-                <EmptyList clustered={clustered} hasDepartment={Boolean(filters.dept)} />
-              ) : (
-                listRows.map(row => {
-                  const segment = copperSegment(row)
-                  const selected = selectedId === row.immeubleId
-                  const onMap = Boolean(row.coordinates?.latitude && row.coordinates?.longitude)
-                  return (
-                    <button
-                      type="button"
-                      key={row.immeubleId}
-                      onClick={() => onMap && setSelectedId(row.immeubleId)}
-                      className={`w-full border-b border-l-4 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 ${
-                        selected ? 'border-l-red-600 bg-red-50/80' : 'border-l-transparent'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`truncate text-sm font-medium ${selected ? 'text-red-950' : ''}`}>{formatAddress(row)}</p>
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            Dép. {row.dept} · {row.codeInsee || 'INSEE ?'} · {row.imbCode || row.immeubleId}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className={`${scoreTone(row.opportunityScore || 50)} tabular-nums`}>
-                          {row.opportunityScore || 'N/A'}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Badge variant="outline" className={segment.className} title={segment.title}>{segment.label}</Badge>
-                        <Badge variant="outline" className="gap-1.5">
-                          <Building2 className="h-3 w-3" />
-                          {row.nbrLogements || 'N/A'} log.
-                        </Badge>
-                        <Badge variant="outline" className="gap-1.5">
-                          <CheckCircle2 className="h-3 w-3" />
-                          FO {row.eligFo === '1' ? 'oui' : row.eligFo === '0' ? 'non' : 'N/A'}
-                        </Badge>
-                        <Badge variant="outline" className="gap-1.5">
-                          <Wifi className="h-3 w-3" />
-                          {row.sites4g ?? 'N/A'} 4G · {row.sites5g ?? 'N/A'} 5G
-                        </Badge>
-                        <Badge variant={onMap ? 'secondary' : 'outline'} className="gap-1.5">
-                          <LocateFixed className="h-3 w-3" />
-                          {onMap ? 'carte' : 'liste'}
-                        </Badge>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
+            {selectedAddress ? (
+              <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
+            ) : (
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                {selectedCommune
+                  ? 'Clique un point sur la carte pour afficher l’adresse et ses signaux.'
+                  : 'Sélectionne d’abord une commune pour afficher les points adresse.'}
+              </div>
+            )}
           </div>
         </aside>
 
@@ -1068,14 +1178,21 @@ export default function AdressesAcquiscan() {
                 onLoad={() => setMapLoaded(true)}
                 onMoveEnd={handleMoveEnd}
                 onClick={handleMapClick}
-                interactiveLayerIds={['acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}
+                interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}
                 attributionControl={false}
               >
                 <NavigationControl position="bottom-right" />
                 {isPitched && <Layer {...building3dLayer} />}
+                {territoryGeoJson && (
+                  <Source id="acquiscan-territory-source" type="geojson" data={territoryGeoJson}>
+                    <Layer {...territoryFillLayer} />
+                    <Layer {...territoryLineLayer} />
+                    <Layer {...territoryLabelLayer} />
+                  </Source>
+                )}
                 <Source id="acquiscan-cluster-source" type="geojson" data={clustersGeoJson}>
-                  <Layer {...clusterLayer} />
-                  <Layer {...clusterCountLayer} />
+                  <Layer {...(isNationalAggregateView ? nationalClusterLayer : clusterLayer)} />
+                  <Layer {...(isNationalAggregateView ? nationalClusterCountLayer : clusterCountLayer)} />
                 </Source>
                 <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
                   <Layer {...pointLayer} />
@@ -1127,6 +1244,69 @@ export default function AdressesAcquiscan() {
               Chargement
             </Badge>
           )}
+          <div className={`absolute left-4 z-20 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur ${loading && mapLoaded ? 'bottom-14' : 'bottom-4'}`}>
+            <p className="mb-1.5 font-medium text-foreground">Priorité adresse</p>
+            <div className="flex flex-wrap gap-3">
+              <LegendDot color="#64748b" label="Normale" />
+              <LegendDot color="#f59e0b" label="Intéressante" />
+              <LegendDot color="#ef4444" label="Forte" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LegendDot({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+      <span className="h-2.5 w-2.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  )
+}
+
+function AddressDetailCard({ row, onClose }) {
+  const segment = copperSegment(row)
+  return (
+    <div className="rounded-md border bg-background p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-snug">{formatAddress(row)}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            Dép. {row.dept} · {row.codeInsee || 'INSEE ?'} · {row.imbCode || row.immeubleId}
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <Badge variant="outline" className={segment.className} title={segment.title}>{segment.label}</Badge>
+        <Badge variant="outline" className="gap-1.5">
+          <Building2 className="h-3 w-3" />
+          {row.nbrLogements || 'N/A'} log.
+        </Badge>
+        <Badge variant="outline" className="gap-1.5">
+          <CheckCircle2 className="h-3 w-3" />
+          FO {row.eligFo === '1' ? 'oui' : row.eligFo === '0' ? 'non' : 'N/A'}
+        </Badge>
+        <Badge variant="outline" className="gap-1.5">
+          <Wifi className="h-3 w-3" />
+          {row.sites4g ?? 'N/A'} 4G · {row.sites5g ?? 'N/A'} 5G
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md bg-muted px-2 py-1.5">
+          <p className="text-muted-foreground">Fermeture tech.</p>
+          <p className="font-medium">{row.fermetureTechnique === '1' ? 'Oui' : 'Non'}</p>
+        </div>
+        <div className="rounded-md bg-muted px-2 py-1.5">
+          <p className="text-muted-foreground">Année fibre</p>
+          <p className="font-medium">{row.anneeFt || 'N/A'}</p>
         </div>
       </div>
     </div>
@@ -1150,21 +1330,6 @@ function MiniStat({ icon: Icon, label, value }) {
         <span className="truncate">{label}</span>
       </div>
       <p className="mt-0.5 truncate text-sm font-semibold tabular-nums leading-none sm:text-base">{value}</p>
-    </div>
-  )
-}
-
-function EmptyList({ clustered, hasDepartment }) {
-  return (
-    <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-      <CircleOff className="h-8 w-8" />
-      <p>
-        {hasDepartment
-          ? 'Aucune adresse Acquiscan pour ces filtres.'
-          : clustered
-            ? 'Zoome ou clique un cluster pour afficher les adresses géocodées.'
-            : 'Aucune adresse géocodée dans cette zone.'}
-      </p>
     </div>
   )
 }

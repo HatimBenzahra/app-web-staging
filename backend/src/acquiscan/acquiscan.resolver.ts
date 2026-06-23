@@ -15,6 +15,7 @@ import {
   AcquiscanDepartmentOpportunitiesPage,
   AcquiscanMapInput,
   AcquiscanMapResult,
+  AcquiscanTerritoryGeoJsonInput,
   AcquiscanZonePreviewInput,
   AcquiscanZonePreviewResult,
   CreateAcquiscanZoneInput,
@@ -31,6 +32,12 @@ export class AcquiscanResolver {
   @Roles('admin', 'directeur')
   searchAddressSuggestions(@Args('input') input: AcquiscanAddressSearchInput) {
     return this.acquiscanService.searchAddressSuggestions(input);
+  }
+
+  @Query(() => String, { name: 'acquiscanTerritoryGeoJson' })
+  @Roles('admin', 'directeur')
+  getTerritoryGeoJson(@Args('input') input: AcquiscanTerritoryGeoJsonInput) {
+    return this.acquiscanService.getTerritoryGeoJson(input);
   }
 
   @Query(() => AcquiscanAddressesPage, { name: 'acquiscanAddresses' })

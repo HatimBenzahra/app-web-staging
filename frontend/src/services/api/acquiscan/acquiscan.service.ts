@@ -6,6 +6,7 @@ import {
   GET_ACQUISCAN_COPPER_BUILDINGS,
   GET_ACQUISCAN_DEPARTMENT_OPPORTUNITIES,
   GET_ACQUISCAN_MAP_ADDRESSES,
+  GET_ACQUISCAN_TERRITORY_GEOJSON,
   GET_ACQUISCAN_ZONE_PREVIEW,
   CREATE_ACQUISCAN_ZONE,
 } from './acquiscan.queries'
@@ -21,6 +22,7 @@ import type {
   AcquiscanDepartmentOpportunitiesPage,
   AcquiscanMapInput,
   AcquiscanMapResult,
+  AcquiscanTerritoryGeoJsonInput,
   AcquiscanZonePreviewInput,
   AcquiscanZonePreviewResult,
   CreateAcquiscanZoneInput,
@@ -34,6 +36,14 @@ export const acquiscanApi = {
       { input: AcquiscanAddressSearchInput }
     >(GET_ACQUISCAN_ADDRESS_SUGGESTIONS, { input })
     return response.acquiscanAddressSuggestions
+  },
+
+  async getTerritoryGeoJson(input: AcquiscanTerritoryGeoJsonInput): Promise<unknown> {
+    const response = await gql<
+      { acquiscanTerritoryGeoJson: string },
+      { input: AcquiscanTerritoryGeoJsonInput }
+    >(GET_ACQUISCAN_TERRITORY_GEOJSON, { input })
+    return JSON.parse(response.acquiscanTerritoryGeoJson)
   },
 
   async getAddresses(input: AcquiscanAddressesInput): Promise<AcquiscanAddressesPage> {

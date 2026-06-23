@@ -2,6 +2,25 @@ import { Field, Float, GraphQLISODateTime, InputType, Int, ObjectType } from '@n
 import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 @InputType()
+export class AcquiscanTerritoryGeoJsonInput {
+  @Field()
+  @IsString()
+  @IsIn(['departments', 'communes'])
+  level: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(\d{2,3}|2A|2B)$/i)
+  dept?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  deptName?: string;
+}
+
+@InputType()
 export class AcquiscanAddressesInput {
   @Field()
   @IsString()
@@ -80,6 +99,12 @@ export class AcquiscanCoordinate {
 
   @Field(() => Float, { nullable: true })
   imbY?: number | null;
+
+  @Field(() => String, { nullable: true })
+  source?: string | null;
+
+  @Field(() => String, { nullable: true })
+  matchKey?: string | null;
 }
 
 @ObjectType()
@@ -131,6 +156,9 @@ export class AcquiscanAddress {
 
   @Field(() => AcquiscanCoordinate, { nullable: true })
   coordinates?: AcquiscanCoordinate | null;
+
+  @Field()
+  hasCoordinates: boolean;
 }
 
 @ObjectType()

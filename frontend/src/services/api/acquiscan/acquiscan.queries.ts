@@ -25,11 +25,14 @@ export const GET_ACQUISCAN_ADDRESSES = `
         sites4g
         sites5g
         sitesTotal
+        hasCoordinates
         coordinates {
           latitude
           longitude
           imbX
           imbY
+          source
+          matchKey
         }
       }
     }
@@ -48,6 +51,12 @@ export const GET_ACQUISCAN_ADDRESS_SUGGESTIONS = `
       longitude
       score
     }
+  }
+`
+
+export const GET_ACQUISCAN_TERRITORY_GEOJSON = `
+  query GetAcquiscanTerritoryGeoJson($input: AcquiscanTerritoryGeoJsonInput!) {
+    acquiscanTerritoryGeoJson(input: $input)
   }
 `
 
@@ -182,11 +191,14 @@ export const GET_ACQUISCAN_COPPER_BUILDINGS = `
         sites4g
         sites5g
         sitesTotal
+        hasCoordinates
         coordinates {
           latitude
           longitude
           imbX
           imbY
+          source
+          matchKey
         }
         opportunityScore
         opportunityLabel

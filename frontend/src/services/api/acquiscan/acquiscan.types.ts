@@ -17,6 +17,8 @@ export interface AcquiscanCoordinate {
   longitude?: number | null
   imbX?: number | null
   imbY?: number | null
+  source?: string | null
+  matchKey?: string | null
 }
 
 export interface AcquiscanAddress {
@@ -36,6 +38,7 @@ export interface AcquiscanAddress {
   sites5g?: number | null
   sitesTotal?: number | null
   coordinates?: AcquiscanCoordinate | null
+  hasCoordinates: boolean
 }
 
 export interface AcquiscanImportStatus {
@@ -66,6 +69,12 @@ export interface AcquiscanAddressSuggestion {
   latitude: number
   longitude: number
   score?: number | null
+}
+
+export interface AcquiscanTerritoryGeoJsonInput {
+  level: 'departments' | 'communes'
+  dept?: string
+  deptName?: string
 }
 
 export interface AcquiscanBoundsInput {

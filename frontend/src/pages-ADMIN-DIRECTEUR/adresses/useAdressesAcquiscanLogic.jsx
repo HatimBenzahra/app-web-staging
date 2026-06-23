@@ -15,6 +15,10 @@ const INITIAL_BOUNDS = {
 }
 
 const ADDRESS_LIMIT = 500
+const SEARCH_RADIUS_DEFAULT = 600
+const SEARCH_RADIUS_MIN = 100
+const SEARCH_RADIUS_MAX = 3000
+const SEARCH_RADIUS_API_DEBOUNCE_MS = 900
 
 const DEFAULT_FILTERS = {
   dept: '',
@@ -26,16 +30,43 @@ const DEFAULT_FILTERS = {
   segment: 'all',
 }
 
-const normalizeFilters = filters => ({
-  dept: filters.dept.trim().toUpperCase() || undefined,
-  commune: filters.commune.trim() || undefined,
-  annee: filters.annee,
-  fiber: filters.fiber,
-  coverage4g: filters.coverage4g,
-  coverage5g: filters.coverage5g,
-  segment: filters.segment,
-  limit: ADDRESS_LIMIT,
-})
+const isCommuneCompatibleWithDept = (commune, dept) => {
+  if (!commune || !dept) return true
+  return commune.toUpperCase().startsWith(dept.toUpperCase())
+}
+
+const normalizeDeptInput = dept => {
+  const normalized = dept.trim().toUpperCase()
+  if (!normalized) return undefined
+  if (/^\d$/.test(normalized)) return normalized.padStart(2, '0')
+  if (/^(\d{2,3}|2A|2B)$/.test(normalized)) return normalized
+  return undefined
+}
+
+const normalizeFilters = filters => {
+  const dept = normalizeDeptInput(filters.dept)
+  const commune = filters.commune.trim() || undefined
+  return {
+    dept,
+    commune: isCommuneCompatibleWithDept(commune, dept) ? commune : undefined,
+    annee: filters.annee,
+    fiber: filters.fiber,
+    coverage4g: filters.coverage4g,
+    coverage5g: filters.coverage5g,
+    segment: filters.segment,
+    limit: ADDRESS_LIMIT,
+  }
+}
+
+const inferDeptFromSuggestion = suggestion => {
+  const code = suggestion?.codeInsee || suggestion?.postcode
+  if (!code) return undefined
+  const normalized = String(code).trim().toUpperCase()
+  if (/^97[1-6]/.test(normalized)) return normalized.slice(0, 3)
+  if (/^20/.test(normalized)) return undefined
+  if (/^\d{5}$/.test(normalized)) return normalized.slice(0, 2)
+  return undefined
+}
 
 const normalizeBounds = bounds => ({
   west: Number(bounds.west.toFixed(6)),
@@ -68,6 +99,44 @@ const hasValidCoordinates = suggestion => (
   && suggestion.latitude <= 90
 )
 
+const emptyMapData = {
+  points: [],
+  clusters: [],
+  totalInBounds: 0,
+  returnedCount: 0,
+  tooManyResults: false,
+  clustered: false,
+  coverage: [],
+}
+
+const enrichTerritoryGeoJson = (geoJson, rows, level) => {
+  const statsByCode = new Map(rows.map(row => [
+    level === 'france' ? row.codeDept : row.codeInsee,
+    row,
+  ]))
+  return {
+    ...geoJson,
+    features: (geoJson?.features || []).map(feature => {
+      const code = feature.properties?.code
+      const row = statsByCode.get(code)
+      const summary = row?.summary || {}
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          level,
+          code,
+          name: feature.properties?.nom || row?.nomCommune || code,
+          totalBuildings: summary.totalBuildings || 0,
+          copperShutdown: summary.copperShutdown || 0,
+          fiberBuildings: summary.fiberBuildings || 0,
+          opportunityScore: summary.opportunityScore || 0,
+        },
+      }
+    }),
+  }
+}
+
 const formatSuggestionError = error => {
   const message = error instanceof Error ? error.message : String(error || '')
   if (/timeout|temps|ECONNABORTED/i.test(message)) {
@@ -85,18 +154,34 @@ export function useAdressesAcquiscanLogic() {
   const latestMapRequest = useRef(0)
   const latestListRequest = useRef(0)
   const latestZonePreviewRequest = useRef(0)
+  const latestSearchPreviewRequest = useRef(0)
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [territoryLevel, setTerritoryLevel] = useState('france')
+  const [selectedDept, setSelectedDept] = useState(null)
+  const [selectedCommune, setSelectedCommune] = useState(null)
+  const [departmentGeoJson, setDepartmentGeoJson] = useState(null)
+  const [communeGeoJson, setCommuneGeoJson] = useState(null)
+  const [departmentOpportunities, setDepartmentOpportunities] = useState(null)
+  const [communeOpportunities, setCommuneOpportunities] = useState(null)
+  const [territoryLoading, setTerritoryLoading] = useState(false)
+  const [territoryError, setTerritoryError] = useState(null)
   const [addressQuery, setAddressQuery] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState(null)
+  const [searchRadiusMeters, setSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
+  const [committedSearchRadiusMeters, setCommittedSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
+  const [searchPreview, setSearchPreview] = useState(null)
+  const [searchPreviewLoading, setSearchPreviewLoading] = useState(false)
+  const [searchPreviewError, setSearchPreviewError] = useState(null)
   const [mapQuery, setMapQuery] = useState({
     bounds: INITIAL_BOUNDS,
     zoom: INITIAL_VIEW_STATE.zoom,
   })
   const [mapData, setMapData] = useState(null)
   const [listData, setListData] = useState(null)
+  const [listPage, setListPage] = useState(1)
   const [mapLoading, setMapLoading] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [mapError, setMapError] = useState(null)
@@ -114,7 +199,16 @@ export function useAdressesAcquiscanLogic() {
   const [createdZone, setCreatedZone] = useState(null)
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState([])
 
+  useEffect(() => {
+    if (!filters.dept || !filters.commune) return
+    if (isCommuneCompatibleWithDept(filters.commune.trim(), filters.dept.trim())) return
+    setFilters(prev => ({ ...prev, commune: '' }))
+  }, [filters.commune, filters.dept])
+
+  const hasAddressMapContext = Boolean(selectedSuggestion || selectedCommune)
+
   const mapInput = useMemo(() => {
+    if (!hasAddressMapContext) return null
     const normalized = normalizeFilters(filters)
     return {
       bounds: mapQuery.bounds,
@@ -129,7 +223,62 @@ export function useAdressesAcquiscanLogic() {
       limit: normalized.limit,
       cluster: mapQuery.zoom < 10,
     }
-  }, [filters, mapQuery])
+  }, [filters, hasAddressMapContext, mapQuery])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadInitialTerritories = async () => {
+      setTerritoryLoading(true)
+      setTerritoryError(null)
+      try {
+        const [geoJson, opportunities] = await Promise.all([
+          api.acquiscan.getTerritoryGeoJson({ level: 'departments' }),
+          api.acquiscan.getDepartmentOpportunities(),
+        ])
+        if (cancelled) return
+        setDepartmentGeoJson(geoJson)
+        setDepartmentOpportunities(opportunities)
+      } catch (err) {
+        if (!cancelled) setTerritoryError(err instanceof Error ? err.message : 'Erreur de chargement des territoires Acquiscan')
+      } finally {
+        if (!cancelled) setTerritoryLoading(false)
+      }
+    }
+    loadInitialTerritories()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedDept) {
+      setCommuneGeoJson(null)
+      setCommuneOpportunities(null)
+      return
+    }
+    let cancelled = false
+    const loadCommunes = async () => {
+      setTerritoryLoading(true)
+      setTerritoryError(null)
+      try {
+        const [geoJson, opportunities] = await Promise.all([
+          api.acquiscan.getTerritoryGeoJson({ level: 'communes', dept: selectedDept.code, deptName: selectedDept.name }),
+          api.acquiscan.getCommuneOpportunities({ dept: selectedDept.code }),
+        ])
+        if (cancelled) return
+        setCommuneGeoJson(geoJson)
+        setCommuneOpportunities(opportunities)
+      } catch (err) {
+        if (!cancelled) setTerritoryError(err instanceof Error ? err.message : 'Erreur de chargement des communes Acquiscan')
+      } finally {
+        if (!cancelled) setTerritoryLoading(false)
+      }
+    }
+    loadCommunes()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDept])
 
   const loadSuggestions = useCallback(async query => {
     const trimmed = query.trim()
@@ -160,6 +309,14 @@ export function useAdressesAcquiscanLogic() {
   }, [addressQuery, loadSuggestions])
 
   const loadMap = useCallback(async () => {
+    if (!mapInput) {
+      latestMapRequest.current += 1
+      setMapData(emptyMapData)
+      setMapLoading(false)
+      setMapError(null)
+      setSelectedId(null)
+      return
+    }
     const requestId = latestMapRequest.current + 1
     latestMapRequest.current = requestId
     setMapLoading(true)
@@ -182,7 +339,7 @@ export function useAdressesAcquiscanLogic() {
 
   const listInput = useMemo(() => {
     const normalized = normalizeFilters(filters)
-    if (!normalized.dept) return null
+    if (!normalized.dept || !normalized.commune) return null
     return {
       dept: normalized.dept,
       commune: normalized.commune,
@@ -192,9 +349,9 @@ export function useAdressesAcquiscanLogic() {
       coverage5g: normalized.coverage5g,
       segment: normalized.segment,
       limit: Math.min(normalized.limit, 500),
-      offset: 0,
+      offset: (listPage - 1) * Math.min(normalized.limit, 500),
     }
-  }, [filters])
+  }, [filters, listPage])
 
   const zonePreviewInput = useMemo(() => {
     if (!zoneMode || !draftCircle) return null
@@ -213,6 +370,33 @@ export function useAdressesAcquiscanLogic() {
       limit: ADDRESS_LIMIT,
     }
   }, [draftCircle, filters, zoneMode])
+
+  const searchPreviewInput = useMemo(() => {
+    if (!selectedSuggestion || !hasValidCoordinates(selectedSuggestion)) return null
+    const normalized = normalizeFilters(filters)
+    const inferredDept = inferDeptFromSuggestion(selectedSuggestion)
+    const inferredCommune = selectedSuggestion.codeInsee || undefined
+    return {
+      longitude: Number(selectedSuggestion.longitude.toFixed(7)),
+      latitude: Number(selectedSuggestion.latitude.toFixed(7)),
+      radiusMeters: Math.round(committedSearchRadiusMeters),
+      dept: normalized.dept || inferredDept,
+      commune: normalized.commune || inferredCommune,
+      annee: normalized.annee,
+      fiber: normalized.fiber,
+      coverage4g: normalized.coverage4g,
+      coverage5g: normalized.coverage5g,
+      segment: normalized.segment,
+      limit: ADDRESS_LIMIT,
+    }
+  }, [committedSearchRadiusMeters, filters, selectedSuggestion])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setCommittedSearchRadiusMeters(searchRadiusMeters)
+    }, SEARCH_RADIUS_API_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [searchRadiusMeters])
 
   useEffect(() => {
     if (zoneMode) {
@@ -247,7 +431,10 @@ export function useAdressesAcquiscanLogic() {
   }, [listInput])
 
   useEffect(() => {
-    loadMap()
+    const timer = window.setTimeout(() => {
+      loadMap()
+    }, 550)
+    return () => window.clearTimeout(timer)
   }, [loadMap])
 
   useEffect(() => {
@@ -287,13 +474,89 @@ export function useAdressesAcquiscanLogic() {
     return () => window.clearTimeout(timer)
   }, [loadZonePreview])
 
+  const loadSearchPreview = useCallback(async () => {
+    if (!searchPreviewInput) {
+      latestSearchPreviewRequest.current += 1
+      setSearchPreview(null)
+      setSearchPreviewError(null)
+      setSearchPreviewLoading(false)
+      return
+    }
+
+    const requestId = latestSearchPreviewRequest.current + 1
+    latestSearchPreviewRequest.current = requestId
+    setSearchPreviewLoading(true)
+    setSearchPreviewError(null)
+    try {
+      const result = await api.acquiscan.getZonePreview(searchPreviewInput)
+      if (latestSearchPreviewRequest.current !== requestId) return
+      setSearchPreview(result)
+      setSelectedId(current => {
+        if (!result.targets.length) return null
+        return result.targets.some(target => target.immeubleId === current) ? current : null
+      })
+    } catch (err) {
+      if (latestSearchPreviewRequest.current !== requestId) return
+      setSearchPreviewError(err instanceof Error ? err.message : 'Erreur de recherche proximité Acquiscan')
+    } finally {
+      if (latestSearchPreviewRequest.current === requestId) setSearchPreviewLoading(false)
+    }
+  }, [searchPreviewInput])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadSearchPreview()
+    }, 450)
+    return () => window.clearTimeout(timer)
+  }, [loadSearchPreview])
+
   const updateFilter = useCallback((key, value) => {
+    setListPage(1)
     setFilters(prev => {
       const next = { ...prev, [key]: value }
       if (key === 'dept') next.commune = ''
       return next
     })
   }, [])
+
+  const selectDepartment = useCallback(department => {
+    if (!department?.code) return
+    setSelectedDept({ code: department.code, name: department.name || department.nom || department.code })
+    setSelectedCommune(null)
+    setTerritoryLevel('department')
+    setListPage(1)
+    setListData(null)
+    setMapData(emptyMapData)
+    setFilters(prev => ({ ...prev, dept: department.code, commune: '' }))
+  }, [])
+
+  const selectCommune = useCallback(commune => {
+    if (!selectedDept?.code || !commune?.code) return
+    setSelectedCommune({ code: commune.code, name: commune.name || commune.nom || commune.code })
+    setTerritoryLevel('commune')
+    setListPage(1)
+    setMapData(null)
+    setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: commune.code }))
+  }, [selectedDept])
+
+  const goBackTerritory = useCallback(() => {
+    if (territoryLevel === 'commune') {
+      setSelectedCommune(null)
+      setTerritoryLevel('department')
+      setListData(null)
+      setMapData(emptyMapData)
+      setFilters(prev => ({ ...prev, commune: '' }))
+      return
+    }
+    if (territoryLevel === 'department') {
+      setSelectedDept(null)
+      setSelectedCommune(null)
+      setTerritoryLevel('france')
+      setListData(null)
+      setMapData(emptyMapData)
+      setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+    }
+  }, [territoryLevel])
 
   const updateMapViewport = useCallback((bounds, zoom) => {
     if (!bounds) return
@@ -314,10 +577,18 @@ export function useAdressesAcquiscanLogic() {
 
   const resetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS)
+    setTerritoryLevel('france')
+    setSelectedDept(null)
+    setSelectedCommune(null)
+    setListData(null)
+    setMapData(emptyMapData)
     setAddressQuery('')
     setSuggestions([])
     setSelectedSuggestion(null)
+    setSearchPreview(null)
+    setSearchPreviewError(null)
     setSelectedId(null)
+    setListPage(1)
   }, [])
 
   const clearSearchSelection = useCallback(() => {
@@ -325,12 +596,40 @@ export function useAdressesAcquiscanLogic() {
     setSuggestions([])
     setSuggestionsError(null)
     setSelectedSuggestion(null)
+    setSearchPreview(null)
+    setSearchPreviewError(null)
+    setSelectedId(null)
   }, [])
 
-  const rows = useMemo(() => (mapData?.points || []).map(mapPointToAddress), [mapData?.points])
+  const searchRows = useMemo(
+    () => (searchPreview?.targets || []).map(target => ({
+      ...target,
+      coordinates: {
+        latitude: target.latitude,
+        longitude: target.longitude,
+      },
+    })),
+    [searchPreview?.targets]
+  )
+  const mapRows = useMemo(() => (mapData?.points || []).map(mapPointToAddress), [mapData?.points])
+  const remoteCoordinateRows = useMemo(
+    () => (listData?.rows || []).filter(row => row.hasCoordinates && row.coordinates?.latitude && row.coordinates?.longitude),
+    [listData?.rows]
+  )
+  const hasSearchMode = Boolean(selectedSuggestion)
+  const rows = useMemo(
+    () => {
+      if (hasSearchMode) return searchRows
+      return remoteCoordinateRows.length ? remoteCoordinateRows : mapRows
+    },
+    [hasSearchMode, mapRows, remoteCoordinateRows, searchRows]
+  )
   const listRows = useMemo(
-    () => (listData?.rows?.length ? listData.rows : rows),
-    [listData?.rows, rows]
+    () => {
+      if (hasSearchMode) return searchRows
+      return listData?.rows?.length ? listData.rows : rows
+    },
+    [hasSearchMode, listData?.rows, rows, searchRows]
   )
   const clusters = mapData?.clusters || []
   const coverage = mapData?.coverage || []
@@ -341,23 +640,74 @@ export function useAdressesAcquiscanLogic() {
     [listRows, rows, selectedId]
   )
 
+  const territoryGeoJson = useMemo(() => {
+    if (territoryLevel === 'france' && departmentGeoJson && departmentOpportunities) {
+      return enrichTerritoryGeoJson(departmentGeoJson, departmentOpportunities.rows || [], 'france')
+    }
+    if ((territoryLevel === 'department' || territoryLevel === 'commune') && communeGeoJson && communeOpportunities) {
+      const enriched = enrichTerritoryGeoJson(communeGeoJson, communeOpportunities.rows || [], 'department')
+      if (territoryLevel === 'commune') return null
+      return enriched
+    }
+    return null
+  }, [communeGeoJson, communeOpportunities, departmentGeoJson, departmentOpportunities, selectedCommune, territoryLevel])
+
   const stats = useMemo(() => {
     const shutdownCount = rows.filter(
       row => row.fermetureTechnique === '1' || row.fermetureComAddr === '1' || row.fermetureComZone === '1'
     ).length
     const fiberCount = rows.filter(row => row.eligFo === '1').length
     return {
-      total: mapData?.totalInBounds || 0,
-      shown: mapData?.returnedCount || rows.length,
+      total: hasSearchMode ? (searchPreview?.totalInCircle || 0) : (mapData?.totalInBounds || 0),
+      shown: hasSearchMode ? rows.length : (mapData?.returnedCount || rows.length),
       rows: rows.length,
       listRows: listRows.length,
       clusters: clusters.length,
       shutdownCount,
       fiberCount,
       departments: coverage.length,
-      listTotal: listData?.total || mapData?.totalInBounds || 0,
+      listTotal: hasSearchMode ? (searchPreview?.totalInCircle || rows.length) : (listData?.total || mapData?.totalInBounds || 0),
     }
-  }, [clusters.length, coverage.length, listData?.total, listRows.length, mapData?.returnedCount, mapData?.totalInBounds, rows])
+  }, [clusters.length, coverage.length, hasSearchMode, listData?.total, listRows.length, mapData?.returnedCount, mapData?.totalInBounds, rows, searchPreview?.totalInCircle])
+
+  const listPagination = useMemo(() => {
+    const pageSize = listInput?.limit || ADDRESS_LIMIT
+    const total = listData?.total || 0
+    const pageCount = total > 0 ? Math.ceil(total / pageSize) : 1
+    const safePage = Math.min(listPage, pageCount)
+    const start = total > 0 ? ((safePage - 1) * pageSize) + 1 : 0
+    const end = Math.min(safePage * pageSize, total)
+    return {
+      page: safePage,
+      pageSize,
+      pageCount,
+      total,
+      start,
+      end,
+      hasPrevious: safePage > 1,
+      hasNext: safePage < pageCount,
+    }
+  }, [listData?.total, listInput?.limit, listPage])
+
+  useEffect(() => {
+    if (listPage !== listPagination.page) {
+      setListPage(listPagination.page)
+    }
+  }, [listPage, listPagination.page])
+
+  const goToPreviousListPage = useCallback(() => {
+    setListPage(current => Math.max(1, current - 1))
+  }, [])
+
+  const goToNextListPage = useCallback(() => {
+    setListPage(current => current + 1)
+  }, [])
+
+  const updateSearchRadius = useCallback(radiusMeters => {
+    const nextRadius = Number(radiusMeters)
+    if (!Number.isFinite(nextRadius)) return
+    setSearchRadiusMeters(Math.min(SEARCH_RADIUS_MAX, Math.max(SEARCH_RADIUS_MIN, nextRadius)))
+  }, [])
 
   const selectSuggestion = useCallback(suggestion => {
     if (!hasValidCoordinates(suggestion)) {
@@ -365,6 +715,10 @@ export function useAdressesAcquiscanLogic() {
       return
     }
     setSelectedSuggestion(suggestion)
+    setSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
+    setCommittedSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
+    setSearchPreview(null)
+    setSearchPreviewError(null)
     setAddressQuery(suggestion.label)
     setSuggestions([])
     setSelectedId(null)
@@ -542,6 +896,15 @@ export function useAdressesAcquiscanLogic() {
     filters,
     updateFilter,
     resetFilters,
+    territoryLevel,
+    selectedDept,
+    selectedCommune,
+    territoryGeoJson,
+    territoryLoading,
+    territoryError,
+    selectDepartment,
+    selectCommune,
+    goBackTerritory,
     clearSearchSelection,
     addressQuery,
     setAddressQuery,
@@ -550,10 +913,20 @@ export function useAdressesAcquiscanLogic() {
     suggestionsError,
     selectedSuggestion,
     selectSuggestion,
+    searchRadiusMeters,
+    committedSearchRadiusMeters,
+    updateSearchRadius,
+    searchPreview,
+    searchPreviewLoading,
+    searchPreviewError,
+    hasSearchMode,
     initialViewState: INITIAL_VIEW_STATE,
     updateMapViewport,
     rows,
     listRows,
+    listPagination,
+    goToPreviousListPage,
+    goToNextListPage,
     rowsWithCoordinates: rows,
     clusters,
     coverage,
@@ -584,17 +957,18 @@ export function useAdressesAcquiscanLogic() {
     createdZone,
     stats,
     mapData,
-    loading: mapLoading || listLoading,
+    loading: mapLoading || listLoading || searchPreviewLoading,
     mapLoading,
     listLoading,
-    error: mapError || listError,
+    error: mapError || listError || searchPreviewError,
     mapError,
     listError,
     refetch: () => {
       loadMap()
       loadList()
+      loadSearchPreview()
     },
-    tooManyResults: Boolean(mapData?.tooManyResults),
-    clustered: Boolean(mapData?.clustered),
+    tooManyResults: hasSearchMode ? Boolean(searchPreview?.tooManyResults) : Boolean(mapData?.tooManyResults),
+    clustered: hasSearchMode ? false : Boolean(mapData?.clustered),
   }
 }
