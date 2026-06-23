@@ -384,6 +384,7 @@ export default function AdressesAcquiscan() {
     hasSearchMode,
     initialViewState,
     updateMapViewport,
+    stepBackFromMapZoom,
     rows,
     clusters,
     selectedAddress,
@@ -545,6 +546,7 @@ export default function AdressesAcquiscan() {
   const handleMoveEnd = event => {
     const map = event.target
     const bounds = map.getBounds()
+    const zoom = event.viewState.zoom
     updateMapViewport(
       {
         west: bounds.getWest(),
@@ -552,8 +554,12 @@ export default function AdressesAcquiscan() {
         east: bounds.getEast(),
         north: bounds.getNorth(),
       },
-      event.viewState.zoom
+      zoom
     )
+  }
+
+  const handleMapMove = event => {
+    stepBackFromMapZoom(event.viewState.zoom)
   }
 
   const handleMapClick = event => {
@@ -826,8 +832,8 @@ export default function AdressesAcquiscan() {
                   {territoryLevel === 'france'
                     ? 'Clique un département pour afficher ses communes.'
                     : territoryLevel === 'department'
-                      ? `${selectedDept?.name || selectedDept?.code} · clique une commune pour charger les adresses.`
-                      : `${selectedDept?.name || selectedDept?.code} · ${selectedCommune?.name || selectedCommune?.code}`}
+                      ? `${selectedDept?.name || selectedDept?.code} · clique une commune pour charger les adresses. Dézoome pour revenir à la France.`
+                      : `${selectedDept?.name || selectedDept?.code} · ${selectedCommune?.name || selectedCommune?.code} · dézoome pour revenir aux communes.`}
                 </p>
               </div>
               {territoryLevel !== 'france' && (
@@ -1174,6 +1180,7 @@ export default function AdressesAcquiscan() {
                 mapStyle={mapStyle}
                 style={{ width: '100%', height: '100%' }}
                 onLoad={() => setMapLoaded(true)}
+                onMove={handleMapMove}
                 onMoveEnd={handleMoveEnd}
                 onClick={handleMapClick}
                 interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-clusters', 'acquiscan-cluster-count', 'acquiscan-points']}

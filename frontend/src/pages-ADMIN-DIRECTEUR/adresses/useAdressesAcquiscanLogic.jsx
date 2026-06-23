@@ -19,6 +19,9 @@ const SEARCH_RADIUS_DEFAULT = 600
 const SEARCH_RADIUS_MIN = 100
 const SEARCH_RADIUS_MAX = 3000
 const SEARCH_RADIUS_API_DEBOUNCE_MS = 900
+const SEARCH_BACK_ZOOM = 12
+const COMMUNE_BACK_ZOOM = 8.8
+const DEPARTMENT_BACK_ZOOM = 5.7
 
 const DEFAULT_FILTERS = {
   dept: '',
@@ -170,6 +173,7 @@ export function useAdressesAcquiscanLogic() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState(null)
+  const [searchReturnContext, setSearchReturnContext] = useState(null)
   const [searchRadiusMeters, setSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
   const [committedSearchRadiusMeters, setCommittedSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
   const [searchPreview, setSearchPreview] = useState(null)
@@ -541,6 +545,7 @@ export function useAdressesAcquiscanLogic() {
       setTerritoryLevel('department')
       setListData(null)
       setMapData(emptyMapData)
+      setSelectedId(null)
       setFilters(prev => ({ ...prev, commune: '' }))
       return
     }
@@ -550,9 +555,73 @@ export function useAdressesAcquiscanLogic() {
       setTerritoryLevel('france')
       setListData(null)
       setMapData(emptyMapData)
+      setSelectedId(null)
       setFilters(prev => ({ ...prev, dept: '', commune: '' }))
     }
   }, [territoryLevel])
+
+  const restoreSearchReturnContext = useCallback(() => {
+    if (searchReturnContext) {
+      setTerritoryLevel(searchReturnContext.territoryLevel)
+      setSelectedDept(searchReturnContext.selectedDept)
+      setSelectedCommune(searchReturnContext.selectedCommune)
+      setFilters(prev => ({
+        ...prev,
+        dept: searchReturnContext.dept,
+        commune: searchReturnContext.commune,
+      }))
+      setSearchReturnContext(null)
+      return
+    }
+
+    if (selectedCommune && selectedDept) {
+      setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: selectedCommune.code }))
+      return
+    }
+
+    if (selectedDept) {
+      setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: '' }))
+    }
+  }, [searchReturnContext, selectedCommune, selectedDept])
+
+  const stepBackFromMapZoom = useCallback(zoom => {
+    if (zoneMode) return false
+
+    if (selectedSuggestion && zoom <= SEARCH_BACK_ZOOM) {
+      setAddressQuery('')
+      setSuggestions([])
+      setSuggestionsError(null)
+      setSelectedSuggestion(null)
+      setSearchPreview(null)
+      setSearchPreviewError(null)
+      setSelectedId(null)
+      restoreSearchReturnContext()
+      return true
+    }
+
+    if (territoryLevel === 'commune' && zoom <= COMMUNE_BACK_ZOOM) {
+      setSelectedCommune(null)
+      setTerritoryLevel('department')
+      setListData(null)
+      setMapData(emptyMapData)
+      setSelectedId(null)
+      setFilters(prev => ({ ...prev, commune: '' }))
+      return true
+    }
+
+    if (territoryLevel === 'department' && zoom <= DEPARTMENT_BACK_ZOOM) {
+      setSelectedDept(null)
+      setSelectedCommune(null)
+      setTerritoryLevel('france')
+      setListData(null)
+      setMapData(emptyMapData)
+      setSelectedId(null)
+      setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+      return true
+    }
+
+    return false
+  }, [restoreSearchReturnContext, selectedSuggestion, territoryLevel, zoneMode])
 
   const updateMapViewport = useCallback((bounds, zoom) => {
     if (!bounds) return
@@ -581,6 +650,7 @@ export function useAdressesAcquiscanLogic() {
     setAddressQuery('')
     setSuggestions([])
     setSelectedSuggestion(null)
+    setSearchReturnContext(null)
     setSearchPreview(null)
     setSearchPreviewError(null)
     setSelectedId(null)
@@ -594,7 +664,8 @@ export function useAdressesAcquiscanLogic() {
     setSearchPreview(null)
     setSearchPreviewError(null)
     setSelectedId(null)
-  }, [])
+    restoreSearchReturnContext()
+  }, [restoreSearchReturnContext])
 
   const searchRows = useMemo(
     () => (searchPreview?.targets || []).map(target => ({
@@ -663,6 +734,13 @@ export function useAdressesAcquiscanLogic() {
       setSuggestionsError('Coordonnées invalides pour cette adresse.')
       return
     }
+    setSearchReturnContext({
+      territoryLevel,
+      selectedDept,
+      selectedCommune,
+      dept: filters.dept,
+      commune: filters.commune,
+    })
     setSelectedSuggestion(suggestion)
     setSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
     setCommittedSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
@@ -683,7 +761,7 @@ export function useAdressesAcquiscanLogic() {
         radiusMeters: draftCircle?.radiusMeters || 600,
       })
     }
-  }, [draftCircle?.radiusMeters, zoneMode])
+  }, [draftCircle?.radiusMeters, filters.commune, filters.dept, selectedCommune, selectedDept, territoryLevel, zoneMode])
 
   const startZoneMode = useCallback(() => {
     setZoneMode(true)
@@ -871,6 +949,7 @@ export function useAdressesAcquiscanLogic() {
     hasSearchMode,
     initialViewState: INITIAL_VIEW_STATE,
     updateMapViewport,
+    stepBackFromMapZoom,
     rows,
     clusters,
     selectedAddress,
