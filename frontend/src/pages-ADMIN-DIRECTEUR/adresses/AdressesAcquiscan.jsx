@@ -21,6 +21,14 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -431,9 +439,7 @@ export default function AdressesAcquiscan() {
     zoneCreateLoading,
     zoneCreateError,
     createdZone,
-    stats,
     loading,
-    listLoading,
     error,
     refetch,
   } = useAdressesAcquiscanLogic()
@@ -450,7 +456,6 @@ export default function AdressesAcquiscan() {
     territory: true,
     filters: true,
     zone: false,
-    details: false,
   })
 
   const activeFilters = useMemo(() => {
@@ -476,11 +481,6 @@ export default function AdressesAcquiscan() {
     if (!zoneMode) return
     setOpenSections(current => ({ ...current, zone: true }))
   }, [zoneMode])
-
-  useEffect(() => {
-    if (!selectedAddress) return
-    setOpenSections(current => ({ ...current, details: true }))
-  }, [selectedAddress])
 
   useEffect(() => {
     if (!mapShellRef.current) return undefined
@@ -705,55 +705,6 @@ export default function AdressesAcquiscan() {
     })
   }
 
-  const renderSelectedAddressPanel = () => (
-    <div
-      className={`space-y-2 rounded-md border bg-background p-2.5 transition-shadow ${
-        listLoading || searchPreviewLoading ? 'ring-2 ring-primary/10' : ''
-      }`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => toggleSection('details')}
-          className="min-w-0 flex-1 text-left"
-        >
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-            Immeuble sélectionné
-            {(listLoading || searchPreviewLoading) && (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
-            )}
-            <ChevronDown
-              className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.details ? 'rotate-180' : ''}`}
-            />
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {selectedAddress
-              ? 'Adresse cliquée sur la carte'
-              : selectedCommune
-                ? `${fmtInt(stats.listTotal)} adresses sur cette commune`
-                : 'Clique une commune puis un point'}
-          </p>
-        </button>
-        <Badge variant={selectedAddress ? 'secondary' : 'outline'} className="h-6 shrink-0">
-          {selectedAddress ? 'sélection' : fmtInt(rows.length)}
-        </Badge>
-      </div>
-
-      {openSections.details && (
-        selectedAddress ? (
-          <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
-        ) : (
-          <div className="rounded-md border border-dashed px-2.5 py-2 text-xs text-muted-foreground">
-            {selectedCommune
-              ? 'Clique un point pour voir l’adresse.'
-              : 'Sélectionne une commune pour charger les points.'}
-          </div>
-        )
-      )}
-    </div>
-  )
-
   const renderMapToolbar = () => {
     const toolbarFields = FILTER_GROUPS.flatMap(group => group.fields)
     return (
@@ -872,7 +823,7 @@ export default function AdressesAcquiscan() {
               <p className="text-xs font-medium text-destructive">{territoryError}</p>
             )}
             {selectedSuggestion && (
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(300px,440px)_auto] lg:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-red-950">{selectedSuggestion.label}</p>
                   <p className="text-xs text-red-700">
@@ -881,7 +832,7 @@ export default function AdressesAcquiscan() {
                       : `${fmtInt(searchPreview?.totalInCircle || 0)} adresse${(searchPreview?.totalInCircle || 0) > 1 ? 's' : ''} dans ${fmtInt(committedSearchRadiusMeters)} m.`}
                   </p>
                 </div>
-                <div className="grid min-w-0 flex-1 grid-cols-[minmax(160px,1fr)_78px] items-end gap-2 lg:max-w-sm">
+                <div className="grid min-w-0 grid-cols-[minmax(160px,1fr)_78px] items-end gap-2">
                   <FilterField label="Rayon">
                     <input
                       type="range"
@@ -905,14 +856,31 @@ export default function AdressesAcquiscan() {
                     />
                   </FilterField>
                 </div>
-                <div className="flex gap-1.5">
-                  <Button type="button" size="sm" variant="secondary" onClick={recenterOnSearch} className="h-8 gap-1.5">
-                    <LocateFixed className="h-3.5 w-3.5" />
-                    Recentrer
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={clearSearchSelection} className="h-8">
-                    Effacer
-                  </Button>
+                <div className="space-y-1">
+                  <span className="block h-4 text-[11px] font-medium uppercase tracking-wide text-transparent">
+                    Actions
+                  </span>
+                  <div className="flex gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={recenterOnSearch}
+                      className="h-8 gap-1.5"
+                    >
+                      <LocateFixed className="h-3.5 w-3.5" />
+                      Recentrer
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={clearSearchSelection}
+                      className="h-8"
+                    >
+                      Effacer
+                    </Button>
+                  </div>
                 </div>
                 {searchPreviewError && (
                   <p className="text-xs font-medium text-red-700">{searchPreviewError}</p>
@@ -922,20 +890,17 @@ export default function AdressesAcquiscan() {
           </div>
         )}
 
-        {(selectedAddress || zoneMode) && (
+        {zoneMode && (
           <div className="grid gap-2 border-t bg-muted/20 p-2 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
-            {renderToolbarContextPanels()}
+            {renderZonePanel()}
           </div>
         )}
       </div>
     )
   }
 
-  const renderToolbarContextPanels = () => (
-    <>
-      {selectedAddress && renderSelectedAddressPanel()}
-
-      {zoneMode && <div className="space-y-2.5 rounded-md border bg-background p-2.5">
+  const renderZonePanel = () => (
+      <div className="space-y-2.5 rounded-md border bg-background p-2.5">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -1157,9 +1122,7 @@ export default function AdressesAcquiscan() {
             )}
           </div>
         )}
-      </div>}
-
-    </>
+      </div>
   )
 
   return (
@@ -1190,6 +1153,35 @@ export default function AdressesAcquiscan() {
       <div className="-mx-4 min-w-0 xl:ml-0 xl:-mr-4">
         <div className="flex min-w-0 flex-col gap-2">
           {renderMapToolbar()}
+
+          <Dialog open={Boolean(selectedAddress)} onOpenChange={open => !open && setSelectedId(null)}>
+            <DialogContent className="max-h-[86vh] overflow-y-auto p-0 sm:max-w-xl">
+              {selectedAddress && (
+                <>
+                  <DialogHeader className="border-b px-4 py-3">
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      Immeuble Acquiscan
+                    </DialogTitle>
+                    <DialogDescription className="truncate">
+                      {formatAddress(selectedAddress)}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="px-4 py-3">
+                    <AddressDetailCard row={selectedAddress} onClose={() => setSelectedId(null)} />
+                  </div>
+                  <DialogFooter className="border-t px-4 py-3">
+                    <Button type="button" variant="outline" onClick={() => setSelectedId(null)}>
+                      Fermer
+                    </Button>
+                    <Button type="button" disabled title="Prévu pour une prochaine version">
+                      Ajouter aux opportunités
+                    </Button>
+                  </DialogFooter>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
 
         <div
           ref={mapShellRef}
@@ -1385,7 +1377,7 @@ function ToolbarSelect({ field, value, active, onChange }) {
       <span className="sr-only">{field.label}</span>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className={`h-8 w-[132px] gap-1 rounded-md px-2 text-xs shadow-none ${
+          className={`h-8 w-[132px] gap-1 rounded-md px-2 text-xs shadow-none focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
             active ? 'border-red-200 bg-red-50 text-red-800' : 'bg-background'
           }`}
         >
