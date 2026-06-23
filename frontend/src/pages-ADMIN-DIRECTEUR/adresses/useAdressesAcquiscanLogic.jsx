@@ -18,7 +18,7 @@ const ADDRESS_LIMIT = 500
 const SEARCH_RADIUS_DEFAULT = 600
 const SEARCH_RADIUS_MIN = 100
 const SEARCH_RADIUS_MAX = 3000
-const SEARCH_RADIUS_API_DEBOUNCE_MS = 900
+const SEARCH_RADIUS_API_DEBOUNCE_MS = 1400
 const COMMUNE_BACK_ZOOM = 8.8
 const DEPARTMENT_BACK_ZOOM = 5.7
 
@@ -148,6 +148,16 @@ const formatSuggestionError = error => {
     return 'Recherche adresse temporairement indisponible.'
   }
   return message || 'Erreur de recherche adresse'
+}
+
+const isRateLimitError = error => {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return /\b429\b|too many requests|rate limit|trop de requêtes/i.test(message)
+}
+
+const formatAcquiscanError = (error, fallback) => {
+  if (isRateLimitError(error)) return null
+  return error instanceof Error ? error.message : fallback
 }
 
 export function useAdressesAcquiscanLogic() {
@@ -334,7 +344,7 @@ export function useAdressesAcquiscanLogic() {
       })
     } catch (err) {
       if (latestMapRequest.current !== requestId) return
-      setMapError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
+      setMapError(formatAcquiscanError(err, 'Erreur de chargement des adresses Acquiscan'))
     } finally {
       if (latestMapRequest.current === requestId) setMapLoading(false)
     }
@@ -427,7 +437,7 @@ export function useAdressesAcquiscanLogic() {
       setListData(result)
     } catch (err) {
       if (latestListRequest.current !== requestId) return
-      setListError(err instanceof Error ? err.message : 'Erreur de chargement des adresses Acquiscan')
+      setListError(formatAcquiscanError(err, 'Erreur de chargement des adresses Acquiscan'))
     } finally {
       if (latestListRequest.current === requestId) setListLoading(false)
     }
@@ -464,7 +474,7 @@ export function useAdressesAcquiscanLogic() {
       setExcludedTargetIds(current => current.filter(id => result.targets.some(target => target.immeubleId === id)))
     } catch (err) {
       if (latestZonePreviewRequest.current !== requestId) return
-      setZonePreviewError(err instanceof Error ? err.message : 'Erreur de preview zone Acquiscan')
+      setZonePreviewError(formatAcquiscanError(err, 'Erreur de preview zone Acquiscan'))
     } finally {
       if (latestZonePreviewRequest.current === requestId) setZonePreviewLoading(false)
     }
@@ -500,7 +510,7 @@ export function useAdressesAcquiscanLogic() {
       })
     } catch (err) {
       if (latestSearchPreviewRequest.current !== requestId) return
-      setSearchPreviewError(err instanceof Error ? err.message : 'Erreur de recherche proximité Acquiscan')
+      setSearchPreviewError(formatAcquiscanError(err, 'Erreur de recherche proximité Acquiscan'))
     } finally {
       if (latestSearchPreviewRequest.current === requestId) setSearchPreviewLoading(false)
     }
