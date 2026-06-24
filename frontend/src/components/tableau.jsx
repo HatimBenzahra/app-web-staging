@@ -316,7 +316,7 @@ export function AdvancedDataTable({
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              className="h-8 w-8 p-0 hover:bg-muted data-[state=open]:bg-muted"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Ouvrir le menu</span>

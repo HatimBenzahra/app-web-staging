@@ -382,7 +382,7 @@ const FILTER_GROUPS = [
         key: 'coverage4g',
         label: '4G',
         options: [
-          ['all', 'Toutes couvertures'],
+          ['all', '4G: toutes'],
           ['eleve', '4G élevée'],
           ['moyen', '4G moyenne'],
           ['faible', '4G faible'],
@@ -392,7 +392,7 @@ const FILTER_GROUPS = [
         key: 'coverage5g',
         label: '5G',
         options: [
-          ['all', 'Toutes couvertures'],
+          ['all', '5G: toutes'],
           ['eleve', '5G élevée'],
           ['moyen', '5G moyenne'],
           ['faible', '5G faible'],
@@ -799,13 +799,13 @@ export default function AdressesAcquiscan() {
   const renderMapToolbar = () => {
     const toolbarFields = FILTER_GROUPS.flatMap(group => group.fields)
     return (
-      <div className="rounded-lg border bg-background shadow-sm">
+      <div className="rounded-xl border border-border/70 bg-background shadow-sm">
         <div className="flex flex-col gap-2 p-2 lg:flex-row lg:items-center">
           <div
             className={`relative min-w-0 transition-[flex-basis,width,max-width] duration-500 ease-out ${
               searchIsOpen
                 ? 'basis-full sm:basis-[360px] lg:basis-[420px] lg:max-w-[420px]'
-                : 'basis-10 lg:basis-10'
+                : 'basis-9 lg:basis-9'
             }`}
           >
             {!searchIsOpen ? (
@@ -814,7 +814,7 @@ export default function AdressesAcquiscan() {
                 variant="outline"
                 size="icon"
                 onClick={() => setSearchExpanded(true)}
-                className="h-9 w-10 rounded-full shadow-sm transition-all duration-300 hover:w-12 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                className="h-8 w-9 rounded-md border-border/70 bg-background text-muted-foreground shadow-none transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground"
                 title="Rechercher une adresse"
               >
                 <Search className="h-4 w-4" />
@@ -829,7 +829,7 @@ export default function AdressesAcquiscan() {
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
                   placeholder="Rechercher une adresse"
-                  className="h-9 rounded-full border-red-100 bg-background pl-9 pr-9 shadow-sm transition-all duration-500 focus-visible:border-red-200 focus-visible:ring-red-200"
+                  className="h-8 rounded-md border-border bg-background pl-9 pr-9 text-sm shadow-none transition-all duration-300 focus-visible:border-ring focus-visible:ring-ring/30"
                 />
                 {!selectedSuggestion && !addressQuery && (
                   <Button
@@ -840,7 +840,7 @@ export default function AdressesAcquiscan() {
                       setSearchExpanded(false)
                       setSearchFocused(false)
                     }}
-                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:text-foreground"
+                    className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                     title="Fermer la recherche"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -929,9 +929,9 @@ export default function AdressesAcquiscan() {
                 variant="outline"
                 size="sm"
                 onClick={() => setFilterDocsOpen(true)}
-                className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 text-red-800 hover:bg-red-100 hover:text-red-900"
+                className="h-8 shrink-0 gap-1.5 border-border/70 bg-background text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground"
               >
-                <HelpCircle className="h-3.5 w-3.5 animate-pulse" />
+                <HelpCircle className="h-3.5 w-3.5" />
                 Aide filtres
               </Button>
               <Button
@@ -1275,7 +1275,7 @@ export default function AdressesAcquiscan() {
       </div>
 
       <div className="-mx-4 min-w-0 xl:ml-0 xl:-mr-4">
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-3">
           {renderMapToolbar()}
 
           <Dialog
@@ -1312,7 +1312,7 @@ export default function AdressesAcquiscan() {
 
           <div
             ref={mapShellRef}
-            className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-248px)] xl:min-h-[560px] xl:rounded-lg"
+            className="acquiscan-map-shell relative min-w-0 overflow-hidden rounded-xl border border-border/70 bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-252px)] xl:min-h-[560px]"
           >
             {loading && mapLoaded && (
               <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
@@ -1395,23 +1395,33 @@ export default function AdressesAcquiscan() {
               </>
             )}
 
-            <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
+            <div className="absolute right-4 top-4 z-20 flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant={isSatellite ? 'secondary' : 'outline'}
+                variant="ghost"
                 size="sm"
                 onClick={toggleMapStyle}
-                className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+                aria-pressed={isSatellite}
+                className={`h-8 gap-2 border text-xs shadow-md backdrop-blur-md ${
+                  isSatellite
+                    ? 'border-primary/60 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                    : 'border-white/15 bg-slate-950/75 text-white hover:bg-slate-950/90 hover:text-white'
+                }`}
               >
                 <Layers className="h-4 w-4" />
                 {isSatellite ? 'Plan' : 'Satellite'}
               </Button>
               <Button
                 type="button"
-                variant={isPitched ? 'secondary' : 'outline'}
+                variant="ghost"
                 size="sm"
                 onClick={togglePitch}
-                className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+                aria-pressed={isPitched}
+                className={`h-8 gap-2 border text-xs shadow-md backdrop-blur-md ${
+                  isPitched
+                    ? 'border-primary/60 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                    : 'border-white/15 bg-slate-950/75 text-white hover:bg-slate-950/90 hover:text-white'
+                }`}
               >
                 <Building2 className="h-4 w-4" />
                 3D
@@ -1425,7 +1435,7 @@ export default function AdressesAcquiscan() {
               </Badge>
             )}
             <div
-              className={`absolute left-4 z-20 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur ${loading && mapLoaded ? 'bottom-14' : 'bottom-4'}`}
+              className={`absolute left-5 z-20 rounded-lg border border-border/70 bg-background/95 px-4 py-3 text-xs shadow-lg backdrop-blur-md ${loading && mapLoaded ? 'bottom-20' : 'bottom-8'}`}
             >
               <p className="font-medium text-foreground">Score d'opportunité</p>
               <p className="mb-1.5 text-[11px] text-muted-foreground">Couleur des points adresse</p>
@@ -1571,7 +1581,7 @@ function ToolbarSelect({ field, value, active, onChange }) {
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
           style={{ width }}
-          className={`h-8 gap-1 rounded-md px-2 text-xs shadow-none transition-[width,border-color,background-color,color] duration-200 focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
+          className={`h-8 gap-1 rounded-md px-2 text-xs shadow-none transition-[width,border-color,background-color,color] duration-200 focus:ring-1 focus:ring-ring/30 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-offset-0 ${
             active ? 'border-red-200 bg-red-50 text-red-800' : 'bg-background'
           }`}
         >
