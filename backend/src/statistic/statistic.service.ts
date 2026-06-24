@@ -13,6 +13,7 @@ import {
   TimelinePoint,
   TeamLastStatusActivity,
 } from './statistic.dto';
+import { UserStatus } from '../enumeration-Status/user-status.enum';
 
 type StatsScopeType = 'all' | 'commercials' | 'managers';
 type StatsOwnerType = 'commercial' | 'manager';
@@ -27,6 +28,124 @@ interface AccessibleActivityOwners {
 @Injectable()
 export class StatisticService {
   constructor(private prisma: PrismaService) {}
+
+  private productionUserWhere() {
+    return { status: { not: UserStatus.UTILISATEUR_TEST } };
+  }
+
+  private mergeWhere(...conditions: any[]) {
+    const filteredConditions = conditions.filter(
+      (condition) => condition && Object.keys(condition).length > 0,
+    );
+
+    if (filteredConditions.length === 0) return {};
+    if (filteredConditions.length === 1) return filteredConditions[0];
+    return { AND: filteredConditions };
+  }
+
+  private productionCommercialWhere(where: any = {}) {
+    return this.mergeWhere(where, this.productionUserWhere());
+  }
+
+  private productionManagerWhere(where: any = {}) {
+    return this.mergeWhere(where, this.productionUserWhere());
+  }
+
+  private productionDirecteurWhere(where: any = {}) {
+    return this.mergeWhere(where, this.productionUserWhere());
+  }
+
+  private productionStatisticOwnerWhere() {
+    return {
+      AND: [
+        {
+          OR: [
+            { commercialId: null },
+            { commercial: this.productionUserWhere() },
+          ],
+        },
+        {
+          OR: [
+            { managerId: null },
+            { manager: this.productionUserWhere() },
+          ],
+        },
+        {
+          OR: [
+            { directeurId: null },
+            { directeur: this.productionUserWhere() },
+          ],
+        },
+      ],
+    };
+  }
+
+  private productionImmeubleOwnerWhere() {
+    return {
+      AND: [
+        {
+          OR: [
+            { commercialId: null },
+            { commercial: this.productionUserWhere() },
+          ],
+        },
+        {
+          OR: [
+            { managerId: null },
+            { manager: this.productionUserWhere() },
+          ],
+        },
+      ],
+    };
+  }
+
+  private assignmentIsProductionOwner(
+    assignment: { userId: number; userType: string },
+    commercialIds: Set<number>,
+    managerIds: Set<number>,
+    directeurIds: Set<number>,
+  ) {
+    if (assignment.userType === 'COMMERCIAL') {
+      return commercialIds.has(assignment.userId);
+    }
+    if (assignment.userType === 'MANAGER') {
+      return managerIds.has(assignment.userId);
+    }
+    if (assignment.userType === 'DIRECTEUR') {
+      return directeurIds.has(assignment.userId);
+    }
+    return false;
+  }
+
+  private async isProductionRoleUser(userId: number, userRole: string) {
+    switch (userRole) {
+      case 'admin':
+        return true;
+      case 'directeur':
+        return Boolean(
+          await this.prisma.directeur.findFirst({
+            where: this.productionDirecteurWhere({ id: userId }),
+            select: { id: true },
+          }),
+        );
+      case 'manager':
+        return Boolean(
+          await this.prisma.manager.findFirst({
+            where: this.productionManagerWhere({ id: userId }),
+            select: { id: true },
+          }),
+        );
+      case 'commercial':
+        return Boolean(
+          await this.prisma.commercial.findFirst({
+            where: this.productionCommercialWhere({ id: userId }),
+            select: { id: true },
+          }),
+        );
+      default:
+        return false;
+    }
+  }
 
   private normalizeScopeType(scopeType?: string): StatsScopeType {
     const normalized = (scopeType || 'all').toLowerCase();
@@ -71,9 +190,11 @@ export class StatisticService {
       case 'admin': {
         const [commercials, managers] = await this.prisma.$transaction([
           this.prisma.commercial.findMany({
+            where: this.productionCommercialWhere(),
             select: { id: true, nom: true, prenom: true },
           }),
           this.prisma.manager.findMany({
+            where: this.productionManagerWhere(),
             select: { id: true, nom: true, prenom: true },
           }),
         ]);
@@ -87,16 +208,29 @@ export class StatisticService {
       }
 
       case 'directeur': {
+        const directeur = await this.prisma.directeur.findFirst({
+          where: this.productionDirecteurWhere({ id: userId }),
+          select: { id: true },
+        });
+        if (!directeur) {
+          return {
+            commercialIds: [],
+            managerIds: [],
+            commercialNames: new Map(),
+            managerNames: new Map(),
+          };
+        }
+
         const managers = await this.prisma.manager.findMany({
-          where: { directeurId: userId },
+          where: this.productionManagerWhere({ directeurId: userId }),
           select: { id: true, nom: true, prenom: true },
         });
         const managerIds = managers.map((manager) => manager.id);
 
         const commercials = await this.prisma.commercial.findMany({
-          where: {
+          where: this.productionCommercialWhere({
             OR: [{ directeurId: userId }, { managerId: { in: managerIds } }],
-          },
+          }),
           select: { id: true, nom: true, prenom: true },
         });
 
@@ -111,14 +245,22 @@ export class StatisticService {
       case 'manager': {
         const [commercials, managers] = await this.prisma.$transaction([
           this.prisma.commercial.findMany({
-            where: { managerId: userId },
+            where: this.productionCommercialWhere({ managerId: userId }),
             select: { id: true, nom: true, prenom: true },
           }),
           this.prisma.manager.findMany({
-            where: { id: userId },
+            where: this.productionManagerWhere({ id: userId }),
             select: { id: true, nom: true, prenom: true },
           }),
         ]);
+        if (managers.length === 0) {
+          return {
+            commercialIds: [],
+            managerIds: [],
+            commercialNames: new Map(),
+            managerNames: new Map(),
+          };
+        }
 
         return {
           commercialIds: commercials.map((commercial) => commercial.id),
@@ -131,9 +273,14 @@ export class StatisticService {
       case 'commercial': {
         const commercial = await this.prisma.commercial.findUnique({
           where: { id: userId },
-          select: { id: true, nom: true, prenom: true },
+          select: { id: true, nom: true, prenom: true, status: true },
         });
-        const commercials = commercial ? [commercial] : [];
+        const commercials =
+          commercial?.status === UserStatus.UTILISATEUR_TEST
+            ? []
+            : commercial
+              ? [commercial]
+              : [];
 
         return {
           commercialIds: commercials.map((item) => item.id),
@@ -400,6 +547,10 @@ export class StatisticService {
 
     // Si userId et userRole sont fournis, appliquer la filtration par rôle
     if (userId && userRole) {
+      if (!(await this.isProductionRoleUser(userId, userRole))) {
+        return [];
+      }
+
       switch (userRole) {
         case 'admin':
           // Pas de filtrage supplémentaire pour admin
@@ -446,7 +597,10 @@ export class StatisticService {
     }
 
     return this.prisma.statistic.findMany({
-      where: whereConditions,
+      where: this.mergeWhere(
+        whereConditions,
+        this.productionStatisticOwnerWhere(),
+      ),
       include: {
         commercial: true,
         manager: true,
@@ -470,6 +624,10 @@ export class StatisticService {
     userId: number,
     userRole: string,
   ): Promise<TeamLastStatusActivity[]> {
+    if (!(await this.isProductionRoleUser(userId, userRole))) {
+      return [];
+    }
+
     let commercialWhere: any = {};
     let managerWhere: any = {};
 
@@ -494,11 +652,11 @@ export class StatisticService {
 
     const [commercials, managers] = await this.prisma.$transaction([
       this.prisma.commercial.findMany({
-        where: commercialWhere,
+        where: this.productionCommercialWhere(commercialWhere),
         select: { id: true, nom: true, prenom: true },
       }),
       this.prisma.manager.findMany({
-        where: managerWhere,
+        where: this.productionManagerWhere(managerWhere),
         select: { id: true, nom: true, prenom: true },
       }),
     ]);
@@ -623,6 +781,14 @@ export class StatisticService {
     userId?: number,
     userRole?: string,
   ): Promise<ZoneStatistic[]> {
+    if (
+      userId &&
+      userRole &&
+      !(await this.isProductionRoleUser(userId, userRole))
+    ) {
+      return [];
+    }
+
     // =====================================================
     // ZoneEnCours + HistoriqueZone
     // =====================================================
@@ -641,10 +807,53 @@ export class StatisticService {
       },
     });
 
+    const [productionCommercials, productionManagers, productionDirecteurs] =
+      await this.prisma.$transaction([
+        this.prisma.commercial.findMany({
+          where: this.productionCommercialWhere(),
+          select: { id: true },
+        }),
+        this.prisma.manager.findMany({
+          where: this.productionManagerWhere(),
+          select: { id: true },
+        }),
+        this.prisma.directeur.findMany({
+          where: this.productionDirecteurWhere(),
+          select: { id: true },
+        }),
+      ]);
+    const commercialIdsByZoneScope = new Set(
+      productionCommercials.map((commercial) => commercial.id),
+    );
+    const managerIdsByZoneScope = new Set(
+      productionManagers.map((manager) => manager.id),
+    );
+    const directeurIdsByZoneScope = new Set(
+      productionDirecteurs.map((directeur) => directeur.id),
+    );
+
     // 3. Créer un Set de toutes les zones qui ont été prospectées
     let allZoneIds = new Set<number>();
-    currentAssignments.forEach((a) => allZoneIds.add(a.zoneId));
-    historyAssignments.forEach((h) => allZoneIds.add(h.zoneId));
+    currentAssignments
+      .filter((assignment) =>
+        this.assignmentIsProductionOwner(
+          assignment,
+          commercialIdsByZoneScope,
+          managerIdsByZoneScope,
+          directeurIdsByZoneScope,
+        ),
+      )
+      .forEach((assignment) => allZoneIds.add(assignment.zoneId));
+    historyAssignments
+      .filter((assignment) =>
+        this.assignmentIsProductionOwner(
+          assignment,
+          commercialIdsByZoneScope,
+          managerIdsByZoneScope,
+          directeurIdsByZoneScope,
+        ),
+      )
+      .forEach((assignment) => allZoneIds.add(assignment.zoneId));
 
     // 4. Filtrer les zones selon le rôle de l'utilisateur
     if (userId && userRole && userRole !== 'admin') {
@@ -655,12 +864,18 @@ export class StatisticService {
           // Un commercial ne voit que les zones où il a été assigné
           currentAssignments
             .filter(
-              (a) => a.userId === userId && a.userType === 'COMMERCIAL',
+              (a) =>
+                a.userId === userId &&
+                a.userType === 'COMMERCIAL' &&
+                commercialIdsByZoneScope.has(a.userId),
             )
             .forEach((a) => authorizedZoneIds.add(a.zoneId));
           historyAssignments
             .filter(
-              (h) => h.userId === userId && h.userType === 'COMMERCIAL',
+              (h) =>
+                h.userId === userId &&
+                h.userType === 'COMMERCIAL' &&
+                commercialIdsByZoneScope.has(h.userId),
             )
             .forEach((h) => authorizedZoneIds.add(h.zoneId));
           break;
@@ -669,17 +884,27 @@ export class StatisticService {
           // Un manager voit les zones où lui ou ses commerciaux ont été assignés
           // Récupérer les IDs des commerciaux du manager
           const managerCommercials = await this.prisma.commercial.findMany({
-            where: { managerId: userId },
+            where: this.productionCommercialWhere({ managerId: userId }),
             select: { id: true },
           });
           const commercialIds = managerCommercials.map((c) => c.id);
 
           // Zones du manager lui-même
           currentAssignments
-            .filter((a) => a.userId === userId && a.userType === 'MANAGER')
+            .filter(
+              (a) =>
+                a.userId === userId &&
+                a.userType === 'MANAGER' &&
+                managerIdsByZoneScope.has(a.userId),
+            )
             .forEach((a) => authorizedZoneIds.add(a.zoneId));
           historyAssignments
-            .filter((h) => h.userId === userId && h.userType === 'MANAGER')
+            .filter(
+              (h) =>
+                h.userId === userId &&
+                h.userType === 'MANAGER' &&
+                managerIdsByZoneScope.has(h.userId),
+            )
             .forEach((h) => authorizedZoneIds.add(h.zoneId));
 
           // Zones des commerciaux du manager
@@ -703,26 +928,36 @@ export class StatisticService {
           // Un directeur voit les zones où lui, ses managers ou ses commerciaux ont été assignés
           // Récupérer les IDs des managers du directeur
           const directeurManagers = await this.prisma.manager.findMany({
-            where: { directeurId: userId },
+            where: this.productionManagerWhere({ directeurId: userId }),
             select: { id: true },
           });
           const managerIds = directeurManagers.map((m) => m.id);
 
           // Récupérer les IDs des commerciaux du directeur
           const directeurCommercials = await this.prisma.commercial.findMany({
-            where: {
+            where: this.productionCommercialWhere({
               OR: [{ directeurId: userId }, { managerId: { in: managerIds } }],
-            },
+            }),
             select: { id: true },
           });
           const directeurCommercialIds = directeurCommercials.map((c) => c.id);
 
           // Zones du directeur lui-même
           currentAssignments
-            .filter((a) => a.userId === userId && a.userType === 'DIRECTEUR')
+            .filter(
+              (a) =>
+                a.userId === userId &&
+                a.userType === 'DIRECTEUR' &&
+                directeurIdsByZoneScope.has(a.userId),
+            )
             .forEach((a) => authorizedZoneIds.add(a.zoneId));
           historyAssignments
-            .filter((h) => h.userId === userId && h.userType === 'DIRECTEUR')
+            .filter(
+              (h) =>
+                h.userId === userId &&
+                h.userType === 'DIRECTEUR' &&
+                directeurIdsByZoneScope.has(h.userId),
+            )
             .forEach((h) => authorizedZoneIds.add(h.zoneId));
 
           // Zones des managers du directeur
@@ -780,6 +1015,7 @@ export class StatisticService {
           by: ['statut'],
           where: {
             immeuble: {
+              ...this.productionImmeubleOwnerWhere(),
               zoneId: zone.id,
             },
           },
@@ -821,6 +1057,7 @@ export class StatisticService {
         // Compter les immeubles visités (au moins une porte non NON_VISITE)
         const immeublesVisites = await this.prisma.immeuble.count({
           where: {
+            ...this.productionImmeubleOwnerWhere(),
             zoneId: zone.id,
             portes: {
               some: {
@@ -840,7 +1077,14 @@ export class StatisticService {
 
         // Utilisateurs des assignations actuelles
         const zoneCurrentAssignments = currentAssignments.filter(
-          (a) => a.zoneId === zone.id,
+          (a) =>
+            a.zoneId === zone.id &&
+            this.assignmentIsProductionOwner(
+              a,
+              commercialIdsByZoneScope,
+              managerIdsByZoneScope,
+              directeurIdsByZoneScope,
+            ),
         );
         zoneCurrentAssignments.forEach((assignment) => {
           usersInZone.add(assignment.userId);
@@ -848,7 +1092,14 @@ export class StatisticService {
 
         // Utilisateurs de l'historique
         const zoneHistory = historyAssignments.filter(
-          (h) => h.zoneId === zone.id,
+          (h) =>
+            h.zoneId === zone.id &&
+            this.assignmentIsProductionOwner(
+              h,
+              commercialIdsByZoneScope,
+              managerIdsByZoneScope,
+              directeurIdsByZoneScope,
+            ),
         );
         zoneHistory.forEach((history) => {
           usersInZone.add(history.userId);
@@ -943,10 +1194,10 @@ export class StatisticService {
   ) {
     const commercial = await this.prisma.commercial.findUnique({
       where: { id: commercialId },
-      select: { id: true, managerId: true, directeurId: true },
+      select: { id: true, managerId: true, directeurId: true, status: true },
     });
 
-    if (!commercial) {
+    if (!commercial || commercial.status === UserStatus.UTILISATEUR_TEST) {
       throw new NotFoundException('Commercial not found');
     }
 

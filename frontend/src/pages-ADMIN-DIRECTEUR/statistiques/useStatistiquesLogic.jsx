@@ -36,6 +36,8 @@ const STATUS_LABELS = {
   repassages: 'Repassages',
 }
 
+const TEST_USER_STATUS = 'UTILISATEUR_TEST'
+
 export const ACTIVITY_STATUS_LABELS = {
   CONTRAT_SIGNE: 'Contrat signé',
   RENDEZ_VOUS_PRIS: 'Rendez-vous pris',
@@ -108,6 +110,8 @@ const getDateRange = period => {
 }
 
 const toIsoOrUndefined = date => (date ? date.toISOString() : undefined)
+
+const isProductionUser = user => user?.status !== TEST_USER_STATUS
 
 const parseOwnerSelection = selectedOwner => {
   if (!selectedOwner || selectedOwner === 'all') {
@@ -311,11 +315,32 @@ export function useStatistiquesLogic() {
   const filteredDirecteurs = useRoleBasedData('directeurs', rawDirecteurs)
   const filteredManagers = useRoleBasedData('managers', rawManagers)
 
+  const productionCommercials = useMemo(
+    () => (filteredCommercials || []).filter(isProductionUser),
+    [filteredCommercials]
+  )
+  const productionManagers = useMemo(
+    () => (filteredManagers || []).filter(isProductionUser),
+    [filteredManagers]
+  )
+  const productionDirecteurs = useMemo(
+    () => (filteredDirecteurs || []).filter(isProductionUser),
+    [filteredDirecteurs]
+  )
+  const productionCommercialIds = useMemo(
+    () => new Set(productionCommercials.map(commercial => commercial.id)),
+    [productionCommercials]
+  )
+  const productionManagerIds = useMemo(
+    () => new Set(productionManagers.map(manager => manager.id)),
+    [productionManagers]
+  )
+
   const ownerOptions = useMemo(() => {
     const options = []
 
     if (scopeType === 'all' || scopeType === 'commercials') {
-      ;(filteredCommercials || []).forEach(commercial => {
+      productionCommercials.forEach(commercial => {
         options.push({
           value: `commercial:${commercial.id}`,
           label:
@@ -327,7 +352,7 @@ export function useStatistiquesLogic() {
     }
 
     if (scopeType === 'all' || scopeType === 'managers') {
-      ;(filteredManagers || []).forEach(manager => {
+      productionManagers.forEach(manager => {
         options.push({
           value: `manager:${manager.id}`,
           label: `${manager.prenom || ''} ${manager.nom || ''}`.trim() || `Manager #${manager.id}`,
@@ -337,7 +362,7 @@ export function useStatistiquesLogic() {
     }
 
     return options.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-  }, [filteredCommercials, filteredManagers, scopeType])
+  }, [productionCommercials, productionManagers, scopeType])
 
   useEffect(() => {
     if (selectedOwner === 'all') return
@@ -352,6 +377,8 @@ export function useStatistiquesLogic() {
       const isManagerStat = Boolean(stat.managerId)
 
       if (!isCommercialStat && !isManagerStat) return false
+      if (isCommercialStat && !productionCommercialIds.has(stat.commercialId)) return false
+      if (isManagerStat && !productionManagerIds.has(stat.managerId)) return false
 
       const matchesScope =
         scopeType === 'all' ||
@@ -367,33 +394,31 @@ export function useStatistiquesLogic() {
 
       return ownerKey === selectedOwner
     })
-  }, [filteredStatistics, scopeType, selectedOwner])
+  }, [filteredStatistics, productionCommercialIds, productionManagerIds, scopeType, selectedOwner])
 
   const scopedCommercials = useMemo(() => {
     if (scopeType === 'managers') return []
     if (selectedOwner.startsWith('manager:')) return []
     if (selectedOwner.startsWith('commercial:')) {
       const commercialId = selectedOwner.replace('commercial:', '')
-      return (filteredCommercials || []).filter(
-        commercial => String(commercial.id) === commercialId
-      )
+      return productionCommercials.filter(commercial => String(commercial.id) === commercialId)
     }
-    return filteredCommercials || []
-  }, [filteredCommercials, scopeType, selectedOwner])
+    return productionCommercials
+  }, [productionCommercials, scopeType, selectedOwner])
 
   const scopedManagers = useMemo(() => {
     if (scopeType === 'commercials') return []
     if (selectedOwner.startsWith('commercial:')) return []
     if (selectedOwner.startsWith('manager:')) {
       const managerId = selectedOwner.replace('manager:', '')
-      return (filteredManagers || []).filter(manager => String(manager.id) === managerId)
+      return productionManagers.filter(manager => String(manager.id) === managerId)
     }
-    return filteredManagers || []
-  }, [filteredManagers, scopeType, selectedOwner])
+    return productionManagers
+  }, [productionManagers, scopeType, selectedOwner])
 
   const scopedDirecteurs = useMemo(
-    () => (scopeType === 'all' && selectedOwner === 'all' ? filteredDirecteurs || [] : []),
-    [filteredDirecteurs, scopeType, selectedOwner]
+    () => (scopeType === 'all' && selectedOwner === 'all' ? productionDirecteurs : []),
+    [productionDirecteurs, scopeType, selectedOwner]
   )
 
   const aggregateTotals = useMemo(
@@ -477,6 +502,13 @@ export function useStatistiquesLogic() {
 
   const lastStatusActivities = useMemo(() => {
     return (rawLastStatusActivities || []).filter(activity => {
+      if (activity.userType === 'commercial' && !productionCommercialIds.has(activity.userId)) {
+        return false
+      }
+      if (activity.userType === 'manager' && !productionManagerIds.has(activity.userId)) {
+        return false
+      }
+
       const matchesScope =
         scopeType === 'all' ||
         (scopeType === 'commercials' && activity.userType === 'commercial') ||
@@ -487,7 +519,13 @@ export function useStatistiquesLogic() {
 
       return `${activity.userType}:${activity.userId}` === selectedOwner
     })
-  }, [rawLastStatusActivities, scopeType, selectedOwner])
+  }, [
+    rawLastStatusActivities,
+    productionCommercialIds,
+    productionManagerIds,
+    scopeType,
+    selectedOwner,
+  ])
 
   const lastStatusActivityByOwner = useMemo(() => {
     return new Map(
@@ -563,6 +601,11 @@ export function useStatistiquesLogic() {
       (ownerActivityStats || []).length > 0 ? ownerActivityStats : aggregatePerformersFallback
 
     return source
+      .filter(entry => {
+        if (entry.userType === 'commercial') return productionCommercialIds.has(entry.userId)
+        if (entry.userType === 'manager') return productionManagerIds.has(entry.userId)
+        return false
+      })
       .map(entry => ({
         ...entry,
         label: entry.userType === 'commercial' ? 'Commercial' : 'Manager',
@@ -572,7 +615,13 @@ export function useStatistiquesLogic() {
       }))
       .sort((a, b) => b.points - a.points || b.contratsSignes - a.contratsSignes)
       .slice(0, 5)
-  }, [aggregatePerformersFallback, lastStatusActivityByOwner, ownerActivityStats])
+  }, [
+    aggregatePerformersFallback,
+    lastStatusActivityByOwner,
+    ownerActivityStats,
+    productionCommercialIds,
+    productionManagerIds,
+  ])
 
   const zoneHighlights = useMemo(() => {
     return (zoneStatisticsData || [])
