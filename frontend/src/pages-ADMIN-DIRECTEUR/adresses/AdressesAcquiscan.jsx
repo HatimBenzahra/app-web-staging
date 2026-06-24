@@ -251,6 +251,25 @@ const territoryLabelLayer = {
   },
 }
 
+const selectedCommuneFillLayer = {
+  id: 'acquiscan-selected-commune-fill',
+  type: 'fill',
+  paint: {
+    'fill-color': '#ef4444',
+    'fill-opacity': 0.08,
+  },
+}
+
+const selectedCommuneLineLayer = {
+  id: 'acquiscan-selected-commune-line',
+  type: 'line',
+  paint: {
+    'line-color': '#ef4444',
+    'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.2, 13, 4],
+    'line-opacity': 0.95,
+  },
+}
+
 const copperSegment = row => {
   if (row.fermetureTechnique === '1') {
     return {
@@ -391,6 +410,7 @@ export default function AdressesAcquiscan() {
     selectedDept,
     selectedCommune,
     territoryGeoJson,
+    selectedCommuneGeoJson,
     territoryLoading,
     territoryError,
     selectDepartment,
@@ -674,6 +694,19 @@ export default function AdressesAcquiscan() {
   const searchHasPostcode = /\b\d{5}\b/.test(addressQuery)
   const showSuggestions = searchFocused && hasSearchQuery
   const isSatellite = mapStyle.includes('satellite')
+  const contextHint = useMemo(() => {
+    if (selectedSuggestion) return null
+    if (activeFilters.length > 0 && !selectedDept) {
+      return 'Sélectionne un département pour afficher les adresses correspondant aux filtres actifs.'
+    }
+    if (activeFilters.length > 0 && selectedDept && !selectedCommune) {
+      return `Filtres appliqués au département ${selectedDept.code}. Les points affichés sont les adresses ciblées; sélectionne une commune pour affiner.`
+    }
+    if (selectedDept && !selectedCommune) {
+      return 'Sélectionne une commune pour afficher les adresses détaillées de ce département.'
+    }
+    return null
+  }, [activeFilters.length, selectedCommune, selectedDept, selectedSuggestion])
 
   const toggleMapStyle = () => {
     setMapStyle(current =>
@@ -817,10 +850,13 @@ export default function AdressesAcquiscan() {
           </div>
         </div>
 
-        {(selectedSuggestion || territoryError) && (
+        {(selectedSuggestion || territoryError || contextHint) && (
           <div className="border-t px-2 py-1.5">
             {territoryError && (
               <p className="text-xs font-medium text-destructive">{territoryError}</p>
+            )}
+            {contextHint && (
+              <p className="text-xs font-medium text-muted-foreground">{contextHint}</p>
             )}
             {selectedSuggestion && (
               <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(300px,440px)_auto] lg:items-center">
@@ -1223,6 +1259,16 @@ export default function AdressesAcquiscan() {
                     <Layer {...territoryLabelLayer} />
                   </Source>
                 )}
+                {selectedCommuneGeoJson && (
+                  <Source
+                    id="acquiscan-selected-commune-source"
+                    type="geojson"
+                    data={selectedCommuneGeoJson}
+                  >
+                    <Layer {...selectedCommuneFillLayer} />
+                    <Layer {...selectedCommuneLineLayer} />
+                  </Source>
+                )}
                 <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
                   <Layer {...pointLayer} />
                 </Source>
@@ -1280,11 +1326,12 @@ export default function AdressesAcquiscan() {
           <div
             className={`absolute left-4 z-20 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur ${loading && mapLoaded ? 'bottom-14' : 'bottom-4'}`}
           >
-            <p className="mb-1.5 font-medium text-foreground">Priorité adresse</p>
+            <p className="font-medium text-foreground">Score d'opportunité</p>
+            <p className="mb-1.5 text-[11px] text-muted-foreground">Couleur des points adresse</p>
             <div className="flex flex-wrap gap-3">
-              <LegendDot color="#64748b" label="Normale" />
-              <LegendDot color="#f59e0b" label="Intéressante" />
-              <LegendDot color="#ef4444" label="Forte" />
+              <LegendDot color="#64748b" label="Priorité faible" />
+              <LegendDot color="#f59e0b" label="À examiner" />
+              <LegendDot color="#ef4444" label="Priorité forte" />
             </div>
           </div>
         </div>

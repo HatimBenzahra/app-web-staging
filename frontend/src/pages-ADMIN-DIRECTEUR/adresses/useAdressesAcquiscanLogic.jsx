@@ -227,7 +227,7 @@ export function useAdressesAcquiscanLogic() {
   const hasFilterPointMapContext =
     Boolean(selectedDept) && hasActiveBusinessFilters(filters) && !selectedSuggestion
   const hasAddressMapContext =
-    (Boolean(selectedCommune) || hasFilterPointMapContext) && !selectedSuggestion
+    Boolean(selectedCommune) && !hasFilterPointMapContext && !selectedSuggestion
 
   const mapInput = useMemo(() => {
     if (!hasAddressMapContext) return null
@@ -372,7 +372,7 @@ export function useAdressesAcquiscanLogic() {
 
   const listInput = useMemo(() => {
     const normalized = normalizeFilters(filters)
-    if (!normalized.dept || !normalized.commune) return null
+    if (!normalized.dept || (!normalized.commune && !hasFilterPointMapContext)) return null
     return {
       dept: normalized.dept,
       commune: normalized.commune,
@@ -384,7 +384,7 @@ export function useAdressesAcquiscanLogic() {
       limit: Math.min(normalized.limit, 500),
       offset: 0,
     }
-  }, [filters])
+  }, [filters, hasFilterPointMapContext])
 
   const zonePreviewInput = useMemo(() => {
     if (!zoneMode || !draftCircle) return null
@@ -764,6 +764,24 @@ export function useAdressesAcquiscanLogic() {
     territoryLevel,
   ])
 
+  const selectedCommuneGeoJson = useMemo(() => {
+    if (!selectedCommune?.code || !communeGeoJson?.features?.length) return null
+    const feature = communeGeoJson.features.find(item => item.properties?.code === selectedCommune.code)
+    if (!feature) return null
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            name: selectedCommune.name || feature.properties?.nom || selectedCommune.code,
+          },
+        },
+      ],
+    }
+  }, [communeGeoJson, selectedCommune])
+
   const stats = useMemo(() => {
     const shutdownCount = rows.filter(
       row =>
@@ -1016,6 +1034,7 @@ export function useAdressesAcquiscanLogic() {
     selectedDept,
     selectedCommune,
     territoryGeoJson,
+    selectedCommuneGeoJson,
     territoryLoading,
     territoryError,
     selectDepartment,
