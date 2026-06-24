@@ -680,18 +680,16 @@ export function useAdressesAcquiscanLogic() {
   }, [])
 
   const resetFilters = useCallback(() => {
-    setFilters(DEFAULT_FILTERS)
-    setTerritoryLevel('france')
-    setSelectedDept(null)
-    setSelectedCommune(null)
+    setFilters(prev => ({
+      ...prev,
+      annee: DEFAULT_FILTERS.annee,
+      fiber: DEFAULT_FILTERS.fiber,
+      coverage4g: DEFAULT_FILTERS.coverage4g,
+      coverage5g: DEFAULT_FILTERS.coverage5g,
+      segment: DEFAULT_FILTERS.segment,
+    }))
     setListData(null)
-    setMapData(emptyMapData)
-    setAddressQuery('')
-    setSuggestions([])
-    setSelectedSuggestion(null)
-    setSearchReturnContext(null)
-    setSearchPreview(null)
-    setSearchPreviewError(null)
+    setMapData(null)
     setSelectedId(null)
   }, [])
 

@@ -345,7 +345,6 @@ const FILTER_GROUPS = [
       {
         key: 'segment',
         label: 'Cuivre',
-        widthClass: 'w-[138px]',
         options: [
           ['all', 'Toutes étapes'],
           ['urgent', 'Migration urgente'],
@@ -357,7 +356,6 @@ const FILTER_GROUPS = [
       {
         key: 'fiber',
         label: 'Fibre',
-        widthClass: 'w-[162px]',
         options: [
           ['all', 'Toutes éligibilités'],
           ['yes', 'Fibre disponible'],
@@ -367,7 +365,6 @@ const FILTER_GROUPS = [
       {
         key: 'annee',
         label: 'Fermeture',
-        widthClass: 'w-[142px]',
         options: [
           ['all', 'Toutes années'],
           ['current', 'Année courante'],
@@ -383,7 +380,6 @@ const FILTER_GROUPS = [
       {
         key: 'coverage4g',
         label: '4G',
-        widthClass: 'w-[158px]',
         options: [
           ['all', 'Toutes couvertures'],
           ['eleve', '4G élevée'],
@@ -394,7 +390,6 @@ const FILTER_GROUPS = [
       {
         key: 'coverage5g',
         label: '5G',
-        widthClass: 'w-[158px]',
         options: [
           ['all', 'Toutes couvertures'],
           ['eleve', '5G élevée'],
@@ -465,11 +460,9 @@ export default function AdressesAcquiscan() {
     selectedCommune,
     territoryGeoJson,
     selectedCommuneGeoJson,
-    territoryLoading,
     territoryError,
     selectDepartment,
     selectCommune,
-    goBackTerritory,
     clearSearchSelection,
     addressQuery,
     setAddressQuery,
@@ -899,42 +892,6 @@ export default function AdressesAcquiscan() {
             )}
           </div>
 
-          <div className="scrollbar-thin-x flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
-            <Badge
-              variant={territoryLevel === 'france' ? 'secondary' : 'outline'}
-              className="h-8 shrink-0"
-            >
-              France
-            </Badge>
-            {selectedDept && (
-              <Badge
-                variant={territoryLevel === 'department' ? 'secondary' : 'outline'}
-                className="h-8 shrink-0"
-              >
-                {selectedDept.code}
-              </Badge>
-            )}
-            {selectedCommune && (
-              <Badge variant="secondary" className="h-8 max-w-[180px] shrink-0 truncate">
-                {selectedCommune.name || selectedCommune.code}
-              </Badge>
-            )}
-            {territoryLoading && (
-              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-            )}
-            {territoryLevel !== 'france' && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={goBackTerritory}
-                className="h-8 shrink-0"
-              >
-                Retour
-              </Button>
-            )}
-          </div>
-
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             {activeFilters.length > 0 && (
               <Button
@@ -1062,19 +1019,13 @@ export default function AdressesAcquiscan() {
             )}
           </div>
         )}
-
-        {zoneMode && (
-          <div className="grid gap-2 border-t bg-muted/20 p-2 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
-            {renderZonePanel()}
-          </div>
-        )}
       </div>
     )
   }
 
   const renderZonePanel = () => (
-    <div className="space-y-2.5 rounded-md border bg-background p-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="max-h-[520px] overflow-hidden rounded-lg border bg-background/95 shadow-xl backdrop-blur xl:max-h-[calc(100vh-310px)]">
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
         <button
           type="button"
           onClick={() => toggleSection('zone')}
@@ -1097,7 +1048,7 @@ export default function AdressesAcquiscan() {
       </div>
 
       {openSections.zone && (
-        <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
+        <div className="max-h-[460px] space-y-3 overflow-y-auto p-3 animate-in fade-in-0 slide-in-from-top-1 xl:max-h-[calc(100vh-380px)]">
           {!draftCircle ? (
             <button
               type="button"
@@ -1363,6 +1314,12 @@ export default function AdressesAcquiscan() {
               </div>
             )}
 
+            {zoneMode && (
+              <div className="absolute inset-x-3 top-3 z-20 sm:inset-x-auto sm:left-3 sm:w-[390px] lg:w-[420px]">
+                {renderZonePanel()}
+              </div>
+            )}
+
             {!MAPBOX_TOKEN ? (
               <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-muted-foreground">
                 Token Mapbox manquant
@@ -1599,12 +1556,16 @@ function FilterField({ label, children }) {
 }
 
 function ToolbarSelect({ field, value, active, onChange }) {
+  const selectedLabel = field.options.find(([optionValue]) => optionValue === value)?.[1] || field.label
+  const width = Math.min(Math.max(selectedLabel.length * 7.2 + 48, 116), 196)
+
   return (
     <label className="shrink-0">
       <span className="sr-only">{field.label}</span>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className={`h-8 ${field.widthClass || 'w-[132px]'} gap-1 rounded-md px-2 text-xs shadow-none focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
+          style={{ width }}
+          className={`h-8 gap-1 rounded-md px-2 text-xs shadow-none transition-[width,border-color,background-color,color] duration-200 focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
             active ? 'border-red-200 bg-red-50 text-red-800' : 'bg-background'
           }`}
         >
