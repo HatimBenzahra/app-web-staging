@@ -60,6 +60,13 @@ const normalizeFilters = filters => {
   }
 }
 
+const hasActiveBusinessFilters = filters =>
+  filters.annee !== 'all' ||
+  filters.fiber !== 'all' ||
+  filters.coverage4g !== 'all' ||
+  filters.coverage5g !== 'all' ||
+  filters.segment !== 'all'
+
 const inferDeptFromSuggestion = suggestion => {
   const code = suggestion?.codeInsee || suggestion?.postcode
   if (!code) return undefined
@@ -92,14 +99,13 @@ const boundsAround = (longitude, latitude, delta = 0.025) => ({
   north: Math.min(90, latitude + delta),
 })
 
-const hasValidCoordinates = suggestion => (
-  Number.isFinite(suggestion?.longitude)
-  && Number.isFinite(suggestion?.latitude)
-  && suggestion.longitude >= -180
-  && suggestion.longitude <= 180
-  && suggestion.latitude >= -90
-  && suggestion.latitude <= 90
-)
+const hasValidCoordinates = suggestion =>
+  Number.isFinite(suggestion?.longitude) &&
+  Number.isFinite(suggestion?.latitude) &&
+  suggestion.longitude >= -180 &&
+  suggestion.longitude <= 180 &&
+  suggestion.latitude >= -90 &&
+  suggestion.latitude <= 90
 
 const emptyMapData = {
   points: [],
@@ -112,10 +118,9 @@ const emptyMapData = {
 }
 
 const enrichTerritoryGeoJson = (geoJson, rows, level) => {
-  const statsByCode = new Map(rows.map(row => [
-    level === 'france' ? row.codeDept : row.codeInsee,
-    row,
-  ]))
+  const statsByCode = new Map(
+    rows.map(row => [level === 'france' ? row.codeDept : row.codeInsee, row])
+  )
   return {
     ...geoJson,
     features: (geoJson?.features || []).map(feature => {
@@ -185,7 +190,8 @@ export function useAdressesAcquiscanLogic() {
   const [selectedSuggestion, setSelectedSuggestion] = useState(null)
   const [searchReturnContext, setSearchReturnContext] = useState(null)
   const [searchRadiusMeters, setSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
-  const [committedSearchRadiusMeters, setCommittedSearchRadiusMeters] = useState(SEARCH_RADIUS_DEFAULT)
+  const [committedSearchRadiusMeters, setCommittedSearchRadiusMeters] =
+    useState(SEARCH_RADIUS_DEFAULT)
   const [searchPreview, setSearchPreview] = useState(null)
   const [searchPreviewLoading, setSearchPreviewLoading] = useState(false)
   const [searchPreviewError, setSearchPreviewError] = useState(null)
@@ -218,11 +224,15 @@ export function useAdressesAcquiscanLogic() {
     setFilters(prev => ({ ...prev, commune: '' }))
   }, [filters.commune, filters.dept])
 
-  const hasAddressMapContext = Boolean(selectedCommune) && !selectedSuggestion
+  const hasFilterPointMapContext =
+    Boolean(selectedDept) && hasActiveBusinessFilters(filters) && !selectedSuggestion
+  const hasAddressMapContext =
+    (Boolean(selectedCommune) || hasFilterPointMapContext) && !selectedSuggestion
 
   const mapInput = useMemo(() => {
     if (!hasAddressMapContext) return null
     const normalized = normalizeFilters(filters)
+    if (!normalized.dept) return null
     return {
       bounds: mapQuery.bounds,
       zoom: mapQuery.zoom,
@@ -234,9 +244,9 @@ export function useAdressesAcquiscanLogic() {
       coverage5g: normalized.coverage5g,
       segment: normalized.segment,
       limit: normalized.limit,
-      cluster: mapQuery.zoom < 10,
+      cluster: hasFilterPointMapContext ? false : mapQuery.zoom < 10,
     }
-  }, [filters, hasAddressMapContext, mapQuery])
+  }, [filters, hasAddressMapContext, hasFilterPointMapContext, mapQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -252,7 +262,10 @@ export function useAdressesAcquiscanLogic() {
         setDepartmentGeoJson(geoJson)
         setDepartmentOpportunities(opportunities)
       } catch (err) {
-        if (!cancelled) setTerritoryError(err instanceof Error ? err.message : 'Erreur de chargement des territoires Acquiscan')
+        if (!cancelled)
+          setTerritoryError(
+            err instanceof Error ? err.message : 'Erreur de chargement des territoires Acquiscan'
+          )
       } finally {
         if (!cancelled) setTerritoryLoading(false)
       }
@@ -275,14 +288,21 @@ export function useAdressesAcquiscanLogic() {
       setTerritoryError(null)
       try {
         const [geoJson, opportunities] = await Promise.all([
-          api.acquiscan.getTerritoryGeoJson({ level: 'communes', dept: selectedDept.code, deptName: selectedDept.name }),
+          api.acquiscan.getTerritoryGeoJson({
+            level: 'communes',
+            dept: selectedDept.code,
+            deptName: selectedDept.name,
+          }),
           api.acquiscan.getCommuneOpportunities({ dept: selectedDept.code }),
         ])
         if (cancelled) return
         setCommuneGeoJson(geoJson)
         setCommuneOpportunities(opportunities)
       } catch (err) {
-        if (!cancelled) setTerritoryError(err instanceof Error ? err.message : 'Erreur de chargement des communes Acquiscan')
+        if (!cancelled)
+          setTerritoryError(
+            err instanceof Error ? err.message : 'Erreur de chargement des communes Acquiscan'
+          )
       } finally {
         if (!cancelled) setTerritoryLoading(false)
       }
@@ -471,7 +491,9 @@ export function useAdressesAcquiscanLogic() {
       const result = await api.acquiscan.getZonePreview(zonePreviewInput)
       if (latestZonePreviewRequest.current !== requestId) return
       setZonePreview(result)
-      setExcludedTargetIds(current => current.filter(id => result.targets.some(target => target.immeubleId === id)))
+      setExcludedTargetIds(current =>
+        current.filter(id => result.targets.some(target => target.immeubleId === id))
+      )
     } catch (err) {
       if (latestZonePreviewRequest.current !== requestId) return
       setZonePreviewError(formatAcquiscanError(err, 'Erreur de preview zone Acquiscan'))
@@ -533,7 +555,10 @@ export function useAdressesAcquiscanLogic() {
 
   const selectDepartment = useCallback(department => {
     if (!department?.code) return
-    setSelectedDept({ code: department.code, name: department.name || department.nom || department.code })
+    setSelectedDept({
+      code: department.code,
+      name: department.name || department.nom || department.code,
+    })
     setSelectedCommune(null)
     setTerritoryLevel('department')
     setListData(null)
@@ -541,13 +566,16 @@ export function useAdressesAcquiscanLogic() {
     setFilters(prev => ({ ...prev, dept: department.code, commune: '' }))
   }, [])
 
-  const selectCommune = useCallback(commune => {
-    if (!selectedDept?.code || !commune?.code) return
-    setSelectedCommune({ code: commune.code, name: commune.name || commune.nom || commune.code })
-    setTerritoryLevel('commune')
-    setMapData(null)
-    setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: commune.code }))
-  }, [selectedDept])
+  const selectCommune = useCallback(
+    commune => {
+      if (!selectedDept?.code || !commune?.code) return
+      setSelectedCommune({ code: commune.code, name: commune.name || commune.nom || commune.code })
+      setTerritoryLevel('commune')
+      setMapData(null)
+      setFilters(prev => ({ ...prev, dept: selectedDept.code, commune: commune.code }))
+    },
+    [selectedDept]
+  )
 
   const goBackTerritory = useCallback(() => {
     if (territoryLevel === 'commune') {
@@ -594,36 +622,39 @@ export function useAdressesAcquiscanLogic() {
     }
   }, [searchReturnContext, selectedCommune, selectedDept])
 
-  const stepBackFromMapZoom = useCallback(zoom => {
-    if (zoneMode) return false
-    if (mapStepBackLocked.current) return false
-    if (selectedSuggestion) return false
+  const stepBackFromMapZoom = useCallback(
+    zoom => {
+      if (zoneMode) return false
+      if (mapStepBackLocked.current) return false
+      if (selectedSuggestion) return false
 
-    if (territoryLevel === 'commune' && zoom <= COMMUNE_BACK_ZOOM) {
-      mapStepBackLocked.current = true
-      setSelectedCommune(null)
-      setTerritoryLevel('department')
-      setListData(null)
-      setMapData(emptyMapData)
-      setSelectedId(null)
-      setFilters(prev => ({ ...prev, commune: '' }))
-      return true
-    }
+      if (territoryLevel === 'commune' && zoom <= COMMUNE_BACK_ZOOM) {
+        mapStepBackLocked.current = true
+        setSelectedCommune(null)
+        setTerritoryLevel('department')
+        setListData(null)
+        setMapData(emptyMapData)
+        setSelectedId(null)
+        setFilters(prev => ({ ...prev, commune: '' }))
+        return true
+      }
 
-    if (territoryLevel === 'department' && zoom <= DEPARTMENT_BACK_ZOOM) {
-      mapStepBackLocked.current = true
-      setSelectedDept(null)
-      setSelectedCommune(null)
-      setTerritoryLevel('france')
-      setListData(null)
-      setMapData(emptyMapData)
-      setSelectedId(null)
-      setFilters(prev => ({ ...prev, dept: '', commune: '' }))
-      return true
-    }
+      if (territoryLevel === 'department' && zoom <= DEPARTMENT_BACK_ZOOM) {
+        mapStepBackLocked.current = true
+        setSelectedDept(null)
+        setSelectedCommune(null)
+        setTerritoryLevel('france')
+        setListData(null)
+        setMapData(emptyMapData)
+        setSelectedId(null)
+        setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+        return true
+      }
 
-    return false
-  }, [selectedSuggestion, territoryLevel, zoneMode])
+      return false
+    },
+    [selectedSuggestion, territoryLevel, zoneMode]
+  )
 
   const releaseMapStepBackLock = useCallback(() => {
     mapStepBackLocked.current = false
@@ -634,10 +665,11 @@ export function useAdressesAcquiscanLogic() {
     const nextBounds = normalizeBounds(bounds)
     const nextZoom = Number(zoom.toFixed(2))
     setMapQuery(current => {
-      const sameBounds = current.bounds.west === nextBounds.west
-        && current.bounds.south === nextBounds.south
-        && current.bounds.east === nextBounds.east
-        && current.bounds.north === nextBounds.north
+      const sameBounds =
+        current.bounds.west === nextBounds.west &&
+        current.bounds.south === nextBounds.south &&
+        current.bounds.east === nextBounds.east &&
+        current.bounds.north === nextBounds.north
       if (sameBounds && current.zoom === nextZoom) return current
       return {
         bounds: nextBounds,
@@ -674,28 +706,29 @@ export function useAdressesAcquiscanLogic() {
   }, [restoreSearchReturnContext])
 
   const searchRows = useMemo(
-    () => (searchPreview?.targets || []).map(target => ({
-      ...target,
-      coordinates: {
-        latitude: target.latitude,
-        longitude: target.longitude,
-      },
-    })),
+    () =>
+      (searchPreview?.targets || []).map(target => ({
+        ...target,
+        coordinates: {
+          latitude: target.latitude,
+          longitude: target.longitude,
+        },
+      })),
     [searchPreview?.targets]
   )
   const mapRows = useMemo(() => (mapData?.points || []).map(mapPointToAddress), [mapData?.points])
   const remoteCoordinateRows = useMemo(
-    () => (listData?.rows || []).filter(row => row.hasCoordinates && row.coordinates?.latitude && row.coordinates?.longitude),
+    () =>
+      (listData?.rows || []).filter(
+        row => row.hasCoordinates && row.coordinates?.latitude && row.coordinates?.longitude
+      ),
     [listData?.rows]
   )
   const hasSearchMode = Boolean(selectedSuggestion)
-  const rows = useMemo(
-    () => {
-      if (hasSearchMode) return searchRows
-      return remoteCoordinateRows.length ? remoteCoordinateRows : mapRows
-    },
-    [hasSearchMode, mapRows, remoteCoordinateRows, searchRows]
-  )
+  const rows = useMemo(() => {
+    if (hasSearchMode) return searchRows
+    return remoteCoordinateRows.length ? remoteCoordinateRows : mapRows
+  }, [hasSearchMode, mapRows, remoteCoordinateRows, searchRows])
   const selectedAddress = useMemo(
     () => rows.find(row => row.immeubleId === selectedId) || null,
     [rows, selectedId]
@@ -703,31 +736,60 @@ export function useAdressesAcquiscanLogic() {
 
   const territoryGeoJson = useMemo(() => {
     if (hasSearchMode) return null
+    if (hasFilterPointMapContext) return null
     if (territoryLevel === 'france' && departmentGeoJson && departmentOpportunities) {
       return enrichTerritoryGeoJson(departmentGeoJson, departmentOpportunities.rows || [], 'france')
     }
-    if ((territoryLevel === 'department' || territoryLevel === 'commune') && communeGeoJson && communeOpportunities) {
-      const enriched = enrichTerritoryGeoJson(communeGeoJson, communeOpportunities.rows || [], 'department')
+    if (
+      (territoryLevel === 'department' || territoryLevel === 'commune') &&
+      communeGeoJson &&
+      communeOpportunities
+    ) {
+      const enriched = enrichTerritoryGeoJson(
+        communeGeoJson,
+        communeOpportunities.rows || [],
+        'department'
+      )
       if (territoryLevel === 'commune') return null
       return enriched
     }
     return null
-  }, [communeGeoJson, communeOpportunities, departmentGeoJson, departmentOpportunities, hasSearchMode, territoryLevel])
+  }, [
+    communeGeoJson,
+    communeOpportunities,
+    departmentGeoJson,
+    departmentOpportunities,
+    hasFilterPointMapContext,
+    hasSearchMode,
+    territoryLevel,
+  ])
 
   const stats = useMemo(() => {
     const shutdownCount = rows.filter(
-      row => row.fermetureTechnique === '1' || row.fermetureComAddr === '1' || row.fermetureComZone === '1'
+      row =>
+        row.fermetureTechnique === '1' ||
+        row.fermetureComAddr === '1' ||
+        row.fermetureComZone === '1'
     ).length
     const fiberCount = rows.filter(row => row.eligFo === '1').length
     return {
-      total: hasSearchMode ? (searchPreview?.totalInCircle || 0) : (mapData?.totalInBounds || 0),
-      shown: hasSearchMode ? rows.length : (mapData?.returnedCount || rows.length),
+      total: hasSearchMode ? searchPreview?.totalInCircle || 0 : mapData?.totalInBounds || 0,
+      shown: hasSearchMode ? rows.length : mapData?.returnedCount || rows.length,
       rows: rows.length,
       shutdownCount,
       fiberCount,
-      listTotal: hasSearchMode ? (searchPreview?.totalInCircle || rows.length) : (listData?.total || mapData?.totalInBounds || 0),
+      listTotal: hasSearchMode
+        ? searchPreview?.totalInCircle || rows.length
+        : listData?.total || mapData?.totalInBounds || 0,
     }
-  }, [hasSearchMode, listData?.total, mapData?.returnedCount, mapData?.totalInBounds, rows, searchPreview?.totalInCircle])
+  }, [
+    hasSearchMode,
+    listData?.total,
+    mapData?.returnedCount,
+    mapData?.totalInBounds,
+    rows,
+    searchPreview?.totalInCircle,
+  ])
 
   const updateSearchRadius = useCallback(radiusMeters => {
     const nextRadius = Number(radiusMeters)
@@ -735,39 +797,50 @@ export function useAdressesAcquiscanLogic() {
     setSearchRadiusMeters(Math.min(SEARCH_RADIUS_MAX, Math.max(SEARCH_RADIUS_MIN, nextRadius)))
   }, [])
 
-  const selectSuggestion = useCallback(suggestion => {
-    if (!hasValidCoordinates(suggestion)) {
-      setSuggestionsError('Coordonnées invalides pour cette adresse.')
-      return
-    }
-    setSearchReturnContext({
-      territoryLevel,
-      selectedDept,
-      selectedCommune,
-      dept: filters.dept,
-      commune: filters.commune,
-    })
-    setSelectedSuggestion(suggestion)
-    setSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
-    setCommittedSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
-    setSearchPreview(null)
-    setSearchPreviewError(null)
-    setAddressQuery(suggestion.label)
-    setSuggestions([])
-    setSelectedId(null)
-    setFilters(prev => ({ ...prev, dept: '', commune: '' }))
-    setMapQuery({
-      bounds: boundsAround(suggestion.longitude, suggestion.latitude),
-      zoom: 15,
-    })
-    if (zoneMode) {
-      setDraftCircle({
-        longitude: suggestion.longitude,
-        latitude: suggestion.latitude,
-        radiusMeters: draftCircle?.radiusMeters || 600,
+  const selectSuggestion = useCallback(
+    suggestion => {
+      if (!hasValidCoordinates(suggestion)) {
+        setSuggestionsError('Coordonnées invalides pour cette adresse.')
+        return
+      }
+      setSearchReturnContext({
+        territoryLevel,
+        selectedDept,
+        selectedCommune,
+        dept: filters.dept,
+        commune: filters.commune,
       })
-    }
-  }, [draftCircle?.radiusMeters, filters.commune, filters.dept, selectedCommune, selectedDept, territoryLevel, zoneMode])
+      setSelectedSuggestion(suggestion)
+      setSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
+      setCommittedSearchRadiusMeters(current => current || SEARCH_RADIUS_DEFAULT)
+      setSearchPreview(null)
+      setSearchPreviewError(null)
+      setAddressQuery(suggestion.label)
+      setSuggestions([])
+      setSelectedId(null)
+      setFilters(prev => ({ ...prev, dept: '', commune: '' }))
+      setMapQuery({
+        bounds: boundsAround(suggestion.longitude, suggestion.latitude),
+        zoom: 15,
+      })
+      if (zoneMode) {
+        setDraftCircle({
+          longitude: suggestion.longitude,
+          latitude: suggestion.latitude,
+          radiusMeters: draftCircle?.radiusMeters || 600,
+        })
+      }
+    },
+    [
+      draftCircle?.radiusMeters,
+      filters.commune,
+      filters.dept,
+      selectedCommune,
+      selectedDept,
+      territoryLevel,
+      zoneMode,
+    ]
+  )
 
   const startZoneMode = useCallback(() => {
     setZoneMode(true)
@@ -817,19 +890,23 @@ export function useAdressesAcquiscanLogic() {
   const updateZoneRadius = useCallback(radiusMeters => {
     const nextRadius = Number(radiusMeters)
     if (!Number.isFinite(nextRadius)) return
-    setDraftCircle(current => current ? {
-      ...current,
-      radiusMeters: Math.min(10000, Math.max(50, nextRadius)),
-    } : current)
+    setDraftCircle(current =>
+      current
+        ? {
+            ...current,
+            radiusMeters: Math.min(10000, Math.max(50, nextRadius)),
+          }
+        : current
+    )
     setCreatedZone(null)
   }, [])
 
   const toggleZoneTarget = useCallback(immeubleId => {
-    setExcludedTargetIds(current => (
+    setExcludedTargetIds(current =>
       current.includes(immeubleId)
         ? current.filter(id => id !== immeubleId)
         : [...current, immeubleId]
-    ))
+    )
   }, [])
 
   const selectedZoneTargetIds = useMemo(() => {
@@ -840,9 +917,10 @@ export function useAdressesAcquiscanLogic() {
   }, [excludedTargetIds, zonePreview?.targets])
 
   const assignableUsers = useMemo(() => {
-    const formatName = user => [user?.prenom, user?.nom].filter(Boolean).join(' ').trim()
-      || user?.email
-      || `Utilisateur ${user?.id}`
+    const formatName = user =>
+      [user?.prenom, user?.nom].filter(Boolean).join(' ').trim() ||
+      user?.email ||
+      `Utilisateur ${user?.id}`
 
     const managerItems = (managers || []).map(manager => ({
       key: `manager:${manager.id}`,
@@ -860,9 +938,9 @@ export function useAdressesAcquiscanLogic() {
       subtitle: 'Commercial',
     }))
 
-    return [...managerItems, ...commercialItems].sort((a, b) => (
+    return [...managerItems, ...commercialItems].sort((a, b) =>
       a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
-    ))
+    )
   }, [commercials, managers])
 
   const selectedAssignments = useMemo(() => {
@@ -871,11 +949,9 @@ export function useAdressesAcquiscanLogic() {
   }, [assignableUsers, selectedAssignmentIds])
 
   const toggleAssignment = useCallback(key => {
-    setSelectedAssignmentIds(current => (
-      current.includes(key)
-        ? current.filter(item => item !== key)
-        : [...current, key]
-    ))
+    setSelectedAssignmentIds(current =>
+      current.includes(key) ? current.filter(item => item !== key) : [...current, key]
+    )
   }, [])
 
   const createZoneFromPreview = useCallback(async () => {
@@ -902,23 +978,30 @@ export function useAdressesAcquiscanLogic() {
       })
 
       if (selectedAssignments.length) {
-        const assignments = await Promise.allSettled(selectedAssignments.map(async user => {
-          const assigned = user.role === 'manager'
-            ? await api.managers.assignZone(user.id, zone.id)
-            : await api.commercials.assignZone(user.id, zone.id)
-          if (!assigned) throw new Error(`Assignation ${user.label} refusée`)
-          return assigned
-        }))
+        const assignments = await Promise.allSettled(
+          selectedAssignments.map(async user => {
+            const assigned =
+              user.role === 'manager'
+                ? await api.managers.assignZone(user.id, zone.id)
+                : await api.commercials.assignZone(user.id, zone.id)
+            if (!assigned) throw new Error(`Assignation ${user.label} refusée`)
+            return assigned
+          })
+        )
         const failedCount = assignments.filter(result => result.status === 'rejected').length
         if (failedCount) {
-          setZoneCreateError(`Zone créée, mais ${failedCount} assignation${failedCount > 1 ? 's' : ''} ont échoué.`)
+          setZoneCreateError(
+            `Zone créée, mais ${failedCount} assignation${failedCount > 1 ? 's' : ''} ont échoué.`
+          )
         }
       }
 
       setCreatedZone(zone)
       return zone
     } catch (err) {
-      setZoneCreateError(err instanceof Error ? err.message : 'Erreur de création de zone Acquiscan')
+      setZoneCreateError(
+        err instanceof Error ? err.message : 'Erreur de création de zone Acquiscan'
+      )
       return null
     } finally {
       setZoneCreateLoading(false)
