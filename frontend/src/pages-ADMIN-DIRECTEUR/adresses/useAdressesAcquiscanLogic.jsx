@@ -123,23 +123,24 @@ const enrichTerritoryGeoJson = (geoJson, rows, level) => {
   )
   return {
     ...geoJson,
-    features: (geoJson?.features || []).map(feature => {
+    features: (geoJson?.features || []).flatMap(feature => {
       const code = feature.properties?.code
       const row = statsByCode.get(code)
       const summary = row?.summary || {}
-      return {
+      if (!row || !summary.totalBuildings) return []
+      return [{
         ...feature,
         properties: {
           ...feature.properties,
           level,
           code,
           name: feature.properties?.nom || row?.nomCommune || code,
-          totalBuildings: summary.totalBuildings || 0,
+          totalBuildings: summary.totalBuildings,
           copperShutdown: summary.copperShutdown || 0,
           fiberBuildings: summary.fiberBuildings || 0,
           opportunityScore: summary.opportunityScore || 0,
         },
-      }
+      }]
     }),
   }
 }

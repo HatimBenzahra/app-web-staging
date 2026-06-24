@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CheckCircle2,
   Crosshair,
+  HelpCircle,
   Layers,
   LocateFixed,
   MapPin,
@@ -401,6 +402,55 @@ const FILTER_GROUPS = [
   },
 ]
 
+const FILTER_DOC_SECTIONS = [
+  {
+    title: 'Étape cuivre',
+    icon: Zap,
+    tone: 'border-amber-200 bg-amber-50/70 text-amber-900',
+    iconTone: 'bg-amber-100 text-amber-700',
+    items: [
+      ['Toutes étapes', 'Affiche toutes les adresses, sans tenir compte du niveau de fermeture cuivre.'],
+      ['Migration urgente', 'Adresse liée à une fermeture technique: c’est le signal le plus prioritaire.'],
+      ['Priorité adresse', 'La fermeture commerciale est signalée directement au niveau de l’adresse.'],
+      ['Zone à préparer', 'La fermeture commerciale est signalée au niveau de la zone.'],
+      ['Cuivre maintenu', 'Aucun signal de fermeture cuivre n’est remonté pour l’adresse.'],
+    ],
+  },
+  {
+    title: 'Fibre',
+    icon: CheckCircle2,
+    tone: 'border-emerald-200 bg-emerald-50/70 text-emerald-900',
+    iconTone: 'bg-emerald-100 text-emerald-700',
+    items: [
+      ['Toutes éligibilités', 'Affiche les adresses avec ou sans fibre disponible.'],
+      ['Fibre disponible', 'Adresse déjà éligible fibre selon les données Acquiscan.'],
+      ['Migration à qualifier', 'Adresse sans fibre disponible: cible potentielle pour qualification commerciale.'],
+    ],
+  },
+  {
+    title: 'Fermeture',
+    icon: AlertCircle,
+    tone: 'border-red-200 bg-red-50/70 text-red-900',
+    iconTone: 'bg-red-100 text-red-700',
+    items: [
+      ['Toutes années', 'Ne filtre pas par calendrier de fermeture.'],
+      ['Année courante', 'Conserve les adresses dont la fermeture est prévue cette année.'],
+      ['Après année courante', 'Conserve les fermetures futures ou annoncées sans date précise.'],
+    ],
+  },
+  {
+    title: 'Couverture 4G / 5G',
+    icon: Wifi,
+    tone: 'border-sky-200 bg-sky-50/70 text-sky-900',
+    iconTone: 'bg-sky-100 text-sky-700',
+    items: [
+      ['Élevée', 'Commune fortement couverte par le réseau mobile concerné.'],
+      ['Moyenne', 'Commune avec couverture intermédiaire.'],
+      ['Faible', 'Commune moins couverte: peut signaler un contexte réseau plus sensible.'],
+    ],
+  },
+]
+
 export default function AdressesAcquiscan() {
   const {
     filters,
@@ -477,6 +527,7 @@ export default function AdressesAcquiscan() {
     filters: true,
     zone: false,
   })
+  const [filterDocsOpen, setFilterDocsOpen] = useState(false)
 
   const activeFilters = useMemo(() => {
     const entries = []
@@ -783,7 +834,9 @@ export default function AdressesAcquiscan() {
                     >
                       <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">{suggestion.label}</span>
+                        <span className="block truncate text-sm font-medium">
+                          {suggestion.label}
+                        </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {[suggestion.postcode, suggestion.city, suggestion.codeInsee]
                             .filter(Boolean)
@@ -797,11 +850,17 @@ export default function AdressesAcquiscan() {
           </div>
 
           <div className="scrollbar-hidden flex min-w-0 items-center gap-1.5 overflow-x-auto">
-            <Badge variant={territoryLevel === 'france' ? 'secondary' : 'outline'} className="h-8 shrink-0">
+            <Badge
+              variant={territoryLevel === 'france' ? 'secondary' : 'outline'}
+              className="h-8 shrink-0"
+            >
               France
             </Badge>
             {selectedDept && (
-              <Badge variant={territoryLevel === 'department' ? 'secondary' : 'outline'} className="h-8 shrink-0">
+              <Badge
+                variant={territoryLevel === 'department' ? 'secondary' : 'outline'}
+                className="h-8 shrink-0"
+              >
                 {selectedDept.code}
               </Badge>
             )}
@@ -810,18 +869,31 @@ export default function AdressesAcquiscan() {
                 {selectedCommune.name || selectedCommune.code}
               </Badge>
             )}
-            {territoryLoading && <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />}
+            {territoryLoading && (
+              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+            )}
             {territoryLevel !== 'france' && (
-              <Button type="button" variant="outline" size="sm" onClick={goBackTerritory} className="h-8 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={goBackTerritory}
+                className="h-8 shrink-0"
+              >
                 Retour
               </Button>
             )}
           </div>
 
           <div className="scrollbar-hidden flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-            <Badge variant={activeFilters.length ? 'secondary' : 'outline'} className="h-8 shrink-0 gap-1.5">
+            <Badge
+              variant={activeFilters.length ? 'secondary' : 'outline'}
+              className="h-8 shrink-0 gap-1.5"
+            >
               <SlidersHorizontal className="h-3.5 w-3.5" />
-              {activeFilters.length ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}` : 'Filtres'}
+              {activeFilters.length
+                ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}`
+                : 'Filtres'}
             </Badge>
             {toolbarFields.map(field => (
               <ToolbarSelect
@@ -833,10 +905,26 @@ export default function AdressesAcquiscan() {
               />
             ))}
             {activeFilters.length > 0 && (
-              <Button type="button" variant="ghost" size="sm" onClick={resetFilters} className="h-8 shrink-0 px-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 shrink-0 px-2"
+              >
                 Réinitialiser
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setFilterDocsOpen(true)}
+              className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 text-red-800 hover:bg-red-100 hover:text-red-900"
+            >
+              <HelpCircle className="h-3.5 w-3.5 animate-pulse" />
+              Aide filtres
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -861,7 +949,9 @@ export default function AdressesAcquiscan() {
             {selectedSuggestion && (
               <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(300px,440px)_auto] lg:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-red-950">{selectedSuggestion.label}</p>
+                  <p className="truncate text-sm font-medium text-red-950">
+                    {selectedSuggestion.label}
+                  </p>
                   <p className="text-xs text-red-700">
                     {searchPreviewLoading
                       ? 'Chargement des adresses proches...'
@@ -936,229 +1026,223 @@ export default function AdressesAcquiscan() {
   }
 
   const renderZonePanel = () => (
-      <div className="space-y-2.5 rounded-md border bg-background p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => toggleSection('zone')}
-            className="min-w-0 flex-1 text-left"
-          >
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <MapPin className="h-4 w-4 text-red-600" />
-              Ciblage zone
-              {zonePreviewLoading && (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+    <div className="space-y-2.5 rounded-md border bg-background p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => toggleSection('zone')}
+          className="min-w-0 flex-1 text-left"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <MapPin className="h-4 w-4 text-red-600" />
+            Ciblage zone
+            {zonePreviewLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+            <ChevronDown
+              className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.zone ? 'rotate-180' : ''}`}
+            />
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {activeFilters.length
+              ? `Sélection filtrée par ${activeFilters.map(filter => filter.label).join(' · ')}`
+              : 'Trace un cercle et garde les adresses Acquiscan incluses.'}
+          </p>
+        </button>
+      </div>
+
+      {openSections.zone && (
+        <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
+          {!draftCircle ? (
+            <button
+              type="button"
+              onClick={() =>
+                selectedSuggestion &&
+                setZoneCenter(selectedSuggestion.longitude, selectedSuggestion.latitude)
+              }
+              className="w-full rounded-md border border-dashed p-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+            >
+              Clique sur la carte pour placer le centre, ou sélectionne une adresse.
+            </button>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1fr_96px] gap-2">
+                <FilterField label="Rayon">
+                  <input
+                    type="range"
+                    min="100"
+                    max="3000"
+                    step="50"
+                    value={draftCircle.radiusMeters}
+                    onChange={event => updateZoneRadius(event.target.value)}
+                    className="h-9 w-full accent-red-600"
+                  />
+                </FilterField>
+                <FilterField label="Mètres">
+                  <Input
+                    type="number"
+                    value={Math.round(draftCircle.radiusMeters)}
+                    onChange={event => updateZoneRadius(event.target.value)}
+                    className="h-9"
+                  />
+                </FilterField>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <MiniStat
+                  icon={MapPin}
+                  label="Targets"
+                  value={fmtInt(zonePreview?.summary?.totalTargets || 0)}
+                />
+                <MiniStat
+                  icon={CheckCircle2}
+                  label="À qualifier"
+                  value={fmtInt(zonePreview?.summary?.noFiberTargets || 0)}
+                />
+                <MiniStat
+                  icon={Zap}
+                  label="Fermeture"
+                  value={fmtInt(zonePreview?.summary?.copperClosureTargets || 0)}
+                />
+                <MiniStat
+                  icon={Wifi}
+                  label="Score"
+                  value={fmtInt(zonePreview?.summary?.averageOpportunityScore || 0)}
+                />
+              </div>
+
+              {zonePreviewError && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {zonePreviewError}
+                </div>
               )}
-              <ChevronDown
-                className={`ml-auto h-4 w-4 text-muted-foreground transition-transform ${openSections.zone ? 'rotate-180' : ''}`}
-              />
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {activeFilters.length
-                ? `Sélection filtrée par ${activeFilters.map(filter => filter.label).join(' · ')}`
-                : 'Trace un cercle et garde les adresses Acquiscan incluses.'}
-            </p>
-          </button>
-        </div>
 
-        {openSections.zone && (
-          <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1">
-            {!draftCircle ? (
-              <button
-                type="button"
-                onClick={() =>
-                  selectedSuggestion &&
-                  setZoneCenter(selectedSuggestion.longitude, selectedSuggestion.latitude)
-                }
-                className="w-full rounded-md border border-dashed p-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
-              >
-                Clique sur la carte pour placer le centre, ou sélectionne une adresse.
-              </button>
-            ) : (
-              <>
-                <div className="grid grid-cols-[1fr_96px] gap-2">
-                  <FilterField label="Rayon">
-                    <input
-                      type="range"
-                      min="100"
-                      max="3000"
-                      step="50"
-                      value={draftCircle.radiusMeters}
-                      onChange={event => updateZoneRadius(event.target.value)}
-                      className="h-9 w-full accent-red-600"
-                    />
-                  </FilterField>
-                  <FilterField label="Mètres">
-                    <Input
-                      type="number"
-                      value={Math.round(draftCircle.radiusMeters)}
-                      onChange={event => updateZoneRadius(event.target.value)}
-                      className="h-9"
-                    />
-                  </FilterField>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <MiniStat
-                    icon={MapPin}
-                    label="Targets"
-                    value={fmtInt(zonePreview?.summary?.totalTargets || 0)}
-                  />
-                  <MiniStat
-                    icon={CheckCircle2}
-                    label="À qualifier"
-                    value={fmtInt(zonePreview?.summary?.noFiberTargets || 0)}
-                  />
-                  <MiniStat
-                    icon={Zap}
-                    label="Fermeture"
-                    value={fmtInt(zonePreview?.summary?.copperClosureTargets || 0)}
-                  />
-                  <MiniStat
-                    icon={Wifi}
-                    label="Score"
-                    value={fmtInt(zonePreview?.summary?.averageOpportunityScore || 0)}
-                  />
-                </div>
-
-                {zonePreviewError && (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {zonePreviewError}
-                  </div>
-                )}
-
-                {zonePreview?.targets?.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto rounded-md border">
-                    {zonePreview.targets.slice(0, 40).map(target => {
-                      const excluded = excludedTargetIds.includes(target.immeubleId)
-                      return (
-                        <button
-                          type="button"
-                          key={target.immeubleId}
-                          onClick={() => toggleZoneTarget(target.immeubleId)}
-                          className={`flex w-full items-start gap-2 border-b px-2 py-2 text-left last:border-b-0 hover:bg-muted ${
-                            excluded ? 'opacity-50' : ''
-                          }`}
-                        >
-                          <span
-                            className={`mt-1 h-3 w-3 rounded-full border ${excluded ? 'bg-muted' : 'bg-red-600'}`}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-medium">
-                              {formatAddress(target)}
-                            </span>
-                            <span className="block truncate text-[11px] text-muted-foreground">
-                              {Math.round(target.distanceMeters)} m · {target.nbrLogements || 'N/A'}{' '}
-                              log. · FO{' '}
-                              {target.eligFo === '1'
-                                ? 'oui'
-                                : target.eligFo === '0'
-                                  ? 'non'
-                                  : 'N/A'}
-                            </span>
+              {zonePreview?.targets?.length > 0 && (
+                <div className="max-h-48 overflow-y-auto rounded-md border">
+                  {zonePreview.targets.slice(0, 40).map(target => {
+                    const excluded = excludedTargetIds.includes(target.immeubleId)
+                    return (
+                      <button
+                        type="button"
+                        key={target.immeubleId}
+                        onClick={() => toggleZoneTarget(target.immeubleId)}
+                        className={`flex w-full items-start gap-2 border-b px-2 py-2 text-left last:border-b-0 hover:bg-muted ${
+                          excluded ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <span
+                          className={`mt-1 h-3 w-3 rounded-full border ${excluded ? 'bg-muted' : 'bg-red-600'}`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium">
+                            {formatAddress(target)}
                           </span>
-                          <Badge variant="outline" className={scoreTone(target.opportunityScore)}>
-                            {target.opportunityScore}
-                          </Badge>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <FilterField label="Nom de la zone">
-                    <Input
-                      value={zoneName}
-                      onChange={event => setZoneName(event.target.value)}
-                      placeholder="Zone Acquiscan - Paris 15"
-                      className="h-9"
-                    />
-                  </FilterField>
-                  <FilterField label="Assigner à">
-                    <div className="rounded-md border bg-background">
-                      <div className="flex items-center justify-between border-b px-2 py-1.5">
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                          <Users className="h-3.5 w-3.5" />
-                          Managers / commerciaux
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {Math.round(target.distanceMeters)} m · {target.nbrLogements || 'N/A'}{' '}
+                            log. · FO{' '}
+                            {target.eligFo === '1' ? 'oui' : target.eligFo === '0' ? 'non' : 'N/A'}
+                          </span>
                         </span>
-                        <Badge
-                          variant={selectedAssignments.length ? 'secondary' : 'outline'}
-                          className="h-5"
-                        >
-                          {selectedAssignments.length}
+                        <Badge variant="outline" className={scoreTone(target.opportunityScore)}>
+                          {target.opportunityScore}
                         </Badge>
-                      </div>
-                      {assignableUsers.length === 0 ? (
-                        <p className="px-2 py-3 text-xs text-muted-foreground">
-                          Aucun manager ou commercial disponible.
-                        </p>
-                      ) : (
-                        <div className="scrollbar-hidden max-h-36 overflow-y-auto">
-                          {assignableUsers.map(user => {
-                            const selected = selectedAssignmentIds.includes(user.key)
-                            return (
-                              <button
-                                type="button"
-                                key={user.key}
-                                onClick={() => toggleAssignment(user.key)}
-                                className={`flex w-full items-center gap-2 border-b px-2 py-2 text-left last:border-b-0 transition-colors hover:bg-muted ${
-                                  selected ? 'bg-red-50/70 text-red-950' : ''
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <FilterField label="Nom de la zone">
+                  <Input
+                    value={zoneName}
+                    onChange={event => setZoneName(event.target.value)}
+                    placeholder="Zone Acquiscan - Paris 15"
+                    className="h-9"
+                  />
+                </FilterField>
+                <FilterField label="Assigner à">
+                  <div className="rounded-md border bg-background">
+                    <div className="flex items-center justify-between border-b px-2 py-1.5">
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <Users className="h-3.5 w-3.5" />
+                        Managers / commerciaux
+                      </span>
+                      <Badge
+                        variant={selectedAssignments.length ? 'secondary' : 'outline'}
+                        className="h-5"
+                      >
+                        {selectedAssignments.length}
+                      </Badge>
+                    </div>
+                    {assignableUsers.length === 0 ? (
+                      <p className="px-2 py-3 text-xs text-muted-foreground">
+                        Aucun manager ou commercial disponible.
+                      </p>
+                    ) : (
+                      <div className="scrollbar-hidden max-h-36 overflow-y-auto">
+                        {assignableUsers.map(user => {
+                          const selected = selectedAssignmentIds.includes(user.key)
+                          return (
+                            <button
+                              type="button"
+                              key={user.key}
+                              onClick={() => toggleAssignment(user.key)}
+                              className={`flex w-full items-center gap-2 border-b px-2 py-2 text-left last:border-b-0 transition-colors hover:bg-muted ${
+                                selected ? 'bg-red-50/70 text-red-950' : ''
+                              }`}
+                            >
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                  selected
+                                    ? 'border-red-500 bg-red-600 text-white'
+                                    : 'border-muted-foreground/30 text-transparent'
                                 }`}
                               >
-                                <span
-                                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                                    selected
-                                      ? 'border-red-500 bg-red-600 text-white'
-                                      : 'border-muted-foreground/30 text-transparent'
-                                  }`}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium">
+                                  {user.label}
                                 </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-xs font-medium">
-                                    {user.label}
-                                  </span>
-                                  <span className="block truncate text-[11px] text-muted-foreground">
-                                    {user.subtitle}
-                                  </span>
+                                <span className="block truncate text-[11px] text-muted-foreground">
+                                  {user.subtitle}
                                 </span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </FilterField>
-                  {zoneCreateError && <p className="text-xs text-destructive">{zoneCreateError}</p>}
-                  {createdZone && (
-                    <p className="text-xs font-medium text-emerald-700">
-                      Zone créée: {createdZone.nom}
-                    </p>
-                  )}
-                  <Button
-                    type="button"
-                    onClick={createZoneFromPreview}
-                    disabled={
-                      zoneCreateLoading || zonePreviewLoading || !selectedZoneTargetIds.length
-                    }
-                    className="h-9 w-full gap-2"
-                  >
-                    {zoneCreateLoading ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <MapPin className="h-4 w-4" />
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     )}
-                    {selectedAssignments.length
-                      ? `Créer et assigner ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`
-                      : `Créer la zone avec ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                  </div>
+                </FilterField>
+                {zoneCreateError && <p className="text-xs text-destructive">{zoneCreateError}</p>}
+                {createdZone && (
+                  <p className="text-xs font-medium text-emerald-700">
+                    Zone créée: {createdZone.nom}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  onClick={createZoneFromPreview}
+                  disabled={
+                    zoneCreateLoading || zonePreviewLoading || !selectedZoneTargetIds.length
+                  }
+                  className="h-9 w-full gap-2"
+                >
+                  {zoneCreateLoading ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MapPin className="h-4 w-4" />
+                  )}
+                  {selectedAssignments.length
+                    ? `Créer et assigner ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`
+                    : `Créer la zone avec ${fmtInt(selectedZoneTargetIds.length)} adresse${selectedZoneTargetIds.length > 1 ? 's' : ''}`}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 
   return (
@@ -1190,7 +1274,10 @@ export default function AdressesAcquiscan() {
         <div className="flex min-w-0 flex-col gap-2">
           {renderMapToolbar()}
 
-          <Dialog open={Boolean(selectedAddress)} onOpenChange={open => !open && setSelectedId(null)}>
+          <Dialog
+            open={Boolean(selectedAddress)}
+            onOpenChange={open => !open && setSelectedId(null)}
+          >
             <DialogContent className="max-h-[86vh] overflow-y-auto p-0 sm:max-w-xl">
               {selectedAddress && (
                 <>
@@ -1219,124 +1306,170 @@ export default function AdressesAcquiscan() {
             </DialogContent>
           </Dialog>
 
-        <div
-          ref={mapShellRef}
-          className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-248px)] xl:min-h-[560px] xl:rounded-lg"
-        >
-          {loading && mapLoaded && (
-            <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
-              <div className="h-full w-1/3 animate-pulse rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]" />
-            </div>
-          )}
-
-          {!MAPBOX_TOKEN ? (
-            <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-muted-foreground">
-              Token Mapbox manquant
-            </div>
-          ) : (
-            <>
-              {!mapLoaded && (
-                <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-none" />
-              )}
-              <MapboxMap
-                ref={mapRef}
-                initialViewState={initialViewState}
-                mapStyle={mapStyle}
-                style={{ width: '100%', height: '100%' }}
-                onLoad={() => setMapLoaded(true)}
-                onMove={handleMapMove}
-                onMoveEnd={handleMoveEnd}
-                onClick={handleMapClick}
-                interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-points']}
-                attributionControl={false}
-              >
-                <NavigationControl position="bottom-right" />
-                {isPitched && <Layer {...building3dLayer} />}
-                {territoryGeoJson && (
-                  <Source id="acquiscan-territory-source" type="geojson" data={territoryGeoJson}>
-                    <Layer {...territoryFillLayer} />
-                    <Layer {...territoryLineLayer} />
-                    <Layer {...territoryLabelLayer} />
-                  </Source>
-                )}
-                {selectedCommuneGeoJson && (
-                  <Source
-                    id="acquiscan-selected-commune-source"
-                    type="geojson"
-                    data={selectedCommuneGeoJson}
-                  >
-                    <Layer {...selectedCommuneFillLayer} />
-                    <Layer {...selectedCommuneLineLayer} />
-                  </Source>
-                )}
-                <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
-                  <Layer {...pointLayer} />
-                </Source>
-                <Source id="acquiscan-zone-circle-source" type="geojson" data={zoneCircleGeoJson}>
-                  <Layer {...zoneCircleFillLayer} />
-                  <Layer {...zoneCircleLineLayer} />
-                </Source>
-                <Source id="acquiscan-zone-target-source" type="geojson" data={zoneTargetsGeoJson}>
-                  <Layer {...zoneTargetLayer} />
-                </Source>
-                <Source id="acquiscan-selected-source" type="geojson" data={selectedGeoJson}>
-                  <Layer {...selectedPointLayer} />
-                </Source>
-                <Source
-                  id="acquiscan-search-target-source"
-                  type="geojson"
-                  data={searchTargetGeoJson}
-                >
-                  <Layer {...searchTargetHaloLayer} />
-                  <Layer {...searchTargetLayer} />
-                </Source>
-              </MapboxMap>
-            </>
-          )}
-
-          <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
-            <Button
-              type="button"
-              variant={isSatellite ? 'secondary' : 'outline'}
-              size="sm"
-              onClick={toggleMapStyle}
-              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
-            >
-              <Layers className="h-4 w-4" />
-              {isSatellite ? 'Plan' : 'Satellite'}
-            </Button>
-            <Button
-              type="button"
-              variant={isPitched ? 'secondary' : 'outline'}
-              size="sm"
-              onClick={togglePitch}
-              className="gap-2 bg-background/95 shadow-lg backdrop-blur"
-            >
-              <Building2 className="h-4 w-4" />
-              3D
-            </Button>
-          </div>
-
-          {loading && mapLoaded && (
-            <Badge className="absolute bottom-4 left-4 z-20 gap-2 shadow-lg" variant="secondary">
-              <RefreshCw className="h-3 w-3 animate-spin" />
-              Chargement
-            </Badge>
-          )}
           <div
-            className={`absolute left-4 z-20 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur ${loading && mapLoaded ? 'bottom-14' : 'bottom-4'}`}
+            ref={mapShellRef}
+            className="relative min-w-0 overflow-hidden border bg-muted shadow-sm min-h-[560px] sm:min-h-[680px] xl:h-[calc(100vh-248px)] xl:min-h-[560px] xl:rounded-lg"
           >
-            <p className="font-medium text-foreground">Score d'opportunité</p>
-            <p className="mb-1.5 text-[11px] text-muted-foreground">Couleur des points adresse</p>
-            <div className="flex flex-wrap gap-3">
-              <LegendDot color="#64748b" label="Priorité faible" />
-              <LegendDot color="#f59e0b" label="À examiner" />
-              <LegendDot color="#ef4444" label="Priorité forte" />
+            {loading && mapLoaded && (
+              <div className="absolute inset-x-0 top-0 z-30 h-1 overflow-hidden bg-primary/10">
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]" />
+              </div>
+            )}
+
+            {!MAPBOX_TOKEN ? (
+              <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-muted-foreground">
+                Token Mapbox manquant
+              </div>
+            ) : (
+              <>
+                {!mapLoaded && (
+                  <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-none" />
+                )}
+                <MapboxMap
+                  ref={mapRef}
+                  initialViewState={initialViewState}
+                  mapStyle={mapStyle}
+                  style={{ width: '100%', height: '100%' }}
+                  onLoad={() => setMapLoaded(true)}
+                  onMove={handleMapMove}
+                  onMoveEnd={handleMoveEnd}
+                  onClick={handleMapClick}
+                  interactiveLayerIds={['acquiscan-territory-fill', 'acquiscan-points']}
+                  attributionControl={false}
+                >
+                  <NavigationControl position="bottom-right" />
+                  {isPitched && <Layer {...building3dLayer} />}
+                  {territoryGeoJson && (
+                    <Source id="acquiscan-territory-source" type="geojson" data={territoryGeoJson}>
+                      <Layer {...territoryFillLayer} />
+                      <Layer {...territoryLineLayer} />
+                      <Layer {...territoryLabelLayer} />
+                    </Source>
+                  )}
+                  {selectedCommuneGeoJson && (
+                    <Source
+                      id="acquiscan-selected-commune-source"
+                      type="geojson"
+                      data={selectedCommuneGeoJson}
+                    >
+                      <Layer {...selectedCommuneFillLayer} />
+                      <Layer {...selectedCommuneLineLayer} />
+                    </Source>
+                  )}
+                  <Source id="acquiscan-point-source" type="geojson" data={pointsGeoJson}>
+                    <Layer {...pointLayer} />
+                  </Source>
+                  <Source id="acquiscan-zone-circle-source" type="geojson" data={zoneCircleGeoJson}>
+                    <Layer {...zoneCircleFillLayer} />
+                    <Layer {...zoneCircleLineLayer} />
+                  </Source>
+                  <Source
+                    id="acquiscan-zone-target-source"
+                    type="geojson"
+                    data={zoneTargetsGeoJson}
+                  >
+                    <Layer {...zoneTargetLayer} />
+                  </Source>
+                  <Source id="acquiscan-selected-source" type="geojson" data={selectedGeoJson}>
+                    <Layer {...selectedPointLayer} />
+                  </Source>
+                  <Source
+                    id="acquiscan-search-target-source"
+                    type="geojson"
+                    data={searchTargetGeoJson}
+                  >
+                    <Layer {...searchTargetHaloLayer} />
+                    <Layer {...searchTargetLayer} />
+                  </Source>
+                </MapboxMap>
+              </>
+            )}
+
+            <div className="absolute right-3 top-3 z-20 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant={isSatellite ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={toggleMapStyle}
+                className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+              >
+                <Layers className="h-4 w-4" />
+                {isSatellite ? 'Plan' : 'Satellite'}
+              </Button>
+              <Button
+                type="button"
+                variant={isPitched ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={togglePitch}
+                className="gap-2 bg-background/95 shadow-lg backdrop-blur"
+              >
+                <Building2 className="h-4 w-4" />
+                3D
+              </Button>
+            </div>
+
+            {loading && mapLoaded && (
+              <Badge className="absolute bottom-4 left-4 z-20 gap-2 shadow-lg" variant="secondary">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Chargement
+              </Badge>
+            )}
+            <div
+              className={`absolute left-4 z-20 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur ${loading && mapLoaded ? 'bottom-14' : 'bottom-4'}`}
+            >
+              <p className="font-medium text-foreground">Score d'opportunité</p>
+              <p className="mb-1.5 text-[11px] text-muted-foreground">Couleur des points adresse</p>
+              <div className="flex flex-wrap gap-3">
+                <LegendDot color="#64748b" label="Priorité faible" />
+                <LegendDot color="#f59e0b" label="À examiner" />
+                <LegendDot color="#ef4444" label="Priorité forte" />
+              </div>
             </div>
           </div>
-        </div>
         </div>
       </div>
+
+      <Dialog open={filterDocsOpen} onOpenChange={setFilterDocsOpen}>
+        <DialogContent className="max-h-[86vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-700">
+                <HelpCircle className="h-4 w-4" />
+              </span>
+              Comprendre les filtres Acquiscan
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed">
+              Les filtres servent à réduire les adresses affichées selon les signaux cuivre,
+              fibre, calendrier et couverture mobile.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {FILTER_DOC_SECTIONS.map(section => (
+              <div key={section.title} className={`rounded-lg border p-3 ${section.tone}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${section.iconTone}`}>
+                    {React.createElement(section.icon, { className: 'h-4 w-4' })}
+                  </span>
+                  <p className="text-sm font-semibold tracking-tight">{section.title}</p>
+                </div>
+                <div className="mt-3 space-y-2.5">
+                  {section.items.map(([label, description]) => (
+                    <div key={label} className="rounded-md bg-background/70 px-2.5 py-2 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setFilterDocsOpen(false)}>
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
