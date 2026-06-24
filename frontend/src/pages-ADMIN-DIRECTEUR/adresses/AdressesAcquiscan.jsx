@@ -898,14 +898,14 @@ export default function AdressesAcquiscan() {
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={resetFilters}
-                className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 hover:text-red-900"
+                className="relative h-8 w-8 shrink-0 rounded-full border-red-200 bg-red-50 text-red-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 hover:text-red-900"
+                aria-label="Réinitialiser les filtres actifs"
                 title="Réinitialiser les filtres actifs"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                Réinitialiser
-                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-red-700">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
                   {activeFilters.length}
                 </span>
               </Button>
