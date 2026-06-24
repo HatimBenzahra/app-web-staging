@@ -849,7 +849,7 @@ export default function AdressesAcquiscan() {
             )}
           </div>
 
-          <div className="scrollbar-hidden flex min-w-0 items-center gap-1.5 overflow-x-auto">
+          <div className="scrollbar-thin-x flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
             <Badge
               variant={territoryLevel === 'france' ? 'secondary' : 'outline'}
               className="h-8 shrink-0"
@@ -885,56 +885,64 @@ export default function AdressesAcquiscan() {
             )}
           </div>
 
-          <div className="scrollbar-hidden flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-            <Badge
-              variant={activeFilters.length ? 'secondary' : 'outline'}
-              className="h-8 shrink-0 gap-1.5"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              {activeFilters.length
-                ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}`
-                : 'Filtres'}
-            </Badge>
-            {toolbarFields.map(field => (
-              <ToolbarSelect
-                key={field.key}
-                field={field}
-                value={filters[field.key]}
-                active={filters[field.key] !== 'all'}
-                onChange={value => updateFilter(field.key, value)}
-              />
-            ))}
-            {activeFilters.length > 0 && (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Badge
+                variant={activeFilters.length ? 'secondary' : 'outline'}
+                className="h-8 shrink-0 gap-1.5"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {activeFilters.length
+                  ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}`
+                  : 'Filtres'}
+              </Badge>
+              {activeFilters.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground"
+                >
+                  Réinitialiser
+                </Button>
+              )}
+            </div>
+
+            <div className="scrollbar-thin-x flex min-w-[220px] flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
+              {toolbarFields.map(field => (
+                <ToolbarSelect
+                  key={field.key}
+                  field={field}
+                  value={filters[field.key]}
+                  active={filters[field.key] !== 'all'}
+                  onChange={value => updateFilter(field.key, value)}
+                />
+              ))}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={resetFilters}
-                className="h-8 shrink-0 px-2"
+                onClick={() => setFilterDocsOpen(true)}
+                className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 text-red-800 hover:bg-red-100 hover:text-red-900"
               >
-                Réinitialiser
+                <HelpCircle className="h-3.5 w-3.5 animate-pulse" />
+                Aide filtres
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setFilterDocsOpen(true)}
-              className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 text-red-800 hover:bg-red-100 hover:text-red-900"
-            >
-              <HelpCircle className="h-3.5 w-3.5 animate-pulse" />
-              Aide filtres
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={zoneMode ? 'secondary' : 'outline'}
-              onClick={zoneMode ? stopZoneMode : startZoneMode}
-              className="h-8 shrink-0 gap-1.5"
-            >
-              <MapPin className="h-3.5 w-3.5" />
-              {zoneMode ? 'Fermer zone' : 'Ciblage zone'}
-            </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={zoneMode ? 'secondary' : 'outline'}
+                onClick={zoneMode ? stopZoneMode : startZoneMode}
+                className="h-8 shrink-0 gap-1.5"
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                {zoneMode ? 'Fermer zone' : 'Ciblage zone'}
+              </Button>
+            </div>
           </div>
         </div>
 

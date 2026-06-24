@@ -186,6 +186,32 @@ body {
 .scrollbar-hidden::-webkit-scrollbar {
   display: none;
 }
+
+.scrollbar-thin-x {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.16) transparent;
+}
+
+.scrollbar-thin-x::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scrollbar-thin-x::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin-x::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.14);
+  border-radius: 9999px;
+}
+
+.scrollbar-thin-x:hover {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+.scrollbar-thin-x::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.38);
+}
 /*--------------------------------*/
 /* Animations personnalisées pour le LoadingScreen */
 @layer utilities {
