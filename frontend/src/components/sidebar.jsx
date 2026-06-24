@@ -21,6 +21,7 @@ import {
   Package,
   Rocket,
   ScrollText,
+  Target,
 } from 'lucide-react'
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -57,7 +58,7 @@ const teamItems = [
 
 const prospectionItems = [
   { title: 'Immeubles', url: '/immeubles', icon: Building2, entity: 'immeubles' },
-  { title: 'Opportunités', url: '/adresses', icon: MapPin, entity: 'immeubles' },
+  { title: 'Ciblage Acquiscan', url: '/adresses', icon: Target, entity: 'immeubles' },
   {
     title: 'Zones',
     url: '/zones',

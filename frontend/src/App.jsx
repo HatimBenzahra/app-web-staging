@@ -76,7 +76,7 @@ function AdminLayout() {
     managers: { label: 'Managers', href: '/managers' },
     directeurs: { label: 'Directeurs', href: '/directeurs' },
     immeubles: { label: 'Immeubles', href: '/immeubles' },
-    adresses: { label: 'Opportunités terrain', href: '/adresses' },
+    adresses: { label: 'Ciblage Acquiscan', href: '/adresses' },
     portes: { label: 'Porte', href: '' },
     zones: { label: 'Zones', href: '/zones' },
     gestion: { label: 'Gestion', href: '/gestion' },
