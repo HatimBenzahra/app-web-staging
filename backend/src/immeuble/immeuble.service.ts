@@ -5,11 +5,47 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CreateImmeubleInput, UpdateImmeubleInput } from './immeuble.dto';
+import { CreateImmeubleInput, TypeHabitat, UpdateImmeubleInput } from './immeuble.dto';
 
 @Injectable()
 export class ImmeubleService {
   constructor(private prisma: PrismaService) {}
+
+  private async resolveZoneId(data: Pick<CreateImmeubleInput, 'zoneId' | 'commercialId' | 'managerId'>) {
+    let zoneId = data.zoneId;
+
+    if (!zoneId && data.commercialId) {
+      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
+        where: {
+          userId_userType: {
+            userId: data.commercialId,
+            userType: 'COMMERCIAL',
+          },
+        },
+      });
+
+      if (zoneEnCours) {
+        zoneId = zoneEnCours.zoneId;
+      }
+    }
+
+    if (!zoneId && data.managerId) {
+      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
+        where: {
+          userId_userType: {
+            userId: data.managerId,
+            userType: 'MANAGER',
+          },
+        },
+      });
+
+      if (zoneEnCours) {
+        zoneId = zoneEnCours.zoneId;
+      }
+    }
+
+    return zoneId;
+  }
 
   private async ensureImmeubleAccess(
     immeubleId: number,
@@ -70,39 +106,7 @@ export class ImmeubleService {
 
   async create(data: CreateImmeubleInput) {
     // Si un commercialId ou managerId est fourni, récupérer sa zone assignée
-    let zoneId = data.zoneId; // Utiliser la zone fournie explicitement
-
-    if (!zoneId && data.commercialId) {
-      // Chercher la zone assignée au commercial via ZoneEnCours
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.commercialId,
-            userType: 'COMMERCIAL',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
-
-    if (!zoneId && data.managerId) {
-      // Chercher la zone assignée au manager via ZoneEnCours (nouveau système)
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.managerId,
-            userType: 'MANAGER',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
+    const zoneId = await this.resolveZoneId(data);
 
     // Créer l'immeuble avec la zone automatiquement assignée
     const immeuble = await this.prisma.immeuble.create({
@@ -110,6 +114,7 @@ export class ImmeubleService {
         adresse: data.adresse,
         latitude: data.latitude,
         longitude: data.longitude,
+        typeHabitat: data.typeHabitat ?? TypeHabitat.IMMEUBLE,
         nbEtages: data.nbEtages,
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,
@@ -140,6 +145,39 @@ export class ImmeubleService {
         data: portes,
       });
     }
+
+    return immeuble;
+  }
+
+  async createMaison(data: CreateImmeubleInput) {
+    const zoneId = await this.resolveZoneId(data);
+
+    const immeuble = await this.prisma.immeuble.create({
+      data: {
+        adresse: data.adresse,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        typeHabitat: TypeHabitat.MAISON,
+        nbEtages: 1,
+        nbPortesParEtage: 1,
+        ascenseurPresent: false,
+        digitalCode: data.digitalCode,
+        commercialId: data.commercialId,
+        managerId: data.managerId,
+        zoneId,
+      },
+    });
+
+    await this.prisma.porte.create({
+      data: {
+        numero: '1',
+        nomPersonnalise: 'Maison',
+        etage: 1,
+        immeubleId: immeuble.id,
+        statut: 'NON_VISITE',
+        nbRepassages: 0,
+      },
+    });
 
     return immeuble;
   }
@@ -409,24 +447,13 @@ export class ImmeubleService {
   }
 
   async createEmpty(data: CreateImmeubleInput) {
-    let zoneId = data.zoneId;
-    if (!zoneId && data.commercialId) {
-      const zec = await this.prisma.zoneEnCours.findUnique({
-        where: { userId_userType: { userId: data.commercialId, userType: 'COMMERCIAL' } },
-      });
-      if (zec) zoneId = zec.zoneId;
-    }
-    if (!zoneId && data.managerId) {
-      const zec = await this.prisma.zoneEnCours.findUnique({
-        where: { userId_userType: { userId: data.managerId, userType: 'MANAGER' } },
-      });
-      if (zec) zoneId = zec.zoneId;
-    }
+    const zoneId = await this.resolveZoneId(data);
     return this.prisma.immeuble.create({
       data: {
         adresse: data.adresse,
         latitude: data.latitude,
         longitude: data.longitude,
+        typeHabitat: data.typeHabitat ?? TypeHabitat.IMMEUBLE,
         nbEtages: data.nbEtages,
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,

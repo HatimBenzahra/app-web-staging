@@ -1,4 +1,4 @@
-import { ObjectType, Field, Int, InputType, Float } from '@nestjs/graphql';
+import { ObjectType, Field, Int, InputType, Float, registerEnumType } from '@nestjs/graphql';
 import {
   IsNotEmpty,
   IsString,
@@ -7,8 +7,20 @@ import {
   Min,
   IsBoolean,
   IsNumber,
+  IsEnum,
 } from 'class-validator';
 import { Porte } from '../porte/porte.dto';
+
+export enum TypeHabitat {
+  IMMEUBLE = 'IMMEUBLE',
+  MAISON = 'MAISON',
+  PAVILLON = 'PAVILLON',
+}
+
+registerEnumType(TypeHabitat, {
+  name: 'TypeHabitat',
+  description: 'Type de lieu terrain prospecte',
+});
 
 @ObjectType()
 export class Immeuble {
@@ -23,6 +35,9 @@ export class Immeuble {
 
   @Field(() => Float, { nullable: true })
   longitude?: number;
+
+  @Field(() => TypeHabitat)
+  typeHabitat: TypeHabitat;
 
   @Field(() => Int)
   nbEtages: number;
@@ -71,6 +86,11 @@ export class CreateImmeubleInput {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @Field(() => TypeHabitat, { nullable: true, defaultValue: TypeHabitat.IMMEUBLE })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
 
   @Field(() => Int)
   @IsInt()
@@ -126,6 +146,11 @@ export class UpdateImmeubleInput {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @Field(() => TypeHabitat, { nullable: true })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
 
   @Field(() => Int, { nullable: true })
   @IsOptional()

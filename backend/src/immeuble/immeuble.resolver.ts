@@ -24,6 +24,14 @@ export class ImmeubleResolver {
     return this.immeubleService.create(createImmeubleInput);
   }
 
+  @Mutation(() => Immeuble)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  createMaisonFromImmeubleInput(
+    @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
+  ) {
+    return this.immeubleService.createMaison(createImmeubleInput);
+  }
+
   @Query(() => [Immeuble], { name: 'immeubles' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   findAll(@CurrentUser() user: any) {
