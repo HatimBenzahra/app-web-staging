@@ -14,7 +14,6 @@ import {
   MapPin,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Users,
   Wifi,
   X,
@@ -346,6 +345,7 @@ const FILTER_GROUPS = [
       {
         key: 'segment',
         label: 'Cuivre',
+        widthClass: 'w-[138px]',
         options: [
           ['all', 'Toutes étapes'],
           ['urgent', 'Migration urgente'],
@@ -357,6 +357,7 @@ const FILTER_GROUPS = [
       {
         key: 'fiber',
         label: 'Fibre',
+        widthClass: 'w-[162px]',
         options: [
           ['all', 'Toutes éligibilités'],
           ['yes', 'Fibre disponible'],
@@ -366,6 +367,7 @@ const FILTER_GROUPS = [
       {
         key: 'annee',
         label: 'Fermeture',
+        widthClass: 'w-[142px]',
         options: [
           ['all', 'Toutes années'],
           ['current', 'Année courante'],
@@ -381,6 +383,7 @@ const FILTER_GROUPS = [
       {
         key: 'coverage4g',
         label: '4G',
+        widthClass: 'w-[158px]',
         options: [
           ['all', 'Toutes couvertures'],
           ['eleve', '4G élevée'],
@@ -391,6 +394,7 @@ const FILTER_GROUPS = [
       {
         key: 'coverage5g',
         label: '5G',
+        widthClass: 'w-[158px]',
         options: [
           ['all', 'Toutes couvertures'],
           ['eleve', '5G élevée'],
@@ -515,10 +519,12 @@ export default function AdressesAcquiscan() {
   } = useAdressesAcquiscanLogic()
   const mapRef = useRef(null)
   const mapShellRef = useRef(null)
+  const searchInputRef = useRef(null)
   const lastFocusedSuggestionId = useRef(null)
   const lastFocusedAddressId = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/streets-v12')
   const [isPitched, setIsPitched] = useState(false)
   const [openSections, setOpenSections] = useState({
@@ -543,6 +549,7 @@ export default function AdressesAcquiscan() {
       entries.push({ key: 'coverage5g', label: FILTER_LABELS.coverage5g[filters.coverage5g] })
     return entries
   }, [filters])
+  const searchIsOpen = searchExpanded || Boolean(selectedSuggestion) || addressQuery.trim().length > 0
 
   const toggleSection = key => {
     setOpenSections(current => ({ ...current, [key]: !current[key] }))
@@ -552,6 +559,12 @@ export default function AdressesAcquiscan() {
     if (!zoneMode) return
     setOpenSections(current => ({ ...current, zone: true }))
   }, [zoneMode])
+
+  useEffect(() => {
+    if (!searchIsOpen) return
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [searchIsOpen])
 
   useEffect(() => {
     if (!mapShellRef.current) return undefined
@@ -794,16 +807,53 @@ export default function AdressesAcquiscan() {
     return (
       <div className="rounded-lg border bg-background shadow-sm">
         <div className="flex flex-col gap-2 p-2 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1 lg:max-w-[420px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={addressQuery}
-              onChange={event => setAddressQuery(event.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-              placeholder="Rechercher une adresse"
-              className="h-9 pl-9"
-            />
+          <div
+            className={`relative min-w-0 transition-[flex-basis,width,max-width] duration-500 ease-out ${
+              searchIsOpen
+                ? 'basis-full sm:basis-[360px] lg:basis-[420px] lg:max-w-[420px]'
+                : 'basis-10 lg:basis-10'
+            }`}
+          >
+            {!searchIsOpen ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setSearchExpanded(true)}
+                className="h-9 w-10 rounded-full shadow-sm transition-all duration-300 hover:w-12 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                title="Rechercher une adresse"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            ) : (
+              <>
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors duration-300" />
+                <Input
+                  ref={searchInputRef}
+                  value={addressQuery}
+                  onChange={event => setAddressQuery(event.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+                  placeholder="Rechercher une adresse"
+                  className="h-9 rounded-full border-red-100 bg-background pl-9 pr-9 shadow-sm transition-all duration-500 focus-visible:border-red-200 focus-visible:ring-red-200"
+                />
+                {!selectedSuggestion && !addressQuery && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setSearchExpanded(false)
+                      setSearchFocused(false)
+                    }}
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:text-foreground"
+                    title="Fermer la recherche"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </>
+            )}
             {showSuggestions && (
               <div className="absolute left-0 right-0 top-10 z-50 max-h-72 overflow-y-auto rounded-md border bg-background shadow-xl animate-in fade-in-0 zoom-in-95">
                 {suggestionsLoading && (
@@ -886,28 +936,17 @@ export default function AdressesAcquiscan() {
           </div>
 
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Badge
-                variant={activeFilters.length ? 'secondary' : 'outline'}
-                className="h-8 shrink-0 gap-1.5"
+            {activeFilters.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground"
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                {activeFilters.length
-                  ? `${activeFilters.length} actif${activeFilters.length > 1 ? 's' : ''}`
-                  : 'Filtres'}
-              </Badge>
-              {activeFilters.length > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetFilters}
-                  className="h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground"
-                >
-                  Réinitialiser
-                </Button>
-              )}
-            </div>
+                Réinitialiser
+              </Button>
+            )}
 
             <div className="scrollbar-thin-x flex min-w-[220px] flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
               {toolbarFields.map(field => (
@@ -1565,7 +1604,7 @@ function ToolbarSelect({ field, value, active, onChange }) {
       <span className="sr-only">{field.label}</span>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className={`h-8 w-[132px] gap-1 rounded-md px-2 text-xs shadow-none focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
+          className={`h-8 ${field.widthClass || 'w-[132px]'} gap-1 rounded-md px-2 text-xs shadow-none focus:ring-1 focus:ring-red-200 focus:ring-offset-0 focus-visible:ring-1 focus-visible:ring-red-200 focus-visible:ring-offset-0 ${
             active ? 'border-red-200 bg-red-50 text-red-800' : 'bg-background'
           }`}
         >
