@@ -13,6 +13,7 @@ import {
   LocateFixed,
   MapPin,
   RefreshCw,
+  RotateCcw,
   Search,
   Users,
   Wifi,
@@ -896,12 +897,17 @@ export default function AdressesAcquiscan() {
             {activeFilters.length > 0 && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={resetFilters}
-                className="h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground"
+                className="h-8 shrink-0 gap-1.5 border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 hover:text-red-900"
+                title="Réinitialiser les filtres actifs"
               >
+                <RotateCcw className="h-3.5 w-3.5" />
                 Réinitialiser
+                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-red-700">
+                  {activeFilters.length}
+                </span>
               </Button>
             )}
 
