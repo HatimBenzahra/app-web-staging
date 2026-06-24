@@ -1456,15 +1456,17 @@ export class AcquiscanService {
     this.setOptionalParam(params, 'commune', apiCommune);
     this.setOptionalParam(params, 'search', input.search);
     this.setOptionalParam(params, 'fiber', input.fiber);
+    this.setOptionalParam(params, 'annee', input.annee);
+    this.setOptionalParam(params, 'coverage4g', input.coverage4g);
+    this.setOptionalParam(params, 'coverage5g', input.coverage5g);
+    this.setOptionalParam(params, 'segment', input.segment);
 
     const response = await this.requestAcquiscan<AcquiscanCopperBuildingsResponse>(
       `/buildings/addresses?${params.toString()}`,
     );
 
     const rows = response.data.data?.rows ?? [];
-    const filteredRows = rows
-      .filter(row => this.matchesParisArrondissement(row, parisArrondissement))
-      .filter(row => this.matchesBuildingFilters(row, input));
+    const filteredRows = rows.filter(row => this.matchesParisArrondissement(row, parisArrondissement));
 
     return {
       rows: filteredRows,
