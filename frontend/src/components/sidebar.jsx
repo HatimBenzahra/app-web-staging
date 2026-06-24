@@ -19,6 +19,7 @@ import {
   Package,
   Rocket,
   ScrollText,
+  Target,
 } from 'lucide-react'
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -48,6 +49,7 @@ const mainItems = [{ title: 'Dashboard', url: '/', icon: Home, entity: 'dashboar
 
 const terrainItems = [
   { title: 'Immeubles', url: '/immeubles', icon: Building2, entity: 'immeubles' },
+  { title: 'Ciblage Acquiscan', url: '/adresses', icon: Target, entity: 'immeubles' },
   {
     title: 'Zones',
     url: '/zones',

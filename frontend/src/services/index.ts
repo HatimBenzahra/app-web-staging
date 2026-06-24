@@ -17,6 +17,7 @@ export {
   immeubleApi,
   statisticApi,
   porteApi, 
+  acquiscanApi,
 } from './api'
 
 export * from './api/commercials'
@@ -26,6 +27,7 @@ export * from './api/zones'
 export * from './api/immeubles'
 export * from './api/portes'
 export * from './api/statistics'
+export * from './api/acquiscan'
 
 
 // =============================================================================

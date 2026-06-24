@@ -96,6 +96,7 @@ model Zone {
   statistics      Statistic[]
   zoneEnCours     ZoneEnCours[]
   historiqueZones HistoriqueZone[]
+  acquiscanTargets AcquiscanZoneTarget[]
 }
 
 model Immeuble {
@@ -118,6 +119,67 @@ model Immeuble {
   zone              Zone?       @relation(fields: [zoneId], references: [id])
   statistics        Statistic[]
   portes            Porte[]
+}
+
+model AcquiscanAddressCoordinate {
+  id              Int      @id @default(autoincrement())
+  immeubleId      String   @unique @map("immeuble_id")
+  dept            String
+  codeInsee       String?  @map("code_insee")
+  imbCode         String?  @map("imb_code")
+  addrCode        String?  @map("addr_code")
+  addrNumero      String?  @map("addr_numero")
+  addrNomVoie     String?  @map("addr_nom_voie")
+  addrNomCommune  String?  @map("addr_nom_commune")
+  imbX            Float?   @map("imb_x")
+  imbY            Float?   @map("imb_y")
+  longitude       Float?
+  latitude        Float?
+  importedAt      DateTime @default(now()) @map("imported_at")
+
+  @@index([dept])
+  @@index([latitude, longitude])
+  @@index([dept, latitude, longitude])
+  @@index([codeInsee])
+  @@map("acquiscan_address_coordinates")
+}
+
+model AcquiscanZoneTarget {
+  id                  Int      @id @default(autoincrement())
+  zoneId              Int      @map("zone_id")
+  immeubleId          String   @map("immeuble_id")
+  dept                String
+  codeInsee           String?  @map("code_insee")
+  imbCode             String?  @map("imb_code")
+  addrNumero          String?  @map("addr_numero")
+  addrNomVoie         String?  @map("addr_nom_voie")
+  addrNomCommune      String?  @map("addr_nom_commune")
+  nbrLogements        String?  @map("nbr_logements")
+  fermetureTechnique  String?  @map("fermeture_technique")
+  fermetureComZone    String?  @map("fermeture_com_zone")
+  fermetureComAddr    String?  @map("fermeture_com_addr")
+  eligFo              String?  @map("elig_fo")
+  anneeFt             String?  @map("annee_ft")
+  sites4g             Int?     @map("sites_4g")
+  sites5g             Int?     @map("sites_5g")
+  sitesTotal          Int?     @map("sites_total")
+  latitude            Float
+  longitude           Float
+  distanceMeters      Float    @map("distance_meters")
+  opportunityScore    Int      @map("opportunity_score")
+  filtersSnapshot     Json?    @map("filters_snapshot")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@unique([zoneId, immeubleId])
+  @@index([zoneId])
+  @@index([dept])
+  @@index([codeInsee])
+  @@index([latitude, longitude])
+  @@index([opportunityScore])
+  @@map("acquiscan_zone_targets")
 }
 
 model Statistic {
