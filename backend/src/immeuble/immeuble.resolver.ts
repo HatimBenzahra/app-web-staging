@@ -4,6 +4,8 @@ import { ImmeubleService } from './immeuble.service';
 import {
   Immeuble,
   CreateImmeubleInput,
+  CreateQuartierInput,
+  Quartier,
   UpdateImmeubleInput,
 } from './immeuble.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,22 +22,39 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createImmeuble(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
+    @CurrentUser() user: any,
   ) {
-    return this.immeubleService.create(createImmeubleInput);
+    return this.immeubleService.create(createImmeubleInput, user.id, user.role);
   }
 
   @Mutation(() => Immeuble)
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createMaisonFromImmeubleInput(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
+    @CurrentUser() user: any,
   ) {
-    return this.immeubleService.createMaison(createImmeubleInput);
+    return this.immeubleService.createMaison(createImmeubleInput, user.id, user.role);
+  }
+
+  @Mutation(() => Quartier)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  createQuartier(
+    @Args('createQuartierInput') createQuartierInput: CreateQuartierInput,
+    @CurrentUser() user: any,
+  ) {
+    return this.immeubleService.createQuartier(createQuartierInput, user.id, user.role);
   }
 
   @Query(() => [Immeuble], { name: 'immeubles' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   findAll(@CurrentUser() user: any) {
     return this.immeubleService.findAll(user.id, user.role);
+  }
+
+  @Query(() => [Quartier], { name: 'quartiers' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  findQuartiers(@CurrentUser() user: any) {
+    return this.immeubleService.findQuartiers(user.id, user.role);
   }
 
   @Query(() => Immeuble, { name: 'immeuble' })
@@ -57,6 +76,12 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur')
   removeImmeuble(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
     return this.immeubleService.remove(id, user.id, user.role);
+  }
+
+  @Mutation(() => Immeuble)
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  removeTerrainLieu(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+    return this.immeubleService.removeTerrainLieu(id, user.id, user.role);
   }
 
   @Mutation(() => Immeuble)
@@ -95,8 +120,9 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createImmeubleEmpty(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
+    @CurrentUser() user: any,
   ) {
-    return this.immeubleService.createEmpty(createImmeubleInput);
+    return this.immeubleService.createEmpty(createImmeubleInput, user.id, user.role);
   }
 
   @Mutation(() => Immeuble)

@@ -52,6 +52,7 @@ model Manager {
   contratsValides  ContratValide[]
   commercialBadges CommercialBadge[]
   recordings       Recording[]
+  quartiers        Quartier[]
 }
 
 model Commercial {
@@ -77,6 +78,7 @@ model Commercial {
   rankSnapshots    RankSnapshot[]
   contratsValides  ContratValide[]
   recordings       Recording[]
+  quartiers        Quartier[]
 }
 
 model Zone {
@@ -97,6 +99,7 @@ model Zone {
   zoneEnCours      ZoneEnCours[]
   historiqueZones  HistoriqueZone[]
   acquiscanTargets AcquiscanZoneTarget[]
+  quartiers        Quartier[]
 }
 
 model Immeuble {
@@ -112,14 +115,39 @@ model Immeuble {
   commercialId     Int?
   managerId        Int?
   zoneId           Int?
+  quartierId       Int?
+  nbMaisonsPrevu   Int?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
   commercial Commercial? @relation(fields: [commercialId], references: [id])
   manager    Manager?    @relation(fields: [managerId], references: [id])
   zone       Zone?       @relation(fields: [zoneId], references: [id])
+  quartier   Quartier?   @relation(fields: [quartierId], references: [id])
   statistics Statistic[]
   portes     Porte[]
+}
+
+model Quartier {
+  id           Int      @id @default(autoincrement())
+  nom          String
+  latitude     Float?
+  longitude    Float?
+  commercialId Int?
+  managerId    Int?
+  zoneId       Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  commercial Commercial? @relation(fields: [commercialId], references: [id])
+  manager    Manager?    @relation(fields: [managerId], references: [id])
+  zone       Zone?       @relation(fields: [zoneId], references: [id])
+  immeubles  Immeuble[]
+
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([zoneId])
+  @@index([latitude, longitude])
 }
 
 enum TypeHabitat {

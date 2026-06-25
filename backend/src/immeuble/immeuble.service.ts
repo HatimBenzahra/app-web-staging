@@ -5,11 +5,107 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CreateImmeubleInput, TypeHabitat, UpdateImmeubleInput } from './immeuble.dto';
+import {
+  CreateImmeubleInput,
+  CreateQuartierInput,
+  TypeHabitat,
+  UpdateImmeubleInput,
+} from './immeuble.dto';
 
 @Injectable()
 export class ImmeubleService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Vérifie qu'un manager possède bien un commercial (commercial.managerId === managerId).
+   * Lève une ForbiddenException sinon.
+   */
+  private async assertManagerOwnsCommercial(
+    managerId: number,
+    commercialId: number,
+  ) {
+    const commercial = await this.prisma.commercial.findUnique({
+      where: { id: commercialId },
+      select: { managerId: true },
+    });
+
+    if (!commercial || commercial.managerId !== managerId) {
+      throw new ForbiddenException('Access denied');
+    }
+  }
+
+  /**
+   * Vérifie qu'un directeur a bien la cible (commercial ou manager) dans son périmètre.
+   */
+  private async assertDirecteurOwnsTarget(
+    directeurId: number,
+    target: { commercialId?: number | null; managerId?: number | null },
+  ) {
+    if (target.commercialId) {
+      const commercial = await this.prisma.commercial.findUnique({
+        where: { id: target.commercialId },
+        select: { directeurId: true },
+      });
+      if (!commercial || commercial.directeurId !== directeurId) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+
+    if (target.managerId) {
+      const manager = await this.prisma.manager.findUnique({
+        where: { id: target.managerId },
+        select: { directeurId: true },
+      });
+      if (!manager || manager.directeurId !== directeurId) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+  }
+
+  /**
+   * Dérive/valide l'identité du propriétaire (commercialId/managerId) à partir du
+   * token (@CurrentUser), au lieu de faire confiance aveuglément au client.
+   * - commercial : forcé sur lui-même (commercialId = son id), pas de managerId arbitraire.
+   * - manager : pour lui (managerId = son id) ou pour un commercial de SON équipe (validé).
+   * - directeur/admin : valide que la cible est dans son périmètre.
+   * Renvoie l'ownership normalisé à utiliser à la création.
+   */
+  private async resolveCreationOwnership(
+    data: Pick<CreateImmeubleInput, 'commercialId' | 'managerId'>,
+    userId: number,
+    userRole: string,
+  ): Promise<{ commercialId?: number; managerId?: number }> {
+    switch (userRole) {
+      case 'commercial':
+        // Toujours attribué au commercial connecté ; on ignore tout managerId du client.
+        return { commercialId: userId, managerId: undefined };
+
+      case 'manager':
+        if (data.commercialId) {
+          // Le manager agit pour un commercial : il doit posséder ce commercial.
+          await this.assertManagerOwnsCommercial(userId, data.commercialId);
+          return { commercialId: data.commercialId, managerId: undefined };
+        }
+        // Sinon l'immeuble est attribué au manager lui-même.
+        return { commercialId: undefined, managerId: userId };
+
+      case 'directeur':
+        await this.assertDirecteurOwnsTarget(userId, data);
+        return {
+          commercialId: data.commercialId ?? undefined,
+          managerId: data.managerId ?? undefined,
+        };
+
+      case 'admin':
+        return {
+          commercialId: data.commercialId ?? undefined,
+          managerId: data.managerId ?? undefined,
+        };
+
+      default:
+        throw new ForbiddenException('Access denied');
+    }
+  }
 
   private async resolveZoneId(data: Pick<CreateImmeubleInput, 'zoneId' | 'commercialId' | 'managerId'>) {
     let zoneId = data.zoneId;
@@ -104,9 +200,11 @@ export class ImmeubleService {
     return immeuble;
   }
 
-  async create(data: CreateImmeubleInput) {
+  async create(data: CreateImmeubleInput, userId: number, userRole: string) {
+    // Dériver/valider le propriétaire depuis le token (anti-IDOR)
+    const ownership = await this.resolveCreationOwnership(data, userId, userRole);
     // Si un commercialId ou managerId est fourni, récupérer sa zone assignée
-    const zoneId = await this.resolveZoneId(data);
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
 
     // Créer l'immeuble avec la zone automatiquement assignée
     const immeuble = await this.prisma.immeuble.create({
@@ -119,9 +217,11 @@ export class ImmeubleService {
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,
         digitalCode: data.digitalCode,
-        commercialId: data.commercialId,
-        managerId: data.managerId,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
         zoneId, // Assigner automatiquement la zone du commercial ou manager
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: data.nbMaisonsPrevu,
       },
     });
 
@@ -149,8 +249,9 @@ export class ImmeubleService {
     return immeuble;
   }
 
-  async createMaison(data: CreateImmeubleInput) {
-    const zoneId = await this.resolveZoneId(data);
+  async createMaison(data: CreateImmeubleInput, userId: number, userRole: string) {
+    const ownership = await this.resolveCreationOwnership(data, userId, userRole);
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
 
     const immeuble = await this.prisma.immeuble.create({
       data: {
@@ -162,9 +263,11 @@ export class ImmeubleService {
         nbPortesParEtage: 1,
         ascenseurPresent: false,
         digitalCode: data.digitalCode,
-        commercialId: data.commercialId,
-        managerId: data.managerId,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
         zoneId,
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: 1,
       },
     });
 
@@ -247,6 +350,56 @@ export class ImmeubleService {
     }
   }
 
+  async findQuartiers(userId?: number, userRole?: string) {
+    if (userId === undefined || !userRole) {
+      throw new ForbiddenException('UNAUTHORIZED');
+    }
+
+    const include = {
+      include: {
+        immeubles: { include: { portes: true } },
+      },
+    };
+
+    switch (userRole) {
+      case 'admin':
+        return this.prisma.quartier.findMany(include);
+
+      case 'directeur':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { commercial: { directeurId: userId } },
+              { manager: { directeurId: userId } },
+              { zone: { directeurId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'manager':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { managerId: userId },
+              { commercial: { managerId: userId } },
+              { zone: { managerId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'commercial':
+        return this.prisma.quartier.findMany({
+          where: { commercialId: userId },
+          ...include,
+        });
+
+      default:
+        return [];
+    }
+  }
+
   async findOne(id: number, userId: number, userRole: string) {
     await this.ensureImmeubleAccess(id, userId, userRole);
 
@@ -280,6 +433,21 @@ export class ImmeubleService {
 
     await this.ensureImmeubleAccess(id, userId, userRole);
 
+    // Anti mass-assignment (IDOR) : un commercial/manager ne peut PAS réassigner
+    // l'immeuble vers un tiers. On retire ces champs d'ownership du payload.
+    if (userRole === 'commercial' || userRole === 'manager') {
+      delete (updateData as Record<string, unknown>).commercialId;
+      delete (updateData as Record<string, unknown>).managerId;
+      delete (updateData as Record<string, unknown>).zoneId;
+    } else if (userRole === 'directeur') {
+      // Le directeur ne peut réassigner que dans son périmètre : valide la cible.
+      await this.assertDirecteurOwnsTarget(userId, {
+        commercialId: updateData.commercialId,
+        managerId: updateData.managerId,
+      });
+    }
+    // admin : aucune restriction de réassignation.
+
     return this.prisma.immeuble.update({
       where: { id },
       data: updateData,
@@ -291,6 +459,43 @@ export class ImmeubleService {
 
     return this.prisma.immeuble.delete({
       where: { id },
+    });
+  }
+
+  async removeTerrainLieu(id: number, userId: number, userRole: string) {
+    await this.ensureImmeubleAccess(id, userId, userRole);
+
+    const visitedPortes = await this.prisma.porte.count({
+      where: {
+        immeubleId: id,
+        statut: { not: 'NON_VISITE' },
+      },
+    });
+
+    if (visitedPortes > 0) {
+      throw new BadRequestException(
+        'Ce lieu contient deja des portes prospectees et ne peut pas etre supprime depuis la carte.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const immeuble = await tx.immeuble.findUnique({
+        where: { id },
+      });
+
+      if (!immeuble) {
+        throw new NotFoundException('Immeuble not found');
+      }
+
+      await tx.porte.deleteMany({
+        where: { immeubleId: id },
+      });
+
+      await tx.immeuble.delete({
+        where: { id },
+      });
+
+      return immeuble;
     });
   }
 
@@ -446,8 +651,9 @@ export class ImmeubleService {
     return updatedImmeuble;
   }
 
-  async createEmpty(data: CreateImmeubleInput) {
-    const zoneId = await this.resolveZoneId(data);
+  async createEmpty(data: CreateImmeubleInput, userId: number, userRole: string) {
+    const ownership = await this.resolveCreationOwnership(data, userId, userRole);
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
     return this.prisma.immeuble.create({
       data: {
         adresse: data.adresse,
@@ -458,10 +664,80 @@ export class ImmeubleService {
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,
         digitalCode: data.digitalCode,
-        commercialId: data.commercialId,
-        managerId: data.managerId,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
         zoneId,
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: data.nbMaisonsPrevu,
       },
+    });
+  }
+
+  async createQuartier(data: CreateQuartierInput, userId: number, userRole: string) {
+    if (!data.points || data.points.length === 0) {
+      throw new BadRequestException('Un quartier doit contenir au moins un point.');
+    }
+
+    const ownership = await this.resolveCreationOwnership(data, userId, userRole);
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
+    const latitude =
+      data.points.reduce((sum, point) => sum + point.latitude, 0) / data.points.length;
+    const longitude =
+      data.points.reduce((sum, point) => sum + point.longitude, 0) / data.points.length;
+    const nom =
+      data.nom?.trim() ||
+      `Quartier ${new Date().toLocaleDateString('fr-FR')}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const quartier = await tx.quartier.create({
+        data: {
+          nom,
+          latitude,
+          longitude,
+          commercialId: ownership.commercialId,
+          managerId: ownership.managerId,
+          zoneId,
+        },
+      });
+
+      for (const point of data.points) {
+        const isMaison = point.typeHabitat === TypeHabitat.MAISON;
+        const isPavillon = point.typeHabitat === TypeHabitat.PAVILLON;
+        const immeuble = await tx.immeuble.create({
+          data: {
+            adresse: point.adresse,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            typeHabitat: point.typeHabitat,
+            nbEtages: isMaison ? 1 : point.nbEtages ?? 1,
+            nbPortesParEtage: isMaison ? 1 : point.nbPortesParEtage ?? 1,
+            nbMaisonsPrevu: isMaison ? 1 : isPavillon ? point.nbMaisonsPrevu ?? 2 : null,
+            ascenseurPresent: false,
+            commercialId: ownership.commercialId,
+            managerId: ownership.managerId,
+            zoneId,
+            quartierId: quartier.id,
+          },
+        });
+
+        if (isMaison) {
+          await tx.porte.create({
+            data: {
+              numero: '1',
+              nomPersonnalise: 'Maison',
+              etage: 1,
+              immeubleId: immeuble.id,
+              statut: 'NON_VISITE',
+              nbRepassages: 0,
+            },
+          });
+        }
+      }
+
+      return tx.quartier.findUnique({
+        where: { id: quartier.id },
+        include: { immeubles: true },
+      });
     });
   }
 

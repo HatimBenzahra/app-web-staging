@@ -8,7 +8,9 @@ import {
   IsBoolean,
   IsNumber,
   IsEnum,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Porte } from '../porte/porte.dto';
 
 export enum TypeHabitat {
@@ -59,6 +61,12 @@ export class Immeuble {
 
   @Field(() => Int, { nullable: true })
   zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  nbMaisonsPrevu?: number;
 
   @Field(() => [Porte], { nullable: true })
   portes?: Porte[];
@@ -125,6 +133,17 @@ export class CreateImmeubleInput {
   @IsOptional()
   @IsInt()
   zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
 }
 
 @InputType()
@@ -188,4 +207,114 @@ export class UpdateImmeubleInput {
   @IsOptional()
   @IsInt()
   zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
+}
+
+@ObjectType()
+export class Quartier {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  nom: string;
+
+  @Field(() => Float, { nullable: true })
+  latitude?: number;
+
+  @Field(() => Float, { nullable: true })
+  longitude?: number;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  zoneId?: number;
+
+  @Field(() => [Immeuble], { nullable: true })
+  immeubles?: Immeuble[];
+
+  @Field()
+  createdAt: Date;
+
+  @Field()
+  updatedAt: Date;
+}
+
+@InputType()
+export class CreateQuartierPointInput {
+  @Field()
+  @IsNotEmpty()
+  @IsString()
+  adresse: string;
+
+  @Field(() => Float)
+  @IsNumber()
+  latitude: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  longitude: number;
+
+  @Field(() => TypeHabitat)
+  @IsEnum(TypeHabitat)
+  typeHabitat: TypeHabitat;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbEtages?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbPortesParEtage?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
+}
+
+@InputType()
+export class CreateQuartierInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  nom?: string;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  zoneId?: number;
+
+  @Field(() => [CreateQuartierPointInput])
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuartierPointInput)
+  points: CreateQuartierPointInput[];
 }

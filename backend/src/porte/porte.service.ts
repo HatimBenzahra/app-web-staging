@@ -147,14 +147,20 @@ export class PorteService {
     }
   }
 
-  async create(createPorteInput: CreatePorteInput) {
+  async create(createPorteInput: CreatePorteInput, userId: number, userRole: string) {
+    // Anti-IDOR : on ne peut créer une porte que sur un immeuble accessible.
+    await this.ensureImmeubleAccess(createPorteInput.immeubleId, userId, userRole);
     return this.prisma.porte.create({
       data: createPorteInput,
     });
   }
 
-  async findAll() {
+  async findAll(userId: number, userRole: string) {
+    // Anti-IDOR : ne renvoyer que les portes des immeubles accessibles.
     return this.prisma.porte.findMany({
+      where: {
+        immeuble: this.buildImmeubleAccessFilter(userId, userRole),
+      },
       include: {
         immeuble: true,
       },
@@ -305,8 +311,14 @@ export class PorteService {
     });
   }
 
-  async getStatistiquesPortes(immeubleId?: number) {
-    const whereClause = immeubleId ? { immeubleId } : {};
+  async getStatistiquesPortes(
+    immeubleId: number,
+    userId: number,
+    userRole: string,
+  ) {
+    // Anti-IDOR : vérifier l'accès à l'immeuble avant d'exposer ses statistiques.
+    await this.ensureImmeubleAccess(immeubleId, userId, userRole);
+    const whereClause = { immeubleId };
 
     // Utiliser groupBy pour compter tous les statuts dynamiquement
     const portesGrouped = await this.prisma.porte.groupBy({
@@ -476,7 +488,13 @@ export class PorteService {
    * Récupère l'historique complet des statuts d'une porte
    * Trié du plus récent au plus ancien
    */
-  async getStatusHistoriqueByPorte(porteId: number) {
+  async getStatusHistoriqueByPorte(
+    porteId: number,
+    userId: number,
+    userRole: string,
+  ) {
+    // Anti-IDOR : vérifier l'accès à la porte (via son immeuble).
+    await this.ensurePorteAccess(porteId, userId, userRole);
     return this.prisma.statusHistorique.findMany({
       where: { porteId },
       include: {
@@ -504,14 +522,32 @@ export class PorteService {
   /**
    * Récupère l'historique des statuts d'un immeuble
    */
-  async createCapped(createPorteInput: CreatePorteInput) {
+  async createCapped(createPorteInput: CreatePorteInput, userId: number, userRole: string) {
     const immeuble = await this.prisma.immeuble.findUnique({
       where: { id: createPorteInput.immeubleId },
-      select: { id: true, nbPortesParEtage: true, nbEtages: true },
+      select: {
+        id: true,
+        nbPortesParEtage: true,
+        nbEtages: true,
+        commercialId: true,
+        managerId: true,
+        zoneId: true,
+        commercial: {
+          select: { id: true, managerId: true, directeurId: true },
+        },
+        manager: {
+          select: { id: true, directeurId: true },
+        },
+        zone: {
+          select: { id: true, managerId: true, directeurId: true },
+        },
+      },
     });
     if (!immeuble) {
       throw new NotFoundException(`Immeuble ${createPorteInput.immeubleId} introuvable`);
     }
+    // Anti-IDOR : valider l'ownership de l'immeuble cible avant création.
+    this.validateImmeubleOwnership(immeuble, userId, userRole);
     if (createPorteInput.etage < 1 || createPorteInput.etage > immeuble.nbEtages) {
       throw new BadRequestException(
         `Étage ${createPorteInput.etage} invalide (1 à ${immeuble.nbEtages}).`,
@@ -528,7 +564,13 @@ export class PorteService {
     return this.prisma.porte.create({ data: createPorteInput });
   }
 
-  async getStatusHistoriqueByImmeuble(immeubleId: number) {
+  async getStatusHistoriqueByImmeuble(
+    immeubleId: number,
+    userId: number,
+    userRole: string,
+  ) {
+    // Anti-IDOR : vérifier l'accès à l'immeuble.
+    await this.ensureImmeubleAccess(immeubleId, userId, userRole);
     return this.prisma.statusHistorique.findMany({
       where: {
         porte: {
