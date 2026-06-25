@@ -319,11 +319,6 @@ const FILTER_LABELS = {
     yes: 'Fibre: oui',
     no: 'Migration à qualifier',
   },
-  annee: {
-    all: 'Toutes années',
-    current: 'Année courante',
-    future: 'Après année courante',
-  },
   coverage4g: {
     all: '4G: toutes',
     eleve: '4G élevée',
@@ -363,15 +358,6 @@ const FILTER_GROUPS = [
           ['no', 'Migration à qualifier'],
         ],
       },
-      {
-        key: 'annee',
-        label: 'Fermeture',
-        options: [
-          ['all', 'Toutes années'],
-          ['current', 'Année courante'],
-          ['future', 'Après année courante'],
-        ],
-      },
     ],
   },
   {
@@ -406,8 +392,11 @@ const FILTER_DOC_SECTIONS = [
   {
     title: 'Étape cuivre',
     icon: Zap,
-    tone: 'border-amber-200 bg-amber-50/70 text-amber-900',
-    iconTone: 'bg-amber-100 text-amber-700',
+    tone:
+      'border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100',
+    iconTone:
+      'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
+    labelTone: 'text-amber-700 dark:text-amber-200',
     items: [
       ['Toutes étapes', 'Affiche toutes les adresses, sans tenir compte du niveau de fermeture cuivre.'],
       ['Migration urgente', 'Adresse liée à une fermeture technique: c’est le signal le plus prioritaire.'],
@@ -419,8 +408,11 @@ const FILTER_DOC_SECTIONS = [
   {
     title: 'Fibre',
     icon: CheckCircle2,
-    tone: 'border-emerald-200 bg-emerald-50/70 text-emerald-900',
-    iconTone: 'bg-emerald-100 text-emerald-700',
+    tone:
+      'border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100',
+    iconTone:
+      'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200',
+    labelTone: 'text-emerald-700 dark:text-emerald-200',
     items: [
       ['Toutes éligibilités', 'Affiche les adresses avec ou sans fibre disponible.'],
       ['Fibre disponible', 'Adresse déjà éligible fibre selon les données Acquiscan.'],
@@ -428,21 +420,12 @@ const FILTER_DOC_SECTIONS = [
     ],
   },
   {
-    title: 'Fermeture',
-    icon: AlertCircle,
-    tone: 'border-red-200 bg-red-50/70 text-red-900',
-    iconTone: 'bg-red-100 text-red-700',
-    items: [
-      ['Toutes années', 'Ne filtre pas par calendrier de fermeture.'],
-      ['Année courante', 'Conserve les adresses dont la fermeture est prévue cette année.'],
-      ['Après année courante', 'Conserve les fermetures futures ou annoncées sans date précise.'],
-    ],
-  },
-  {
     title: 'Couverture 4G / 5G',
     icon: Wifi,
-    tone: 'border-sky-200 bg-sky-50/70 text-sky-900',
-    iconTone: 'bg-sky-100 text-sky-700',
+    tone:
+      'border-sky-200 bg-sky-50/70 text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100',
+    iconTone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200',
+    labelTone: 'text-sky-700 dark:text-sky-200',
     items: [
       ['Élevée', 'Commune fortement couverte par le réseau mobile concerné.'],
       ['Moyenne', 'Commune avec couverture intermédiaire.'],
@@ -535,8 +518,6 @@ export default function AdressesAcquiscan() {
       entries.push({ key: 'segment', label: FILTER_LABELS.segment[filters.segment] })
     if (filters.fiber !== 'all')
       entries.push({ key: 'fiber', label: FILTER_LABELS.fiber[filters.fiber] })
-    if (filters.annee !== 'all')
-      entries.push({ key: 'annee', label: FILTER_LABELS.annee[filters.annee] })
     if (filters.coverage4g !== 'all')
       entries.push({ key: 'coverage4g', label: FILTER_LABELS.coverage4g[filters.coverage4g] })
     if (filters.coverage5g !== 'all')
@@ -1450,10 +1431,10 @@ export default function AdressesAcquiscan() {
       </div>
 
       <Dialog open={filterDocsOpen} onOpenChange={setFilterDocsOpen}>
-        <DialogContent className="max-h-[86vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[86vh] overflow-y-auto border-border/70 bg-background sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-700">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-200">
                 <HelpCircle className="h-4 w-4" />
               </span>
               Comprendre les filtres Acquiscan
@@ -1474,9 +1455,18 @@ export default function AdressesAcquiscan() {
                 </div>
                 <div className="mt-3 space-y-2.5">
                   {section.items.map(([label, description]) => (
-                    <div key={label} className="rounded-md bg-background/70 px-2.5 py-2 shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
-                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{description}</p>
+                    <div
+                      key={label}
+                      className="rounded-md border border-border/60 bg-background/85 px-2.5 py-2 shadow-sm dark:bg-background/70"
+                    >
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-wide ${section.labelTone}`}
+                      >
+                        {label}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                        {description}
+                      </p>
                     </div>
                   ))}
                 </div>

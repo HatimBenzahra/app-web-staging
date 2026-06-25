@@ -61,7 +61,6 @@ const normalizeFilters = filters => {
 }
 
 const hasActiveBusinessFilters = filters =>
-  filters.annee !== 'all' ||
   filters.fiber !== 'all' ||
   filters.coverage4g !== 'all' ||
   filters.coverage5g !== 'all' ||
@@ -682,7 +681,6 @@ export function useAdressesAcquiscanLogic() {
   const resetFilters = useCallback(() => {
     setFilters(prev => ({
       ...prev,
-      annee: DEFAULT_FILTERS.annee,
       fiber: DEFAULT_FILTERS.fiber,
       coverage4g: DEFAULT_FILTERS.coverage4g,
       coverage5g: DEFAULT_FILTERS.coverage5g,
