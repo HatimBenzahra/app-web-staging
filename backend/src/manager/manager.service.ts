@@ -116,6 +116,15 @@ export class ManagerService {
         where: { id },
         include: {
           directeur: true,
+          commercials: {
+            include: {
+              immeubles: {
+                include: {
+                  portes: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -156,6 +165,15 @@ export class ManagerService {
       where: { id },
       include: {
         directeur: true,
+        commercials: {
+          include: {
+            immeubles: {
+              include: {
+                portes: true,
+              },
+            },
+          },
+        },
       },
     });
 
