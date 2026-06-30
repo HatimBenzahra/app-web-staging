@@ -1,25 +1,33 @@
 import { useMemo } from 'react'
-import { useDeviceMappings } from '@/hooks/metier/api/gps-tracking'
+import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 
+// Source unique du nom commercial : il est remonté par la tablette dans son
+// heartbeat (device.commercialName) puis stocké côté backend kiosk. On indexe
+// ce champ par deviceId ET serialNumber pour résoudre aussi les appels qui ne
+// disposent que d'un identifiant.
 export default function useDeviceCommercialNames() {
-  const { data: mappings, isLoading } = useDeviceMappings()
+  const { data: devices, isLoading } = useKioskDevices()
 
   const lookup = useMemo(() => {
     const map = new Map()
-    if (mappings) {
-      for (const m of mappings) {
-        map.set(m.deviceId, m.commercialName)
-      }
+    for (const device of devices || []) {
+      const name = device.commercialName
+      if (!name) continue
+      if (device.deviceId) map.set(device.deviceId, name)
+      if (device.serialNumber) map.set(device.serialNumber, name)
     }
     return map
-  }, [mappings])
+  }, [devices])
 
   const getCommercialName = deviceOrId => {
     if (!deviceOrId) return null
     if (typeof deviceOrId === 'string') return lookup.get(deviceOrId) || null
-    return lookup.get(deviceOrId.serialNumber)
+    return (
+      deviceOrId.commercialName
+      || lookup.get(deviceOrId.serialNumber)
       || lookup.get(deviceOrId.deviceId)
       || null
+    )
   }
 
   const getDeviceLabel = device => {
@@ -30,5 +38,5 @@ export default function useDeviceCommercialNames() {
     return name
   }
 
-  return { getCommercialName, getDeviceLabel, mappings: mappings || [], isLoading }
+  return { getCommercialName, getDeviceLabel, isLoading }
 }

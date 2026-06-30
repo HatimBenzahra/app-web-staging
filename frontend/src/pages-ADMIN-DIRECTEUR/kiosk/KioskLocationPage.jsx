@@ -113,7 +113,11 @@ export default function KioskLocationPage() {
   const routePositionsByDevice = useMemo(() => {
     const positions = allPositionsQuery.data?.positions || []
     const valid = positions.filter(
-      p => typeof p.latitude === 'number' && typeof p.longitude === 'number'
+      p =>
+        typeof p.latitude === 'number' &&
+        typeof p.longitude === 'number' &&
+        p.recordedAt &&
+        !Number.isNaN(new Date(p.recordedAt).getTime())
     )
     const grouped = new Map()
     for (const p of valid) {
@@ -121,6 +125,11 @@ export default function KioskLocationPage() {
         grouped.set(p.deviceId, [])
       }
       grouped.get(p.deviceId).push(p)
+    }
+    // Les points peuvent arriver non triés : on garantit l'ordre chronologique
+    // attendu par detectStops / buildEnrichedEvents (segmentation Départ/Arrêt/Arrivée).
+    for (const list of grouped.values()) {
+      list.sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
     }
     return grouped
   }, [allPositionsQuery.data])

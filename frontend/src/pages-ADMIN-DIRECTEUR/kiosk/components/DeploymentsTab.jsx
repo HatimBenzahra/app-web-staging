@@ -20,6 +20,14 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import {
   CheckCircle,
   AlertTriangle,
   XCircle,
@@ -32,8 +40,12 @@ import {
   ShieldCheck,
   ShieldAlert,
   Wifi,
+  Layers,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react'
 import useDeviceCommercialNames from '../useDeviceCommercialNames'
+import { VersionText } from './versionPresentation'
 
 const formatRelativeTime = value => {
   if (!value) return 'Inconnu'
@@ -115,6 +127,8 @@ export default function DeploymentsTab({
   deployHistory,
   loading,
   onDeploy,
+  onAlign,
+  aligning,
   deployHistoryFilters,
   setDeployHistoryFilters,
   devices,
@@ -211,6 +225,44 @@ export default function DeploymentsTab({
 
   return (
     <div className="space-y-6">
+      {onAlign && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-md bg-primary/10 p-2 shrink-0">
+              <Layers className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-tight">Aligner la flotte</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pousse la dernière version active vers les tablettes en retard.
+              </p>
+            </div>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 shrink-0" disabled={aligning}>
+                {aligning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Layers className="h-4 w-4" />
+                )}
+                Aligner la flotte sur la dernière version
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Cible</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onAlign('kiosk')}>Kiosk</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAlign('prospection')}>
+                Prospection
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAlign('all')}>Toutes les apps</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-border/60 bg-card/70">
           <CardContent className="p-4">
@@ -419,9 +471,11 @@ export default function DeploymentsTab({
 
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium tabular-nums">
-                                {entry.kiosk?.version || '—'}
-                              </span>
+                              <VersionText
+                                versionName={entry.kiosk?.version}
+                                versionCode={entry.kiosk?.versionCode}
+                                className="text-sm font-medium"
+                              />
                               <Badge
                                 variant="outline"
                                 className={`gap-1 text-xs ${kioskStatus.className}`}
@@ -434,9 +488,11 @@ export default function DeploymentsTab({
 
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium tabular-nums">
-                                {entry.prowin?.version || '—'}
-                              </span>
+                              <VersionText
+                                versionName={entry.prowin?.version}
+                                versionCode={entry.prowin?.versionCode}
+                                className="text-sm font-medium"
+                              />
                               <Badge
                                 variant="outline"
                                 className={`gap-1 text-xs ${prowinStatus.className}`}
@@ -599,15 +655,11 @@ export default function DeploymentsTab({
                             </span>
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm tabular-nums">
-                              {entry.versionName || '—'}
-                              {entry.versionCode ? (
-                                <span className="text-xs text-muted-foreground">
-                                  {' '}
-                                  ({entry.versionCode})
-                                </span>
-                              ) : null}
-                            </span>
+                            <VersionText
+                              versionName={entry.versionName}
+                              versionCode={entry.versionCode}
+                              className="text-sm"
+                            />
                           </TableCell>
                           <TableCell>
                             <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">

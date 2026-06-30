@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { kioskApi } from '@/services/api/kiosk'
-import type { KioskLogFilters, KioskDeployHistoryFilters, KioskCommandAction } from '@/services/api/kiosk'
+import type { KioskLogFilters, KioskDeployHistoryFilters, KioskCommandAction, KioskAlignTarget } from '@/services/api/kiosk'
 
 export const kioskKeys = {
   all: ['kiosk'] as const,
@@ -156,6 +156,18 @@ export function useKioskDeploy() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: kioskKeys.versionMatrix() })
       queryClient.invalidateQueries({ queryKey: kioskKeys.deployHistory() })
+    },
+  })
+}
+
+export function useKioskAlignVersions() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (target: KioskAlignTarget) => kioskApi.alignVersions(target),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: kioskKeys.versionMatrix() })
+      queryClient.invalidateQueries({ queryKey: kioskKeys.deployHistory() })
+      queryClient.invalidateQueries({ queryKey: kioskKeys.devices() })
     },
   })
 }

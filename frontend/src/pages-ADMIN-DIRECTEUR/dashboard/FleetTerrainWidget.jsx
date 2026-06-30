@@ -9,7 +9,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Navigation2, ArrowRight, MapPin } from 'lucide-react'
 import {
   useGpsLatestPositions,
-  useDeviceMappings,
   useGpsDailyRoute,
 } from '@/hooks/metier/api/gps-tracking'
 import { Layer, Source } from 'react-map-gl/mapbox'
@@ -113,7 +112,6 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
   const navigate = useNavigate()
   const { data: gpsPositions, isLoading: gpsLoading } = useGpsLatestPositions()
   const { data: kioskDevices, isLoading: kioskLoading } = useKioskDevices()
-  const { data: deviceMappings } = useDeviceMappings()
   const [locationNames, setLocationNames] = useState({})
   const [selectedId, setSelectedId] = useState(null)
   const mapRef = useRef(null)
@@ -135,16 +133,6 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     }
   }, [dailyRoute])
 
-  const mappingsMap = useMemo(() => {
-    const map = new Map()
-    if (deviceMappings) {
-      for (const m of deviceMappings) {
-        map.set(m.deviceId, m.commercialName)
-      }
-    }
-    return map
-  }, [deviceMappings])
-
   const commercials = useMemo(() => {
     const positions = gpsPositions ?? []
     const devices = kioskDevices ?? []
@@ -163,8 +151,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
       seen.add(id)
 
       const pos = posMap.get(id) || posMap.get(device.deviceId)
-      const name =
-        mappingsMap.get(id) || mappingsMap.get(device.deviceId) || device.deviceName || id
+      const name = device.commercialName || device.deviceName || id
       const latitude = pos?.latitude ?? device.latitude
       const longitude = pos?.longitude ?? device.longitude
       const hasPosition = typeof latitude === 'number' && typeof longitude === 'number'
@@ -187,7 +174,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     })
 
     return result
-  }, [gpsPositions, kioskDevices, mappingsMap])
+  }, [gpsPositions, kioskDevices])
 
   const onlineWithPosition = useMemo(
     () => commercials.filter(c => c.isOnline && c.hasPosition),

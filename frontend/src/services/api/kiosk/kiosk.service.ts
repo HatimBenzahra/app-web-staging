@@ -12,6 +12,8 @@ import type {
   KioskDeployHistoryFilters,
   KioskCommandAction,
   KioskSuccessResponse,
+  KioskAlignTarget,
+  KioskAlignResponse,
 } from './kiosk.types'
 
 // Fusionne les devices de plusieurs kiosks en dédoublonnant par tablette
@@ -92,6 +94,9 @@ export const kioskApi = {
 
   deployToDevice: (deviceId: string, releaseId: string) =>
     kioskClient.post<KioskSuccessResponse>('/api/versions/deploy', { deviceId, releaseId }),
+
+  alignVersions: (target: KioskAlignTarget) =>
+    kioskClient.post<KioskAlignResponse>('/api/versions/align', { target }),
 
   clearLogs: () =>
     kioskClient.del<KioskSuccessResponse>('/api/logs'),

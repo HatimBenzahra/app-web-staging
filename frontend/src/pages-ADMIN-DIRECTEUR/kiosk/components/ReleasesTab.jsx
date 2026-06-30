@@ -22,7 +22,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Package, Upload, Power, Trash2, Copy, Check } from 'lucide-react'
+import { Package, Power, Trash2, Copy, Check, GitCommit } from 'lucide-react'
+import { ChannelBadge } from './versionPresentation'
 
 const formatDateTime = value => {
   if (!value) return 'Inconnu'
@@ -62,7 +63,7 @@ const parseSizeMB = sizeHuman => {
   return value
 }
 
-export default function ReleasesTab({ releases, loading, onUploadClick, onToggle, onDelete }) {
+export default function ReleasesTab({ releases, loading, onToggle, onDelete }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
 
@@ -95,13 +96,6 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
               </Badge>
             )}
           </div>
-          <Button
-            onClick={onUploadClick}
-            className="gap-2 shadow-sm transition-shadow hover:shadow-md hover:shadow-primary/25"
-          >
-            <Upload className="h-4 w-4" />
-            Uploader un APK
-          </Button>
         </CardHeader>
 
         <CardContent>
@@ -118,13 +112,9 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
               <div className="space-y-1">
                 <p className="font-semibold text-foreground">Aucune release</p>
                 <p className="text-sm text-muted-foreground">
-                  Uploadez votre premier APK pour commencer
+                  Les releases sont publiées via le pipeline versionné (npm run deploy)
                 </p>
               </div>
-              <Button onClick={onUploadClick} className="gap-2 mt-1">
-                <Upload className="h-4 w-4" />
-                Uploader un APK
-              </Button>
             </div>
           ) : (
             <div className="rounded-md border overflow-hidden">
@@ -133,10 +123,11 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead className="font-semibold pl-4">Application</TableHead>
                     <TableHead className="font-semibold">Version</TableHead>
+                    <TableHead className="font-semibold">Commit</TableHead>
                     <TableHead className="font-semibold">Taille</TableHead>
                     <TableHead className="font-semibold">Date</TableHead>
                     <TableHead className="font-semibold">Actif</TableHead>
-                    <TableHead className="font-semibold">SHA-256</TableHead>
+                    <TableHead className="font-semibold">APK SHA-256</TableHead>
                     <TableHead className="font-semibold text-right pr-4">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -144,7 +135,8 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
                   {releases.map((release, index) => {
                     const sizeMB = parseSizeMB(release.sizeHuman)
                     const isLarge = sizeMB > 100
-                    const sha256Short = release.sha256 ? release.sha256.slice(0, 12) : null
+                    const sha256Short = release.apkSha256 ? release.apkSha256.slice(0, 12) : null
+                    const gitShaShort = release.gitSha ? release.gitSha.slice(0, 7) : null
 
                     return (
                       <TableRow
@@ -170,14 +162,37 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
                         </TableCell>
 
                         <TableCell>
-                          <div className="flex flex-col gap-0.5">
-                            <Badge variant="secondary" className="w-fit font-mono text-xs">
-                              {release.versionName || '—'}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground pl-0.5">
-                              code {release.versionCode || '—'}
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm font-semibold tabular-nums">
+                                {release.versionName || '—'}
+                              </span>
+                              <ChannelBadge channel={release.channel} />
+                            </div>
+                            <span className="text-xs text-muted-foreground tabular-nums pl-0.5">
+                              code {release.versionCode ?? '—'}
                             </span>
                           </div>
+                        </TableCell>
+
+                        <TableCell>
+                          {gitShaShort ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded cursor-default">
+                                  <GitCommit className="h-3 w-3" />
+                                  {gitShaShort}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <span className="text-xs break-words max-w-xs block">
+                                  {release.gitMessage || release.gitSha}
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
 
                         <TableCell>
@@ -233,7 +248,7 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <span className="font-mono text-xs break-all max-w-xs">
-                                    {release.sha256}
+                                    {release.apkSha256}
                                   </span>
                                 </TooltipContent>
                               </Tooltip>
@@ -241,7 +256,7 @@ export default function ReleasesTab({ releases, loading, onUploadClick, onToggle
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
-                                onClick={() => handleCopySha256(release.id, release.sha256)}
+                                onClick={() => handleCopySha256(release.id, release.apkSha256)}
                               >
                                 {copiedId === release.id ? (
                                   <Check className="h-3 w-3 text-chart-2" />

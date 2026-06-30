@@ -88,24 +88,3 @@ export const GET_GPS_ALL_POSITIONS = `
     }
   }
 `
-
-export const GET_DEVICE_MAPPINGS = `
-  query DeviceMappings {
-    deviceMappings {
-      id
-      deviceId
-      commercialName
-      updatedAt
-    }
-  }
-`
-
-export const SET_DEVICE_COMMERCIAL = `
-  mutation SetDeviceCommercial($input: SetDeviceCommercialInput!) {
-    setDeviceCommercial(input: $input) {
-      id
-      deviceId
-      commercialName
-    }
-  }
-`

@@ -103,23 +103,4 @@ export class GpsTrackingService {
     return devices;
   }
 
-  async getDeviceMappings() {
-    return this.prisma.deviceMapping.findMany({
-      orderBy: { commercialName: 'asc' },
-    });
-  }
-
-  async setDeviceCommercial(deviceId: string, commercialName: string) {
-    return this.prisma.deviceMapping.upsert({
-      where: { deviceId },
-      update: { commercialName },
-      create: { deviceId, commercialName },
-    });
-  }
-
-  async removeDeviceMapping(deviceId: string) {
-    return this.prisma.deviceMapping.delete({
-      where: { deviceId },
-    });
-  }
 }

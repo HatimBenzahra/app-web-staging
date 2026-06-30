@@ -27,12 +27,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import {
-  Lock,
-  Unlock,
   MoreHorizontal,
   RefreshCw,
   Trash2,
-  Pencil,
   Search,
   Wifi,
   Signal,
@@ -41,6 +38,7 @@ import {
   Filter,
 } from 'lucide-react'
 import useDeviceCommercialNames from '../useDeviceCommercialNames'
+import { VersionText } from './versionPresentation'
 
 const formatRelativeTime = value => {
   if (!value) return 'Inconnu'
@@ -84,8 +82,6 @@ export default function DevicesTab({
   deviceFilters,
   setDeviceFilters,
   onCommand,
-  onSetCommercial,
-  onRename,
   onDelete,
   onSelectDevice,
 }) {
@@ -102,11 +98,7 @@ export default function DevicesTab({
         deviceFilters.onlineFilter === 'all' ||
         (deviceFilters.onlineFilter === 'online' && device.online) ||
         (deviceFilters.onlineFilter === 'offline' && !device.online)
-      const matchesLock =
-        deviceFilters.lockFilter === 'all' ||
-        (deviceFilters.lockFilter === 'locked' && device.kioskLocked) ||
-        (deviceFilters.lockFilter === 'unlocked' && !device.kioskLocked)
-      return matchesSearch && matchesOnline && matchesLock
+      return matchesSearch && matchesOnline
     })
   }, [devices, deviceFilters, getCommercialName])
 
@@ -155,19 +147,6 @@ export default function DevicesTab({
                 <SelectItem value="offline">Hors ligne</SelectItem>
               </SelectContent>
             </Select>
-            <Select
-              value={deviceFilters.lockFilter}
-              onValueChange={value => setDeviceFilters(current => ({ ...current, lockFilter: value }))}
-            >
-              <SelectTrigger className="h-8 w-36 bg-background text-sm">
-                <SelectValue placeholder="Verrou" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les verrous</SelectItem>
-                <SelectItem value="locked">Verrouillé</SelectItem>
-                <SelectItem value="unlocked">Déverrouillé</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -184,7 +163,7 @@ export default function DevicesTab({
             <div className="space-y-1">
               <p className="font-medium text-foreground">Aucune tablette</p>
               <p className="text-sm text-muted-foreground">
-                {(deviceFilters.search || deviceFilters.onlineFilter !== 'all' || deviceFilters.lockFilter !== 'all')
+                {(deviceFilters.search || deviceFilters.onlineFilter !== 'all')
                   ? 'Aucun appareil ne correspond aux filtres actifs.'
                   : 'Aucune tablette enregistrée dans ce parc.'}
               </p>
@@ -203,7 +182,6 @@ export default function DevicesTab({
                   <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">ProWin</TableHead>
                   <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Batterie</TableHead>
                   <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Réseau</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Verrou</TableHead>
                   <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Activité</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -211,7 +189,7 @@ export default function DevicesTab({
               <TableBody>
                 {filteredDevices.map(device => {
                   const batteryLevel = device.batteryLevel
-                  const commercialName = getCommercialName(device)
+                  const commercialName = device.commercialName || getCommercialName(device)
 
                   return (
                     <TableRow
@@ -257,10 +235,16 @@ export default function DevicesTab({
                         {device.androidVersion || <span className="opacity-40">—</span>}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
-                        {device.kioskVersion || <span className="opacity-40">—</span>}
+                        <VersionText
+                          versionName={device.kioskVersion}
+                          versionCode={device.kioskVersionCode}
+                        />
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
-                        {device.prowinVersion || <span className="opacity-40">—</span>}
+                        <VersionText
+                          versionName={device.prowinVersion}
+                          versionCode={device.prowinVersionCode}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -305,19 +289,6 @@ export default function DevicesTab({
                         )}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {device.kioskLocked ? (
-                          <div className="flex items-center gap-1.5">
-                            <Lock className="h-3.5 w-3.5 text-destructive" />
-                            <span className="text-xs text-destructive font-medium">Verrouillé</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <Unlock className="h-3.5 w-3.5 text-chart-2" />
-                            <span className="text-xs text-chart-2 font-medium">Libre</span>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
                         <span className={`text-xs font-medium ${getRelativeTimeColor(device.lastSeen)}`}>
                           {formatRelativeTime(device.lastSeen)}
                         </span>
@@ -330,34 +301,6 @@ export default function DevicesTab({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                const commercialName = window.prompt('Nom du commercial', getCommercialName(device) || '')
-                                if (commercialName === null) return
-                                onSetCommercial({ deviceId: device.deviceId, commercialName: commercialName.trim() })
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 text-muted-foreground" />
-                              Assigner commercial
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onRename(device)}>
-                              <Pencil className="h-4 w-4 text-muted-foreground" />
-                              Renommer
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onCommand(device, {
-                                  action: device.kioskLocked ? 'unlock' : 'lock',
-                                })
-                              }
-                            >
-                              {device.kioskLocked ? (
-                                <Unlock className="h-4 w-4 text-chart-2" />
-                              ) : (
-                                <Lock className="h-4 w-4 text-destructive" />
-                              )}
-                              {device.kioskLocked ? 'Déverrouiller' : 'Verrouiller'}
-                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
                                 onCommand(device, {

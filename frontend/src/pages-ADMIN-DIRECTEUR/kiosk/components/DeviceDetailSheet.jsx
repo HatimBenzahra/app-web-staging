@@ -4,8 +4,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Lock,
-  Unlock,
   RefreshCw,
   X,
   Battery,
@@ -21,7 +19,7 @@ import {
   Terminal,
   Cpu,
   Radio,
-  KeyRound,
+  Settings2,
 } from 'lucide-react'
 import useDeviceCommercialNames from '../useDeviceCommercialNames'
 import DeviceCommandDialog from './DeviceCommandDialog'
@@ -137,7 +135,7 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
   const batteryLevel = device?.batteryLevel
   const batteryWidth = clampBattery(batteryLevel)
   const pendingCount = device?.pendingCommands?.length || 0
-  const commercialName = getCommercialName(device)
+  const commercialName = device?.commercialName || getCommercialName(device)
 
   return (
     <Sheet open={open} onOpenChange={state => (!state ? onClose() : null)}>
@@ -373,28 +371,6 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
-                variant={device.kioskLocked ? 'outline' : 'destructive'}
-                className={
-                  device.kioskLocked
-                    ? 'border-chart-2/40 text-chart-2 hover:bg-chart-2/10 hover:text-chart-2'
-                    : ''
-                }
-                onClick={() =>
-                  onCommand({
-                    deviceId: device.deviceId,
-                    action: device.kioskLocked ? 'unlock' : 'lock',
-                  })
-                }
-              >
-                {device.kioskLocked ? (
-                  <Unlock className="h-3.5 w-3.5" />
-                ) : (
-                  <Lock className="h-3.5 w-3.5" />
-                )}
-                {device.kioskLocked ? 'Déverrouiller' : 'Verrouiller'}
-              </Button>
-              <Button
-                size="sm"
                 variant="outline"
                 onClick={() => onCommand({ deviceId: device.deviceId, action: 'ota_check' })}
               >
@@ -406,12 +382,12 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
               </Button>
               <Button
                 size="sm"
-                variant="outline"
-                className="border-purple-500/30 text-purple-600 hover:bg-purple-500/10 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-400"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => setCommandDialogOpen(true)}
               >
-                <KeyRound className="h-3.5 w-3.5" />
-                Commandes
+                <Settings2 className="h-3.5 w-3.5" />
+                Actions avancées
               </Button>
               <div className="ml-auto">
                 <Button size="sm" variant="ghost" onClick={onClose}>

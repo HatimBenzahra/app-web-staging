@@ -3,14 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { gql } from '@/services/core/graphql'
 import type { KioskDevice } from '@/services/api/kiosk'
 import {
-  GET_DEVICE_MAPPINGS,
   GET_GPS_ALL_POSITIONS,
   GET_GPS_DAILY_ROUTE,
   GET_GPS_DEVICES,
   GET_GPS_HISTORY,
   GET_GPS_LATEST_POSITIONS,
   SAVE_GPS_POSITIONS,
-  SET_DEVICE_COMMERCIAL,
 } from '@/services/api/gps-tracking/gps-tracking.queries'
 
 interface GpsPosition {
@@ -200,32 +198,3 @@ export function useGpsAutoSave(kioskDevices: KioskDevice[] = []) {
   return mutation
 }
 
-export function useDeviceMappings() {
-  return useQuery({
-    queryKey: [...gpsTrackingKeys.all, 'mappings'],
-    queryFn: async () => {
-      const response = await gql<{ deviceMappings: Array<{ id: number; deviceId: string; commercialName: string }> }>(
-        GET_DEVICE_MAPPINGS,
-        {}
-      )
-      return response.deviceMappings
-    },
-    staleTime: 60_000,
-  })
-}
-
-export function useSetDeviceCommercial() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: { deviceId: string; commercialName: string }) => {
-      const response = await gql<{ setDeviceCommercial: { id: number; deviceId: string; commercialName: string } }>(
-        SET_DEVICE_COMMERCIAL,
-        { input }
-      )
-      return response.setDeviceCommercial
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: [...gpsTrackingKeys.all, 'mappings'] })
-    },
-  })
-}

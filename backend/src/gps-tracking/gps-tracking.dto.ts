@@ -106,33 +106,3 @@ export class SaveGpsPositionsResponse {
   saved: number;
 }
 
-@ObjectType()
-export class DeviceMapping {
-  @Field(() => Int)
-  id: number;
-
-  @Field()
-  deviceId: string;
-
-  @Field()
-  commercialName: string;
-
-  @Field()
-  createdAt: Date;
-
-  @Field()
-  updatedAt: Date;
-}
-
-@InputType()
-export class SetDeviceCommercialInput {
-  @Field()
-  @IsNotEmpty()
-  @IsString()
-  deviceId: string;
-
-  @Field()
-  @IsNotEmpty()
-  @IsString()
-  commercialName: string;
-}

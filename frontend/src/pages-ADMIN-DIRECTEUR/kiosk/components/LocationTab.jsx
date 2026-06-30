@@ -80,6 +80,7 @@ const haversineDistance = (lat1, lng1, lat2, lng2) => {
 }
 
 function detectStops(positions) {
+  if (!Array.isArray(positions) || positions.length < 2) return []
   const STOP_THRESHOLD_METERS = 50
   const STOP_MIN_DURATION_MS = 5 * 60 * 1000
   const stops = []
@@ -125,7 +126,7 @@ function detectStops(positions) {
 }
 
 function buildEnrichedEvents(positions, stops) {
-  if (positions.length < 1) return []
+  if (!Array.isArray(positions) || positions.length < 1) return []
   const first = positions[0]
   const last = positions[positions.length - 1]
   const allEvents = [

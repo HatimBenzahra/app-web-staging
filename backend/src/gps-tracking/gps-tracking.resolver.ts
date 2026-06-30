@@ -6,8 +6,6 @@ import {
   GpsHistoryResponse,
   SaveGpsPositionsInput,
   SaveGpsPositionsResponse,
-  DeviceMapping,
-  SetDeviceCommercialInput,
 } from './gps-tracking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -62,23 +60,5 @@ export class GpsTrackingResolver {
   @Roles('admin', 'directeur')
   getDeviceIds() {
     return this.gpsTrackingService.getDeviceIds();
-  }
-
-  @Query(() => [DeviceMapping], { name: 'deviceMappings' })
-  @Roles('admin', 'directeur')
-  getDeviceMappings() {
-    return this.gpsTrackingService.getDeviceMappings();
-  }
-
-  @Mutation(() => DeviceMapping)
-  @Roles('admin', 'directeur')
-  setDeviceCommercial(@Args('input') input: SetDeviceCommercialInput) {
-    return this.gpsTrackingService.setDeviceCommercial(input.deviceId, input.commercialName);
-  }
-
-  @Mutation(() => DeviceMapping)
-  @Roles('admin', 'directeur')
-  removeDeviceMapping(@Args('deviceId') deviceId: string) {
-    return this.gpsTrackingService.removeDeviceMapping(deviceId);
   }
 }
