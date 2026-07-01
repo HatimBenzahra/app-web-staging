@@ -35,6 +35,7 @@ import { EvaluationService } from './evaluation.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -436,6 +437,44 @@ export class GamificationResolver {
         rankTierLabel: tier.label,
         metadata: s.metadata ? JSON.stringify(s.metadata) : undefined,
         computedAt: s.computedAt,
+      };
+    });
+  }
+
+  @Query(() => [RankSnapshotType], { name: 'teamRanking' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  async getTeamRanking(
+    @Args('period', { type: () => RankPeriod }) period: RankPeriod,
+    @Args('periodKey') periodKey: string,
+    @CurrentUser() user: any,
+  ): Promise<RankSnapshotType[]> {
+    const managerId = await this.rankingService.resolveTeamManagerId(
+      user.id,
+      user.role,
+    );
+    if (managerId == null) return [];
+
+    const snapshots = await this.rankingService.getTeamRanking(
+      managerId,
+      period,
+      periodKey,
+    );
+    return snapshots.map((s) => {
+      const tier = this.rankingService.resolvePointTier(s.points);
+      return {
+        id: s.id,
+        commercialId: s.commercialId ?? undefined,
+        period: s.period,
+        periodKey: s.periodKey,
+        rank: s.rank,
+        points: s.points,
+        contratsSignes: s.contratsSignes,
+        rankTierKey: tier.key,
+        rankTierLabel: tier.label,
+        metadata: s.metadata ? JSON.stringify(s.metadata) : undefined,
+        computedAt: s.computedAt,
+        commercialNom: s.commercial?.nom,
+        commercialPrenom: s.commercial?.prenom,
       };
     });
   }
