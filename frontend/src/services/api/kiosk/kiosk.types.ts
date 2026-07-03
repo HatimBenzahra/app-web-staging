@@ -160,12 +160,15 @@ export interface KioskAvailableRelease {
 
 export interface KioskVersionMatrixResponse {
   matrix: KioskVersionMatrixEntry[]
-  latestVersions: Record<string, {
-    releaseId: string
-    versionCode: number
-    versionName: string
-    appName: string
-  }>
+  latestVersions: Record<
+    string,
+    {
+      releaseId: string
+      versionCode: number
+      versionName: string
+      appName: string
+    }
+  >
   availableReleases: KioskAvailableRelease[]
 }
 

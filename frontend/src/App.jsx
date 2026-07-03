@@ -38,9 +38,10 @@ const Gamification = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gamification/Gam
 const KioskOverview = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskOverview'))
 const KioskDevicesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDevicesPage'))
 const KioskReleasesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskReleasesPage'))
-const KioskDeploymentsPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeploymentsPage'))
+const KioskDeploymentsPage = lazy(
+  () => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeploymentsPage')
+)
 const KioskLogsPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskLogsPage'))
-const KioskLocationPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskLocationPage'))
 
 // Lazy load commercial pages
 const CommercialLayoutComponent = lazy(
@@ -89,7 +90,6 @@ function AdminLayout() {
     releases: { label: 'Releases', href: '/kiosk/releases' },
     deploiements: { label: 'Déploiements', href: '/kiosk/deploiements' },
     logs: { label: 'Logs', href: '/kiosk/logs' },
-    localisation: { label: 'Localisation', href: '/kiosk/localisation' },
     assignations: { label: 'Assignations en cours', href: '/zones/assignations' },
     historique: { label: 'Historique', href: '/zones/historique' },
   }
@@ -173,9 +173,7 @@ function AdminLayout() {
             </header>
             <div
               className={`flex flex-1 flex-col gap-4 overflow-x-hidden animate-fade-in-content ${
-                isWideMapPage
-                  ? 'w-full px-4 py-4'
-                  : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
+                isWideMapPage ? 'w-full px-4 py-4' : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
               }`}
             >
               <Suspense fallback={null}>
@@ -386,14 +384,6 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <KioskLogsPage />
-                      </SectionErrorBoundary>
-                    }
-                  />
-                  <Route
-                    path="/kiosk/localisation"
-                    element={
-                      <SectionErrorBoundary>
-                        <KioskLocationPage />
                       </SectionErrorBoundary>
                     }
                   />

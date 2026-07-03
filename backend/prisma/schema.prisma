@@ -593,8 +593,14 @@ model RecordingAnalysis {
 
 model GpsPosition {
   id           Int      @id @default(autoincrement())
-  deviceId     String
+  // deviceId reste nullable pour lecture des anciennes lignes kiosk ;
+  // les positions mobiles sont désormais rattachées à un acteur polymorphe.
+  deviceId     String?
   deviceName   String?
+  // Acteur polymorphe (commercial OU manager), meme pattern que ZoneEnCours.
+  // Nullable pour preserver les anciennes lignes kiosk (deviceId sans acteur).
+  userId       Int?
+  userType     UserType?
   latitude     Float
   longitude    Float
   accuracy     Float?
@@ -606,6 +612,8 @@ model GpsPosition {
   @@index([deviceId])
   @@index([recordedAt])
   @@index([deviceId, recordedAt])
+  @@index([userId, userType])
+  @@index([userId, userType, recordedAt])
 }
 
 enum SegmentStatus {

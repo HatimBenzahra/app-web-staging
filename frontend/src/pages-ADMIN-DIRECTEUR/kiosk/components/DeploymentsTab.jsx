@@ -44,8 +44,8 @@ import {
   Loader2,
   ChevronDown,
 } from 'lucide-react'
-import useDeviceCommercialNames from '../useDeviceCommercialNames'
 import { VersionText } from './versionPresentation'
+import { useDeviceCommercialNames } from '../useDeviceCommercialNames'
 
 const formatRelativeTime = value => {
   if (!value) return 'Inconnu'
@@ -135,7 +135,7 @@ export default function DeploymentsTab({
   activeTab,
   setActiveTab,
 }) {
-  const { getCommercialName, getDeviceLabel } = useDeviceCommercialNames()
+  const { getCommercialName } = useDeviceCommercialNames()
   const rows = useMemo(() => versionMatrix?.matrix || [], [versionMatrix])
   const historyRows = useMemo(() => deployHistory?.entries || [], [deployHistory])
   const [matrixFilter, setMatrixFilter] = useState('all')
@@ -199,24 +199,13 @@ export default function DeploymentsTab({
       if (!passesFilter) return false
       if (!normalizedSearch) return true
 
-      const commercialName =
-        getCommercialName({
-          serialNumber: entry.deviceId,
-          deviceId: entry.deviceId,
-        }) || ''
-
-      const haystack = [
-        commercialName,
-        entry.deviceName || '',
-        entry.deviceId || '',
-        entry.deviceModel || '',
-      ]
+      const haystack = [entry.deviceName || '', entry.deviceId || '', entry.deviceModel || '']
         .join(' ')
         .toLowerCase()
 
       return haystack.includes(normalizedSearch)
     })
-  }, [rows, matrixFilter, matrixSearch, getCommercialName])
+  }, [rows, matrixFilter, matrixSearch])
 
   const filteredHistoryRows = useMemo(() => {
     if (historyStatusFilter === 'all') return historyRows
@@ -429,10 +418,7 @@ export default function DeploymentsTab({
                       const prowinStatus = getVersionStatusUI(entry.prowin?.status)
                       const KioskIcon = kioskStatus.icon
                       const ProwinIcon = prowinStatus.icon
-                      const commercialName = getCommercialName({
-                        serialNumber: entry.deviceId,
-                        deviceId: entry.deviceId,
-                      })
+                      const commercialName = getCommercialName(entry.deviceId)
                       const isOutdated =
                         entry.kiosk?.status !== 'up_to_date' ||
                         entry.prowin?.status !== 'up_to_date'
@@ -455,15 +441,18 @@ export default function DeploymentsTab({
                               />
                               <div>
                                 <p className="text-sm font-semibold leading-tight">
-                                  {commercialName || 'Non assigné'}
+                                  {commercialName || entry.deviceName || entry.deviceId}
                                 </p>
-                                <p className="text-xs leading-tight text-muted-foreground">
-                                  {entry.deviceName || entry.deviceId}
-                                </p>
-                                {entry.deviceModel && (
+                                {commercialName ? (
                                   <p className="text-xs leading-tight text-muted-foreground">
-                                    {entry.deviceModel}
+                                    {entry.deviceName || entry.deviceId}
                                   </p>
+                                ) : (
+                                  entry.deviceModel && (
+                                    <p className="text-xs leading-tight text-muted-foreground">
+                                      {entry.deviceModel}
+                                    </p>
+                                  )
                                 )}
                               </div>
                             </div>
@@ -563,7 +552,7 @@ export default function DeploymentsTab({
                     <SelectItem value="all">Toutes les tablettes</SelectItem>
                     {(devices || []).map(device => (
                       <SelectItem key={device.deviceId} value={device.deviceId}>
-                        {getDeviceLabel(device)}
+                        {device.deviceName || device.deviceId}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -622,10 +611,6 @@ export default function DeploymentsTab({
                     {filteredHistoryRows.map((entry, index) => {
                       const statusUI = getHistoryStatusUI(entry.status)
                       const StatusIcon = statusUI.icon
-                      const commercialName = getCommercialName({
-                        serialNumber: entry.deviceId,
-                        deviceId: entry.deviceId,
-                      })
 
                       return (
                         <TableRow
@@ -642,11 +627,15 @@ export default function DeploymentsTab({
                           <TableCell>
                             <div>
                               <span className="text-sm font-medium block">
-                                {commercialName || 'Non assigné'}
+                                {getCommercialName(entry.deviceId) ||
+                                  entry.deviceName ||
+                                  entry.deviceId}
                               </span>
-                              <span className="text-xs text-muted-foreground block">
-                                {entry.deviceName || entry.deviceId}
-                              </span>
+                              {getCommercialName(entry.deviceId) && (
+                                <span className="text-xs text-muted-foreground block">
+                                  {entry.deviceName || entry.deviceId}
+                                </span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>

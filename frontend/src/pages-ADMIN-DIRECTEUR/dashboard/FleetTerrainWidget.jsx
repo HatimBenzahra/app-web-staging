@@ -8,11 +8,11 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Navigation2, ArrowRight, MapPin } from 'lucide-react'
 import {
-  useGpsLatestPositions,
-  useGpsDailyRoute,
+  useGpsLatestActorPositions,
+  useGpsDailyRouteByActor,
 } from '@/hooks/metier/api/gps-tracking'
 import { Layer, Source } from 'react-map-gl/mapbox'
-import { useKioskDevices } from '@/hooks/metier/api/kiosk'
+import { useActorDirectory } from '../gps-tracking/useActorDirectory'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
@@ -110,10 +110,10 @@ function BuildingMarker({ onClick, color, dimmed }) {
 
 export default function FleetTerrainWidget({ todayImmeubles }) {
   const navigate = useNavigate()
-  const { data: gpsPositions, isLoading: gpsLoading } = useGpsLatestPositions()
-  const { data: kioskDevices, isLoading: kioskLoading } = useKioskDevices()
+  const { data: gpsPositions, isLoading: gpsLoading } = useGpsLatestActorPositions()
+  const { buildActors } = useActorDirectory()
   const [locationNames, setLocationNames] = useState({})
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedKey, setSelectedKey] = useState(null)
   const mapRef = useRef(null)
 
   const todayStr = useMemo(() => {
@@ -121,7 +121,19 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }, [])
 
-  const { data: dailyRoute } = useGpsDailyRoute(selectedId || '', todayStr)
+  const selectedActor = useMemo(
+    () =>
+      selectedKey
+        ? { userType: selectedKey.split('-')[0], id: Number(selectedKey.split('-')[1]) }
+        : null,
+    [selectedKey]
+  )
+
+  const { data: dailyRoute } = useGpsDailyRouteByActor(
+    selectedActor?.id ?? null,
+    selectedActor?.userType ?? null,
+    todayStr
+  )
 
   const routeGeoJson = useMemo(() => {
     if (!dailyRoute?.positions?.length) return null
@@ -133,40 +145,13 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     }
   }, [dailyRoute])
 
-  const commercials = useMemo(() => {
-    const positions = gpsPositions ?? []
-    const devices = kioskDevices ?? []
-
-    const posMap = new Map()
-    for (const p of positions) {
-      posMap.set(p.deviceId, p)
-    }
-
-    const seen = new Set()
-    const result = []
-
-    for (const device of devices) {
-      const id = device.serialNumber || device.deviceId
-      if (seen.has(id)) continue
-      seen.add(id)
-
-      const pos = posMap.get(id) || posMap.get(device.deviceId)
-      const name = device.commercialName || device.deviceName || id
-      const latitude = pos?.latitude ?? device.latitude
-      const longitude = pos?.longitude ?? device.longitude
-      const hasPosition = typeof latitude === 'number' && typeof longitude === 'number'
-
-      result.push({
-        id,
-        name,
-        isOnline: device.online,
-        latitude,
-        longitude,
-        lastSeen: pos?.recordedAt || device.lastSeen,
-        batteryLevel: device.batteryLevel,
-        hasPosition,
-      })
-    }
+  const actors = useMemo(() => {
+    const result = buildActors(gpsPositions ?? []).map(actor => ({
+      ...actor,
+      id: actor.userId,
+      isOnline: actor.online,
+      hasPosition: typeof actor.latitude === 'number' && typeof actor.longitude === 'number',
+    }))
 
     result.sort((a, b) => {
       if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1
@@ -174,26 +159,26 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
     })
 
     return result
-  }, [gpsPositions, kioskDevices])
+  }, [gpsPositions, buildActors])
 
   const onlineWithPosition = useMemo(
-    () => commercials.filter(c => c.isOnline && c.hasPosition),
-    [commercials]
+    () => actors.filter(c => c.isOnline && c.hasPosition),
+    [actors]
   )
 
   useEffect(() => {
     let cancelled = false
     const toGeocode = onlineWithPosition.filter(
-      c => c.latitude && c.longitude && !locationNames[c.id]
+      c => c.latitude && c.longitude && !locationNames[c.key]
     )
     if (toGeocode.length === 0) return undefined
 
     const run = async () => {
       const updates = {}
-      for (const commercial of toGeocode.slice(0, 5)) {
+      for (const actor of toGeocode.slice(0, 5)) {
         if (cancelled) break
-        const name = await reverseGeocode(commercial.latitude, commercial.longitude)
-        if (name) updates[commercial.id] = name
+        const name = await reverseGeocode(actor.latitude, actor.longitude)
+        if (name) updates[actor.key] = name
       }
       if (!cancelled && Object.keys(updates).length > 0) {
         setLocationNames(prev => ({ ...prev, ...updates }))
@@ -228,20 +213,20 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
   }, [onlineWithPosition])
 
   const getMarkerColor = useCallback(
-    id => {
-      const idx = commercials.findIndex(c => c.id === id)
+    key => {
+      const idx = actors.findIndex(c => c.key === key)
       return MARKER_COLORS[idx % MARKER_COLORS.length]
     },
-    [commercials]
+    [actors]
   )
 
-  const handleSelectCommercial = useCallback(
-    commercial => {
-      if (!commercial.hasPosition || !commercial.latitude || !commercial.longitude) return
+  const handleSelectActor = useCallback(
+    actor => {
+      if (!actor.hasPosition || !actor.latitude || !actor.longitude) return
 
-      const isSame = selectedId === commercial.id
+      const isSame = selectedKey === actor.key
       if (isSame) {
-        setSelectedId(null)
+        setSelectedKey(null)
         if (mapRef.current) {
           const bounds = onlineWithPosition.reduce(
             (b, c) => b.extend([c.longitude, c.latitude]),
@@ -252,20 +237,20 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
         return
       }
 
-      setSelectedId(commercial.id)
+      setSelectedKey(actor.key)
       if (mapRef.current) {
         mapRef.current.flyTo({
-          center: [commercial.longitude, commercial.latitude],
+          center: [actor.longitude, actor.latitude],
           zoom: 15,
           duration: 1200,
           essential: true,
         })
       }
     },
-    [selectedId, onlineWithPosition]
+    [selectedKey, onlineWithPosition]
   )
 
-  const isLoading = gpsLoading || kioskLoading
+  const isLoading = gpsLoading
 
   if (isLoading) {
     return (
@@ -357,10 +342,10 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                 attributionControl={false}
               >
                 {onlineWithPosition.map(c => {
-                  const isSelected = selectedId === c.id
+                  const isSelected = selectedKey === c.key
                   return (
                     <Marker
-                      key={c.id}
+                      key={c.key}
                       longitude={c.longitude}
                       latitude={c.latitude}
                       anchor="bottom"
@@ -373,7 +358,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                         }}
                       >
                         <CommercialMarker
-                          color={getMarkerColor(c.id)}
+                          color={getMarkerColor(c.key)}
                           initial={(c.name || '?').charAt(0).toUpperCase()}
                         />
                       </div>
@@ -392,13 +377,13 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                       <BuildingMarker onClick={() => navigate(`/immeubles/${imm.id}`)} />
                     </Marker>
                   ))}
-                {routeGeoJson && selectedId && (
+                {routeGeoJson && selectedKey && (
                   <Source id="route" type="geojson" data={routeGeoJson}>
                     <Layer
                       id="route-line"
                       type="line"
                       paint={{
-                        'line-color': getMarkerColor(selectedId),
+                        'line-color': getMarkerColor(selectedKey),
                         'line-width': 3,
                         'line-opacity': 0.7,
                         'line-dasharray': [2, 1],
@@ -418,14 +403,14 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
               </div>
             ) : (
               onlineWithPosition.map(c => {
-                const color = getMarkerColor(c.id)
-                const location = locationNames[c.id]
-                const isSelected = selectedId === c.id
+                const color = getMarkerColor(c.key)
+                const location = locationNames[c.key]
+                const isSelected = selectedKey === c.key
                 return (
                   <button
                     type="button"
-                    key={c.id}
-                    onClick={() => handleSelectCommercial(c)}
+                    key={c.key}
+                    onClick={() => handleSelectActor(c)}
                     className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg border transition-all cursor-pointer ${
                       isSelected
                         ? 'border-primary/50 bg-primary/8 ring-1 ring-primary/20'
@@ -472,7 +457,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
             </span>
           </div>
           <Link
-            to="/kiosk/localisation"
+            to="/gps-tracking"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors group shrink-0"
           >
             Voir le suivi détaillé

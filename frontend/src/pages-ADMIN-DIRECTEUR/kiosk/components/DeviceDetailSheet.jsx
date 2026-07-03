@@ -20,8 +20,8 @@ import {
   Cpu,
   Radio,
   Settings2,
+  User,
 } from 'lucide-react'
-import useDeviceCommercialNames from '../useDeviceCommercialNames'
 import DeviceCommandDialog from './DeviceCommandDialog'
 
 const formatDateTime = value => {
@@ -129,13 +129,11 @@ const CopyButton = ({ value }) => {
 }
 
 export default function DeviceDetailSheet({ device, open, onClose, onCommand, onRename }) {
-  const { getCommercialName } = useDeviceCommercialNames()
   const [commandDialogOpen, setCommandDialogOpen] = useState(false)
   const [commandPending, setCommandPending] = useState(false)
   const batteryLevel = device?.batteryLevel
   const batteryWidth = clampBattery(batteryLevel)
   const pendingCount = device?.pendingCommands?.length || 0
-  const commercialName = device?.commercialName || getCommercialName(device)
 
   return (
     <Sheet open={open} onOpenChange={state => (!state ? onClose() : null)}>
@@ -143,18 +141,23 @@ export default function DeviceDetailSheet({ device, open, onClose, onCommand, on
         <SheetHeader className="shrink-0 px-5 pt-5 pb-4 border-b border-border/50">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p
-                className={`text-sm font-semibold leading-tight truncate ${
-                  commercialName ? 'text-primary' : 'text-muted-foreground'
-                }`}
-              >
-                {commercialName || 'Aucun commercial assigné'}
-              </p>
               <SheetTitle className="text-lg font-bold leading-tight truncate">
                 {device?.deviceName || 'Tablette'}
               </SheetTitle>
               {device?.model && (
                 <p className="text-xs text-muted-foreground mt-0.5">{device.model}</p>
+              )}
+              {device && (
+                <p className="text-xs mt-1 flex items-center gap-1.5">
+                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                  {device.commercialName ? (
+                    <span className="font-medium text-foreground truncate">
+                      {device.commercialName}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/60">Aucun commercial assigné</span>
+                  )}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 mt-0.5">

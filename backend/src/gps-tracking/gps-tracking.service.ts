@@ -1,65 +1,67 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { GpsPositionInput } from './gps-tracking.dto';
+import { ReportPositionInput } from './gps-tracking.dto';
+import { UserType } from '../zone/zone.dto';
+
+// Au-dela de ce delai depuis la derniere position remontee, un acteur est
+// considere hors-ligne (isOnline calcule a la lecture, pas persiste).
+const ONLINE_THRESHOLD_MS = 5 * 60_000;
 
 @Injectable()
 export class GpsTrackingService {
   constructor(private prisma: PrismaService) {}
 
-  async savePositions(positions: GpsPositionInput[]) {
-    const data = positions.map(pos => ({
-      deviceId: pos.deviceId,
-      deviceName: pos.deviceName || null,
-      latitude: pos.latitude,
-      longitude: pos.longitude,
-      accuracy: pos.accuracy || null,
-      batteryLevel: pos.batteryLevel || null,
-      isOnline: pos.isOnline ?? true,
+  // Positions remontees par l'app mobile. L'identite de l'acteur (userId, userType)
+  // est imposee par l'appelant (derivee du token) et jamais par le client :
+  // ReportPositionInput n'expose aucun champ d'identite.
+  async saveForActor(
+    userId: number,
+    userType: UserType,
+    inputs: ReportPositionInput[],
+  ): Promise<number> {
+    const data = inputs.map(input => ({
+      userId,
+      userType,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracy: input.accuracy ?? null,
+      batteryLevel: input.batteryLevel ?? null,
+      isOnline: true,
+      recordedAt: input.recordedAt ?? new Date(),
     }));
 
     const result = await this.prisma.gpsPosition.createMany({ data });
-    return { success: true, saved: result.count };
+    return result.count;
   }
 
-  async getHistory(deviceId: string, from?: string, to?: string, limit?: number) {
-    const where: any = { deviceId };
-
-    if (from || to) {
-      where.recordedAt = {};
-      if (from) where.recordedAt.gte = new Date(from);
-      if (to) where.recordedAt.lte = new Date(to);
-    }
-
-    const [total, positions] = await Promise.all([
-      this.prisma.gpsPosition.count({ where }),
-      this.prisma.gpsPosition.findMany({
-        where,
-        orderBy: { recordedAt: 'desc' },
-        take: limit || 500,
-      }),
-    ]);
-
-    return { total, positions };
-  }
-
-  async getLatestPositions() {
-    const devices = await this.prisma.gpsPosition.findMany({
+  // Derniere position connue de chaque acteur (une ligne par (userId, userType)).
+  // isOnline est recalcule a partir de la fraicheur de recordedAt : la valeur
+  // persistee (toujours true) n'est pas fiable pour l'affichage temps reel.
+  async getLatestActorPositions() {
+    const rows = await this.prisma.gpsPosition.findMany({
+      where: { userId: { not: null } },
       orderBy: { recordedAt: 'desc' },
-      distinct: ['deviceId'],
+      distinct: ['userId', 'userType'],
     });
 
-    return devices;
+    const now = Date.now();
+    return rows.map(row => ({
+      ...row,
+      isOnline: now - row.recordedAt.getTime() <= ONLINE_THRESHOLD_MS,
+    }));
   }
 
-  async getDailyRoute(deviceId: string, date: string) {
+  // Trace du jour keyee par acteur (source: app mobile).
+  async getDailyRouteByActor(userId: number, userType: UserType, date: string) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const positions = await this.prisma.gpsPosition.findMany({
+    return this.prisma.gpsPosition.findMany({
       where: {
-        deviceId,
+        userId,
+        userType,
         recordedAt: {
           gte: startOfDay,
           lte: endOfDay,
@@ -67,40 +69,25 @@ export class GpsTrackingService {
       },
       orderBy: { recordedAt: 'asc' },
     });
-
-    return { total: positions.length, positions };
   }
 
-  async getAllPositions(from: string, to: string, deviceId?: string, limit?: number) {
-    const where: any = {
-      recordedAt: {
-        gte: new Date(from),
-        lte: new Date(to),
+  // Trace d'un acteur sur une plage arbitraire.
+  async getRouteByActor(
+    userId: number,
+    userType: UserType,
+    from: string,
+    to: string,
+  ) {
+    return this.prisma.gpsPosition.findMany({
+      where: {
+        userId,
+        userType,
+        recordedAt: {
+          gte: new Date(from),
+          lte: new Date(to),
+        },
       },
-    };
-    if (deviceId) {
-      where.deviceId = deviceId;
-    }
-
-    const [total, positions] = await Promise.all([
-      this.prisma.gpsPosition.count({ where }),
-      this.prisma.gpsPosition.findMany({
-        where,
-        orderBy: [{ deviceId: 'asc' }, { recordedAt: 'asc' }],
-        take: limit || 5000,
-      }),
-    ]);
-
-    return { total, positions };
-  }
-
-  async getDeviceIds() {
-    const devices = await this.prisma.gpsPosition.findMany({
-      select: { deviceId: true, deviceName: true },
-      distinct: ['deviceId'],
-      orderBy: { recordedAt: 'desc' },
+      orderBy: { recordedAt: 'asc' },
     });
-    return devices;
   }
-
 }

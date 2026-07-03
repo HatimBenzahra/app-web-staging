@@ -1,56 +1,9 @@
-export const SAVE_GPS_POSITIONS = `
-  mutation SaveGpsPositions($input: SaveGpsPositionsInput!) {
-    saveGpsPositions(input: $input) {
-      success
-      saved
-    }
-  }
-`
-
-export const GET_GPS_HISTORY = `
-  query GpsHistory($deviceId: String!, $from: String, $to: String, $limit: Int) {
-    gpsHistory(deviceId: $deviceId, from: $from, to: $to, limit: $limit) {
-      total
-      positions {
-        id
-        deviceId
-        deviceName
-        latitude
-        longitude
-        accuracy
-        batteryLevel
-        isOnline
-        recordedAt
-      }
-    }
-  }
-`
-
-export const GET_GPS_DAILY_ROUTE = `
-  query GpsDailyRoute($deviceId: String!, $date: String!) {
-    gpsDailyRoute(deviceId: $deviceId, date: $date) {
-      total
-      positions {
-        id
-        deviceId
-        deviceName
-        latitude
-        longitude
-        accuracy
-        batteryLevel
-        isOnline
-        recordedAt
-      }
-    }
-  }
-`
-
-export const GET_GPS_LATEST_POSITIONS = `
-  query GpsLatestPositions {
-    gpsLatestPositions {
+export const GET_GPS_LATEST_ACTOR_POSITIONS = `
+  query GpsLatestActorPositions {
+    gpsLatestActorPositions {
       id
-      deviceId
-      deviceName
+      userId
+      userType
       latitude
       longitude
       accuracy
@@ -61,30 +14,23 @@ export const GET_GPS_LATEST_POSITIONS = `
   }
 `
 
-export const GET_GPS_DEVICES = `
-  query GpsDevices {
-    gpsDevices {
-      deviceId
-      deviceName
+export const GET_GPS_DAILY_ROUTE_BY_ACTOR = `
+  query GpsDailyRouteByActor($userId: Int!, $userType: UserType!, $date: String!) {
+    gpsDailyRouteByActor(userId: $userId, userType: $userType, date: $date) {
+      latitude
+      longitude
+      recordedAt
     }
   }
 `
 
-export const GET_GPS_ALL_POSITIONS = `
-  query GpsAllPositions($from: String!, $to: String!, $deviceId: String, $limit: Int) {
-    gpsAllPositions(from: $from, to: $to, deviceId: $deviceId, limit: $limit) {
-      total
-      positions {
-        id
-        deviceId
-        deviceName
-        latitude
-        longitude
-        accuracy
-        batteryLevel
-        isOnline
-        recordedAt
-      }
+export const GET_GPS_ROUTE_BY_ACTOR = `
+  query GpsRouteByActor($userId: Int!, $userType: UserType!, $from: String!, $to: String!) {
+    gpsRouteByActor(userId: $userId, userType: $userType, from: $from, to: $to) {
+      latitude
+      longitude
+      recordedAt
+      accuracy
     }
   }
 `

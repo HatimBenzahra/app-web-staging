@@ -37,7 +37,6 @@ import {
   Tablet,
   Filter,
 } from 'lucide-react'
-import useDeviceCommercialNames from '../useDeviceCommercialNames'
 import { VersionText } from './versionPresentation'
 
 const formatRelativeTime = value => {
@@ -85,12 +84,9 @@ export default function DevicesTab({
   onDelete,
   onSelectDevice,
 }) {
-  const { getCommercialName } = useDeviceCommercialNames()
-
   const filteredDevices = useMemo(() => {
     return (devices || []).filter(device => {
-      const commercialName = getCommercialName(device) || ''
-      const searchText = `${device.deviceName || ''} ${device.deviceId || ''} ${commercialName}`
+      const searchText = `${device.commercialName || ''} ${device.deviceName || ''} ${device.deviceId || ''}`
       const matchesSearch = searchText
         .toLowerCase()
         .includes((deviceFilters.search || '').toLowerCase())
@@ -100,7 +96,7 @@ export default function DevicesTab({
         (deviceFilters.onlineFilter === 'offline' && !device.online)
       return matchesSearch && matchesOnline
     })
-  }, [devices, deviceFilters, getCommercialName])
+  }, [devices, deviceFilters])
 
   const totalCount = (devices || []).length
 
@@ -136,7 +132,9 @@ export default function DevicesTab({
             <Filter className="h-3.5 w-3.5 text-muted-foreground hidden sm:block" />
             <Select
               value={deviceFilters.onlineFilter}
-              onValueChange={value => setDeviceFilters(current => ({ ...current, onlineFilter: value }))}
+              onValueChange={value =>
+                setDeviceFilters(current => ({ ...current, onlineFilter: value }))
+              }
             >
               <SelectTrigger className="h-8 w-36 bg-background text-sm">
                 <SelectValue placeholder="Connexion" />
@@ -163,7 +161,7 @@ export default function DevicesTab({
             <div className="space-y-1">
               <p className="font-medium text-foreground">Aucune tablette</p>
               <p className="text-sm text-muted-foreground">
-                {(deviceFilters.search || deviceFilters.onlineFilter !== 'all')
+                {deviceFilters.search || deviceFilters.onlineFilter !== 'all'
                   ? 'Aucun appareil ne correspond aux filtres actifs.'
                   : 'Aucune tablette enregistrée dans ce parc.'}
               </p>
@@ -174,22 +172,39 @@ export default function DevicesTab({
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/20 hover:bg-muted/20">
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Nom</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Commercial</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Modèle</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Android</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Kiosk</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">ProWin</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Batterie</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Réseau</TableHead>
-                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">Activité</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                    Nom
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                    Commercial
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    Modèle
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    Android
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    Kiosk
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    ProWin
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                    Batterie
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    Réseau
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wide text-muted-foreground hidden lg:table-cell">
+                    Activité
+                  </TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDevices.map(device => {
                   const batteryLevel = device.batteryLevel
-                  const commercialName = device.commercialName || getCommercialName(device)
 
                   return (
                     <TableRow
@@ -211,21 +226,21 @@ export default function DevicesTab({
                           </span>
                           <div className="min-w-0">
                             <span className="block font-semibold text-sm leading-tight truncate">
-                              {commercialName || device.deviceName || device.deviceId}
+                              {device.commercialName || device.deviceName || device.deviceId}
                             </span>
-                            {commercialName && (
-                              <span className="block text-xs text-muted-foreground truncate">
-                                {device.deviceName || device.deviceId}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {commercialName ? (
-                          <Badge variant="outline">{commercialName}</Badge>
+                        {device.commercialName ? (
+                          <Badge
+                            variant="secondary"
+                            className="rounded-full px-2 py-0.5 text-xs font-medium"
+                          >
+                            {device.commercialName}
+                          </Badge>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Non assigné</span>
+                          <span className="text-xs text-muted-foreground/60">Non assigné</span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
@@ -289,7 +304,9 @@ export default function DevicesTab({
                         )}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <span className={`text-xs font-medium ${getRelativeTimeColor(device.lastSeen)}`}>
+                        <span
+                          className={`text-xs font-medium ${getRelativeTimeColor(device.lastSeen)}`}
+                        >
                           {formatRelativeTime(device.lastSeen)}
                         </span>
                       </TableCell>

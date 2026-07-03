@@ -1,64 +1,57 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { GpsTrackingService } from './gps-tracking.service';
-import {
-  GpsPosition,
-  GpsHistoryResponse,
-  SaveGpsPositionsInput,
-  SaveGpsPositionsResponse,
-} from './gps-tracking.dto';
+import { GpsPosition, ReportPositionInput } from './gps-tracking.dto';
+import { UserType } from '../zone/zone.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => GpsPosition)
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class GpsTrackingResolver {
   constructor(private readonly gpsTrackingService: GpsTrackingService) {}
 
-  @Mutation(() => SaveGpsPositionsResponse)
-  @Roles('admin', 'directeur')
-  saveGpsPositions(@Args('input') input: SaveGpsPositionsInput) {
-    return this.gpsTrackingService.savePositions(input.positions);
-  }
-
-  @Query(() => GpsHistoryResponse, { name: 'gpsHistory' })
-  @Roles('admin', 'directeur')
-  getGpsHistory(
-    @Args('deviceId') deviceId: string,
-    @Args('from', { nullable: true }) from?: string,
-    @Args('to', { nullable: true }) to?: string,
-    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+  // Remontee des positions par l'app mobile (batch => flush hors-ligne).
+  // L'identite de l'acteur provient EXCLUSIVEMENT du token (user.id + user.role) :
+  // on ne fait jamais confiance a un id fourni par le client.
+  @Mutation(() => Int, { name: 'reportMyPositions' })
+  @Roles('commercial', 'manager')
+  reportMyPositions(
+    @CurrentUser() user: { id: number; role: string },
+    @Args('input', { type: () => [ReportPositionInput] })
+    input: ReportPositionInput[],
   ) {
-    return this.gpsTrackingService.getHistory(deviceId, from, to, limit);
+    const userType =
+      user.role === 'manager' ? UserType.MANAGER : UserType.COMMERCIAL;
+    return this.gpsTrackingService.saveForActor(user.id, userType, input);
   }
 
-  @Query(() => GpsHistoryResponse, { name: 'gpsDailyRoute' })
-  @Roles('admin', 'directeur')
-  getDailyRoute(@Args('deviceId') deviceId: string, @Args('date') date: string) {
-    return this.gpsTrackingService.getDailyRoute(deviceId, date);
+  @Query(() => [GpsPosition], { name: 'gpsLatestActorPositions' })
+  @Roles('admin', 'directeur', 'manager')
+  getLatestActorPositions() {
+    return this.gpsTrackingService.getLatestActorPositions();
   }
 
-  @Query(() => [GpsPosition], { name: 'gpsLatestPositions' })
-  @Roles('admin', 'directeur')
-  getLatestPositions() {
-    return this.gpsTrackingService.getLatestPositions();
+  @Query(() => [GpsPosition], { name: 'gpsDailyRouteByActor' })
+  @Roles('admin', 'directeur', 'manager')
+  getDailyRouteByActor(
+    @Args('userId', { type: () => Int }) userId: number,
+    @Args('userType', { type: () => UserType }) userType: UserType,
+    @Args('date') date: string,
+  ) {
+    return this.gpsTrackingService.getDailyRouteByActor(userId, userType, date);
   }
 
-  @Query(() => GpsHistoryResponse, { name: 'gpsAllPositions' })
-  @Roles('admin', 'directeur')
-  getAllPositions(
+  @Query(() => [GpsPosition], { name: 'gpsRouteByActor' })
+  @Roles('admin', 'directeur', 'manager')
+  getRouteByActor(
+    @Args('userId', { type: () => Int }) userId: number,
+    @Args('userType', { type: () => UserType }) userType: UserType,
     @Args('from') from: string,
     @Args('to') to: string,
-    @Args('deviceId', { nullable: true }) deviceId?: string,
-    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
   ) {
-    return this.gpsTrackingService.getAllPositions(from, to, deviceId, limit);
-  }
-
-  @Query(() => [GpsPosition], { name: 'gpsDevices' })
-  @Roles('admin', 'directeur')
-  getDeviceIds() {
-    return this.gpsTrackingService.getDeviceIds();
+    return this.gpsTrackingService.getRouteByActor(userId, userType, from, to);
   }
 }

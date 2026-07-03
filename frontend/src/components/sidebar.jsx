@@ -61,7 +61,12 @@ const terrainItems = [
       { title: 'Historique', url: '/zones/historique' },
     ],
   },
-  { title: 'Localisation', url: '/kiosk/localisation', icon: Navigation2, entity: 'kiosk' },
+  {
+    title: 'Suivi GPS',
+    url: '/gps-tracking',
+    icon: Navigation2,
+    entity: 'gps-tracking',
+  },
 ]
 
 const teamItems = [
