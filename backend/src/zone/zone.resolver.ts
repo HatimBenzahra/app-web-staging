@@ -9,6 +9,7 @@ import {
   HistoriqueZone,
   AssignZoneInput,
   UserType,
+  ZoneProspection,
 } from './zone.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -22,8 +23,11 @@ export class ZoneResolver {
 
   @Mutation(() => Zone)
   @Roles('admin', 'directeur', 'manager')
-  createZone(@Args('createZoneInput') createZoneInput: CreateZoneInput) {
-    return this.zoneService.create(createZoneInput);
+  createZone(
+    @Args('createZoneInput') createZoneInput: CreateZoneInput,
+    @CurrentUser() user: any,
+  ) {
+    return this.zoneService.create(createZoneInput, user.id, user.role);
   }
 
   @Query(() => [Zone], { name: 'zones' })
@@ -167,5 +171,14 @@ export class ZoneResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   getAllCurrentAssignments(@CurrentUser() user: any) {
     return this.zoneService.getAllCurrentAssignments(user.id, user.role);
+  }
+
+  @Query(() => [ZoneProspection], { name: 'zoneProspections' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  getZoneProspections(
+    @Args('zoneId', { type: () => Int }) zoneId: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.zoneService.getZoneProspections(zoneId, user.id, user.role);
   }
 }

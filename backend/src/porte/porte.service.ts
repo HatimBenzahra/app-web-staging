@@ -261,6 +261,7 @@ export class PorteService {
             commentaire: data.commentaire || null,
             rdvDate: data.rdvDate || null,
             rdvTime: data.rdvTime || null,
+            duree: data.duree ?? null,
             commercialId: userRole === 'commercial' ? userId : immeuble?.commercialId,
             managerId: userRole === 'manager' ? userId : immeuble?.managerId,
           },

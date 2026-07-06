@@ -1,6 +1,87 @@
 import { mapboxCache } from '@/services/core'
 
 /**
+ * Génère un Feature<Polygon> GeoJSON approximant un cercle géodésique.
+ * Utilisé pour l'affichage des zones "cercle" héritées (xOrigin/yOrigin/rayon).
+ * @param {[number, number]} center - [longitude, latitude]
+ * @param {number} radiusInMeters - Rayon en mètres
+ * @param {number} [points=64] - Nombre de segments du polygone
+ * @returns {{type: 'Feature', geometry: {type: 'Polygon', coordinates: number[][][]}, properties: Object}}
+ */
+export function createGeoJSONCircle(center, radiusInMeters, points = 64) {
+  const coords = { latitude: center[1], longitude: center[0] }
+  const km = radiusInMeters / 1000
+  const ret = []
+  const distanceX = km / (111.32 * Math.cos((coords.latitude * Math.PI) / 180))
+  const distanceY = km / 110.574
+  let theta, x, y
+  for (let i = 0; i < points; i++) {
+    theta = (i / points) * (2 * Math.PI)
+    x = distanceX * Math.cos(theta)
+    y = distanceY * Math.sin(theta)
+    ret.push([coords.longitude + x, coords.latitude + y])
+  }
+  ret.push(ret[0])
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [ret] },
+    properties: {},
+  }
+}
+
+/**
+ * Retourne la géométrie GeoJSON d'une zone en gérant le modèle mixte :
+ * - Zone polygone (nouvelle) : Feature<Polygon> construit depuis `zone.polygon`.
+ * - Zone cercle (héritée) : cercle généré depuis `xOrigin`/`yOrigin`/`rayon`.
+ * @param {{polygon?: number[][], xOrigin?: number, yOrigin?: number, rayon?: number}} zone
+ * @returns {{type: 'Feature', geometry: {type: 'Polygon', coordinates: number[][][]}, properties: Object}|null}
+ */
+export function zoneToGeoJSON(zone) {
+  if (!zone) return null
+
+  if (Array.isArray(zone.polygon) && zone.polygon.length > 0) {
+    return {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [zone.polygon] },
+      properties: {},
+    }
+  }
+
+  if (zone.xOrigin != null && zone.yOrigin != null && zone.rayon != null) {
+    return createGeoJSONCircle([zone.xOrigin, zone.yOrigin], zone.rayon)
+  }
+
+  return null
+}
+
+/**
+ * Calcule la superficie (km²) d'un anneau polygonal fermé `[[lng,lat], ...]`
+ * via la formule du lacet (shoelace) appliquée sur une projection
+ * équirectangulaire locale (cohérente avec createGeoJSONCircle).
+ * @param {number[][]} ring - Anneau fermé de coordonnées [longitude, latitude]
+ * @returns {number} Superficie en km²
+ */
+export function polygonAreaKm2(ring) {
+  if (!Array.isArray(ring) || ring.length < 4) return 0
+
+  const latAvgDeg = ring.reduce((sum, point) => sum + point[1], 0) / ring.length
+  const latRad = (latAvgDeg * Math.PI) / 180
+  const metersPerDegLat = 110574
+  const metersPerDegLng = 111320 * Math.cos(latRad)
+
+  let area = 0
+  for (let i = 0; i < ring.length - 1; i++) {
+    const x1 = ring[i][0] * metersPerDegLng
+    const y1 = ring[i][1] * metersPerDegLat
+    const x2 = ring[i + 1][0] * metersPerDegLng
+    const y2 = ring[i + 1][1] * metersPerDegLat
+    area += x1 * y2 - x2 * y1
+  }
+
+  return Math.abs(area / 2) / 1e6
+}
+
+/**
  * Fonction pour récupérer l'adresse via reverse geocoding Mapbox AVEC CACHE
  */
 export const fetchLocationName = async (longitude, latitude) => {

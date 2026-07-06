@@ -1,11 +1,14 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { calculateStatsForStatus } from '../porte/porte-status.constants';
 import { CreateZoneInput, UpdateZoneInput, UserType } from './zone.dto';
+import { centroid, enclosingRadiusMeters, parseRing } from './zone.geometry';
 
 @Injectable()
 export class ZoneService {
@@ -331,9 +334,51 @@ export class ZoneService {
     });
   }
 
-  async create(data: CreateZoneInput) {
+  /**
+   * Dérive le centre (xOrigin/yOrigin) et le rayon englobant (mètres) d'un
+   * polygone GeoJSON. Traduit toute erreur de géométrie en BadRequestException.
+   */
+  private deriveCircleFromPolygon(polygon: number[][]): {
+    xOrigin: number;
+    yOrigin: number;
+    rayon: number;
+  } {
+    try {
+      const ring = parseRing(polygon);
+      const center = centroid(ring);
+      return { ...center, rayon: enclosingRadiusMeters(center, ring) };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'polygon invalide',
+      );
+    }
+  }
+
+  async create(data: CreateZoneInput, userId?: number, userRole?: string) {
+    const { polygon, xOrigin, yOrigin, rayon, ...rest } = data;
+
+    // Un manager ne crée que des zones qui lui appartiennent : on force managerId
+    // à son id (écrase toute valeur cliente). admin/directeur : comportement inchangé.
+    if (userRole === 'manager' && userId !== undefined) {
+      rest.managerId = userId;
+    }
+
+    // Zone polygonale : on calcule et persiste xOrigin/yOrigin/rayon depuis le polygone.
+    if (polygon !== undefined && polygon !== null) {
+      return this.prisma.zone.create({
+        data: { ...rest, polygon, ...this.deriveCircleFromPolygon(polygon) },
+      });
+    }
+
+    // Zone cercle (chemin historique) : xOrigin/yOrigin/rayon sont requis.
+    if (xOrigin === undefined || yOrigin === undefined || rayon === undefined) {
+      throw new BadRequestException(
+        'Une zone requiert soit un polygon, soit xOrigin, yOrigin et rayon.',
+      );
+    }
+
     return this.prisma.zone.create({
-      data,
+      data: { ...rest, xOrigin, yOrigin, rayon },
     });
   }
 
@@ -969,8 +1014,160 @@ export class ZoneService {
     }
   }
 
+  /**
+   * Vérifie qu'un utilisateur a le droit de consulter les prospections d'une zone.
+   * Même logique que getZoneStatistics :
+   * - admin : tout
+   * - directeur : ses zones OU les zones où son équipe (managers/commerciaux) a été assignée
+   * - manager : ses zones OU les zones où ses commerciaux ont été assignés
+   * - commercial : les zones où il a été assigné (en cours ou historique)
+   */
+  private async assertZoneProspectionAccess(
+    zoneId: number,
+    userId: number,
+    userRole: string,
+  ) {
+    if (userRole === 'admin') return;
+
+    const zone = await this.prisma.zone.findUnique({ where: { id: zoneId } });
+    if (!zone) {
+      throw new NotFoundException('Zone not found');
+    }
+
+    const wasAssigned = async (
+      userIds: number[],
+      userTypes: UserType[],
+    ): Promise<boolean> => {
+      if (userIds.length === 0) return false;
+      const where = {
+        zoneId,
+        userId: { in: userIds },
+        userType: { in: userTypes },
+      };
+      const current = await this.prisma.zoneEnCours.findFirst({ where });
+      if (current) return true;
+      const history = await this.prisma.historiqueZone.findFirst({ where });
+      return history !== null;
+    };
+
+    switch (userRole) {
+      case 'directeur': {
+        if (zone.directeurId === userId) return;
+        const team = await this.getTeamUnderDirector(userId);
+        if (
+          await wasAssigned(
+            [userId, ...team.managers, ...team.commercials],
+            [UserType.MANAGER, UserType.COMMERCIAL, UserType.DIRECTEUR],
+          )
+        ) {
+          return;
+        }
+        break;
+      }
+
+      case 'manager': {
+        if (zone.managerId === userId) return;
+        const commercialIds = await this.getCommercialsUnderManager(userId);
+        if (
+          await wasAssigned(
+            [userId, ...commercialIds],
+            [UserType.MANAGER, UserType.COMMERCIAL],
+          )
+        ) {
+          return;
+        }
+        break;
+      }
+
+      case 'commercial': {
+        if (await wasAssigned([userId], [UserType.COMMERCIAL])) {
+          return;
+        }
+        break;
+      }
+    }
+
+    throw new ForbiddenException('Access denied');
+  }
+
+  /**
+   * Liste les prospections (changements de statut horodatés) des portes d'une zone.
+   * Source : StatusHistorique dont porte.immeuble.zoneId === zoneId, trié du plus
+   * récent au plus ancien.
+   */
+  async getZoneProspections(zoneId: number, userId: number, userRole: string) {
+    await this.assertZoneProspectionAccess(zoneId, userId, userRole);
+
+    const historiques = await this.prisma.statusHistorique.findMany({
+      where: {
+        porte: {
+          immeuble: {
+            zoneId,
+          },
+        },
+      },
+      include: {
+        porte: {
+          select: {
+            id: true,
+            numero: true,
+            immeuble: {
+              select: {
+                id: true,
+                adresse: true,
+              },
+            },
+          },
+        },
+        commercial: {
+          select: {
+            id: true,
+            nom: true,
+            prenom: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return historiques.map((h) => ({
+      immeubleId: h.porte.immeuble.id,
+      immeubleAdresse: h.porte.immeuble.adresse,
+      porteId: h.porte.id,
+      porteNumero: h.porte.numero,
+      commercialId: h.commercial?.id ?? null,
+      commercialNom: h.commercial
+        ? `${h.commercial.prenom} ${h.commercial.nom}`
+        : null,
+      statut: h.statut,
+      date: h.createdAt,
+      dureeSec: h.duree ?? null,
+    }));
+  }
+
   async update(data: UpdateZoneInput) {
-    const { id, ...updateData } = data;
+    const { id, polygon, ...updateData } = data;
+
+    // Nouveau polygone fourni : recalcule et persiste xOrigin/yOrigin/rayon.
+    if (polygon !== undefined && polygon !== null) {
+      return this.prisma.zone.update({
+        where: { id },
+        data: { ...updateData, polygon, ...this.deriveCircleFromPolygon(polygon) },
+      });
+    }
+
+    // polygon explicitement null : la zone redevient un cercle (colonne remise à NULL),
+    // xOrigin/yOrigin/rayon existants sont conservés.
+    if (polygon === null) {
+      return this.prisma.zone.update({
+        where: { id },
+        data: { ...updateData, polygon: Prisma.DbNull },
+      });
+    }
+
+    // polygon absent : chemin cercle inchangé.
     return this.prisma.zone.update({
       where: { id },
       data: updateData,

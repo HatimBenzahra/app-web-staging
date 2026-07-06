@@ -7,6 +7,7 @@ export const CREATE_ZONE = `
     createZone(createZoneInput: $createZoneInput) {
       id
       nom
+      polygon
       xOrigin
       yOrigin
       rayon
@@ -23,6 +24,7 @@ export const UPDATE_ZONE = `
     updateZone(updateZoneInput: $updateZoneInput) {
       id
       nom
+      polygon
       xOrigin
       yOrigin
       rayon
@@ -39,6 +41,7 @@ export const REMOVE_ZONE = `
     removeZone(id: $id) {
       id
       nom
+      polygon
       xOrigin
       yOrigin
       rayon

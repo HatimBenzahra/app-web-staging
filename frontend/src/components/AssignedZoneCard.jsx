@@ -12,6 +12,7 @@ import { MapPin, Calendar, Maximize2, X, Lock, Unlock, Building2 } from 'lucide-
 import { MapSkeleton } from '@/components/LoadingSkeletons'
 import { mapboxCache } from '@/services/core'
 import { logError } from '@/services/core'
+import { zoneToGeoJSON, polygonAreaKm2 } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
 
 // Set Mapbox access token
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
@@ -49,53 +50,6 @@ function getZoneColor(zoneId) {
     '#f97316', // Dark Orange
   ]
   return colors[zoneId % colors.length]
-}
-
-function createGeoJSONCircle(center, radiusInMeters, points = 64) {
-  const coords = { latitude: center[1], longitude: center[0] }
-  const km = radiusInMeters / 1000
-  const ret = []
-  const distanceX = km / (111.32 * Math.cos((coords.latitude * Math.PI) / 180))
-  const distanceY = km / 110.574
-  let theta, x, y
-  for (let i = 0; i < points; i++) {
-    theta = (i / points) * (2 * Math.PI)
-    x = distanceX * Math.cos(theta)
-    y = distanceY * Math.sin(theta)
-    ret.push([coords.longitude + x, coords.latitude + y])
-  }
-  ret.push(ret[0])
-  return {
-    type: 'Feature',
-    geometry: { type: 'Polygon', coordinates: [ret] },
-    properties: {},
-  }
-}
-
-function getImmeubleMarkerProps(immeuble) {
-  const totalPortes = (immeuble.portes || []).length
-  const prospectees = (immeuble.portes || []).filter(p => p.statut !== 'NON_VISITE').length
-  const couverture = totalPortes > 0 ? Math.round((prospectees / totalPortes) * 100) : 0
-  const contrats = (immeuble.portes || [])
-    .filter(p => p.statut === 'CONTRAT_SIGNE')
-    .reduce((sum, p) => sum + (p.nbContrats || 1), 0)
-
-  let colorClass, progressColor
-  if (couverture === 0) {
-    colorClass = 'bg-gray-500 hover:bg-gray-600'
-    progressColor = '#6b7280'
-  } else if (couverture < 50) {
-    colorClass = 'bg-amber-500 hover:bg-amber-600'
-    progressColor = '#f59e0b'
-  } else if (couverture < 100) {
-    colorClass = 'bg-blue-600 hover:bg-blue-700'
-    progressColor = '#2563eb'
-  } else {
-    colorClass = 'bg-emerald-500 hover:bg-emerald-600'
-    progressColor = '#10b981'
-  }
-
-  return { totalPortes, couverture, contrats, colorClass, progressColor }
 }
 
 const fetchLocationName = async (longitude, latitude) => {
@@ -191,9 +145,18 @@ export default function AssignedZoneCard({
     return zone?.id ? getZoneColor(zone.id) : '#3388ff'
   }, [zone?.id])
 
-  const circleGeoJSON = useMemo(() => {
-    if (!zone?.xOrigin || !zone?.yOrigin || !zone?.rayon) return null
-    return createGeoJSONCircle([zone.xOrigin, zone.yOrigin], zone.rayon)
+  // Géométrie de la zone (modèle mixte : polygone récent ou cercle hérité)
+  const zoneGeoJSON = useMemo(() => zoneToGeoJSON(zone), [zone])
+
+  // Superficie affichée : vraie aire du polygone, sinon aire du disque (cercle hérité)
+  const surfaceKm2 = useMemo(() => {
+    if (Array.isArray(zone?.polygon) && zone.polygon.length > 0) {
+      return polygonAreaKm2(zone.polygon)
+    }
+    if (zone?.rayon != null) {
+      return Math.PI * Math.pow(zone.rayon / 1000, 2)
+    }
+    return 0
   }, [zone])
 
   // Filtrer les immeubles qui ont des coordonnées valides
@@ -451,9 +414,9 @@ export default function AssignedZoneCard({
             )
           })}
 
-          {/* Cercle de la zone - seulement si on a une zone */}
-          {circleGeoJSON && !showAllImmeubles && (
-            <Source id="zone-circle" type="geojson" data={circleGeoJSON}>
+          {/* Géométrie de la zone (polygone ou cercle) - seulement si on a une zone */}
+          {zoneGeoJSON && !showAllImmeubles && (
+            <Source id="zone-circle" type="geojson" data={zoneGeoJSON}>
               <Layer
                 id="zone-fill"
                 type="fill"
@@ -612,7 +575,7 @@ export default function AssignedZoneCard({
                         Surface totale
                       </p>
                       <p className="text-xl font-bold">
-                        {(Math.PI * Math.pow(zone.rayon / 1000, 2)).toFixed(1)} km²
+                        {surfaceKm2.toFixed(1)} km²
                       </p>
                     </div>
                   </div>
@@ -697,7 +660,7 @@ export default function AssignedZoneCard({
                         Surface
                       </p>
                       <p className="font-semibold">
-                        {(Math.PI * Math.pow(zone.rayon / 1000, 2)).toFixed(1)} km²
+                        {surfaceKm2.toFixed(1)} km²
                       </p>
                     </div>
                     <div>

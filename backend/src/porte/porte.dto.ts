@@ -60,6 +60,9 @@ export class Porte {
   @Field({ nullable: true })
   commentaire?: string;
 
+  @Field(() => Int, { nullable: true })
+  duree?: number;
+
   @Field({ nullable: true })
   derniereVisite?: Date;
 
@@ -226,6 +229,12 @@ export class UpdatePorteInput {
   @IsOptional()
   @IsString()
   commentaire?: string;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  duree?: number;
 
   @Field({ nullable: true })
   @IsOptional()

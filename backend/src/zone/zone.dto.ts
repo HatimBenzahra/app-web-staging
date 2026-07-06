@@ -7,6 +7,8 @@ import {
   Min,
   IsEnum,
 } from 'class-validator';
+import { GraphQLJSON } from 'graphql-type-json';
+import type { Prisma } from '@prisma/client';
 import { Immeuble } from '../immeuble/immeuble.dto';
 
 export enum UserType {
@@ -37,6 +39,10 @@ export class Zone {
   @Field(() => Float)
   rayon: number;
 
+  // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée.
+  @Field(() => GraphQLJSON, { nullable: true })
+  polygon?: Prisma.JsonValue;
+
   @Field(() => Int, { nullable: true })
   directeurId?: number | null;
 
@@ -60,18 +66,25 @@ export class CreateZoneInput {
   @IsString()
   nom: string;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
-  xOrigin: number;
+  xOrigin?: number;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
-  yOrigin: number;
+  yOrigin?: number;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  rayon: number;
+  rayon?: number;
+
+  @Field(() => GraphQLJSON, { nullable: true })
+  @IsOptional()
+  polygon?: number[][];
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -107,6 +120,10 @@ export class UpdateZoneInput {
   @IsNumber()
   @Min(0)
   rayon?: number;
+
+  @Field(() => GraphQLJSON, { nullable: true })
+  @IsOptional()
+  polygon?: number[][] | null;
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -178,6 +195,36 @@ export class HistoriqueZone {
 
   @Field(() => Zone, { nullable: true })
   zone?: Zone;
+}
+
+@ObjectType()
+export class ZoneProspection {
+  @Field(() => Int)
+  immeubleId: number;
+
+  @Field()
+  immeubleAdresse: string;
+
+  @Field(() => Int)
+  porteId: number;
+
+  @Field()
+  porteNumero: string;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number | null;
+
+  @Field(() => String, { nullable: true })
+  commercialNom?: string | null;
+
+  @Field(() => String)
+  statut: string;
+
+  @Field()
+  date: Date;
+
+  @Field(() => Int, { nullable: true })
+  dureeSec?: number | null;
 }
 
 @InputType()

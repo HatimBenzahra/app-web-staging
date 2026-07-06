@@ -87,6 +87,7 @@ model Zone {
   xOrigin     Float
   yOrigin     Float
   rayon       Float
+  polygon     Json? // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée
   directeurId Int?
   managerId   Int?
   createdAt   DateTime @default(now())
@@ -254,6 +255,7 @@ model Porte {
   rdvDate         DateTime?
   rdvTime         String? // Ex: "14:30"
   commentaire     String?
+  duree           Int? // Durée de la dernière prospection chronométrée, en secondes
   derniereVisite  DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -342,6 +344,7 @@ model StatusHistorique {
   commentaire  String?
   rdvDate      DateTime?
   rdvTime      String?
+  duree        Int? // Durée de ce passage de prospection, en secondes
   createdAt    DateTime    @default(now())
 
   porte      Porte       @relation(fields: [porteId], references: [id], onDelete: Cascade)
