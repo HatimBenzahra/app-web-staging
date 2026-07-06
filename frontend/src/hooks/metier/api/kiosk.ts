@@ -1,16 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { kioskApi } from '@/services/api/kiosk'
-import type { KioskLogFilters, KioskDeployHistoryFilters, KioskCommandAction, KioskAlignTarget } from '@/services/api/kiosk'
+import type {
+  KioskLogFilters,
+  KioskDeployHistoryFilters,
+  KioskCommandAction,
+  KioskAlignTarget,
+} from '@/services/api/kiosk'
 
 export const kioskKeys = {
   all: ['kiosk'] as const,
   health: () => [...kioskKeys.all, 'health'] as const,
   devices: () => [...kioskKeys.all, 'devices'] as const,
+  device: (deviceId: string) => [...kioskKeys.all, 'device', deviceId] as const,
   releases: () => [...kioskKeys.all, 'releases'] as const,
   logs: (filters?: KioskLogFilters) => [...kioskKeys.all, 'logs', filters] as const,
+  deviceLogs: (deviceId: string, filters?: Omit<KioskLogFilters, 'deviceId'>) =>
+    [...kioskKeys.all, 'deviceLogs', deviceId, filters] as const,
   logTypes: () => [...kioskKeys.all, 'logTypes'] as const,
   versionMatrix: () => [...kioskKeys.all, 'versionMatrix'] as const,
-  deployHistory: (filters?: KioskDeployHistoryFilters) => [...kioskKeys.all, 'deployHistory', filters] as const,
+  deployHistory: (filters?: KioskDeployHistoryFilters) =>
+    [...kioskKeys.all, 'deployHistory', filters] as const,
 }
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -30,6 +39,26 @@ export function useKioskDevices() {
     queryFn: () => kioskApi.getDevices(),
     staleTime: 15_000,
     refetchInterval: 30_000,
+  })
+}
+
+export function useKioskDevice(deviceId?: string) {
+  return useQuery({
+    queryKey: kioskKeys.device(deviceId ?? ''),
+    queryFn: () => kioskApi.getDevice(deviceId as string),
+    enabled: Boolean(deviceId),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+}
+
+export function useKioskDeviceLogs(deviceId?: string, filters?: Omit<KioskLogFilters, 'deviceId'>) {
+  return useQuery({
+    queryKey: kioskKeys.deviceLogs(deviceId ?? '', filters),
+    queryFn: () => kioskApi.getDeviceLogs(deviceId as string, filters),
+    enabled: Boolean(deviceId),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }
 
@@ -80,8 +109,15 @@ export function useKioskDeployHistory(filters?: KioskDeployHistoryFilters) {
 export function useKioskSendCommand() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ deviceId, action, payload }: { deviceId: string; action: KioskCommandAction; payload?: Record<string, unknown> }) =>
-      kioskApi.sendDeviceCommand(deviceId, action, payload),
+    mutationFn: ({
+      deviceId,
+      action,
+      payload,
+    }: {
+      deviceId: string
+      action: KioskCommandAction
+      payload?: Record<string, unknown>
+    }) => kioskApi.sendDeviceCommand(deviceId, action, payload),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: kioskKeys.devices() })
     },

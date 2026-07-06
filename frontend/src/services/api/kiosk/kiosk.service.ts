@@ -23,6 +23,8 @@ export const kioskApi = {
 
   getDevices: () => kioskClient.get<KioskDevice[]>('/api/devices'),
 
+  getDevice: (deviceId: string) => kioskClient.get<KioskDevice>(`/api/devices/${deviceId}`),
+
   getReleases: () => kioskClient.get<KioskRelease[]>('/api/releases'),
 
   getLogs: (filters?: KioskLogFilters) =>

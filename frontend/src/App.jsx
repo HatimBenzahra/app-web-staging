@@ -37,6 +37,9 @@ const Gestion = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gestion/Gestion'))
 const Gamification = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gamification/Gamification'))
 const KioskOverview = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskOverview'))
 const KioskDevicesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDevicesPage'))
+const KioskDeviceDetailPage = lazy(
+  () => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeviceDetailPage')
+)
 const KioskReleasesPage = lazy(() => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskReleasesPage'))
 const KioskDeploymentsPage = lazy(
   () => import('@/pages-ADMIN-DIRECTEUR/kiosk/KioskDeploymentsPage')
@@ -360,6 +363,14 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <KioskDevicesPage />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/kiosk/tablettes/:deviceId"
+                    element={
+                      <SectionErrorBoundary>
+                        <KioskDeviceDetailPage />
                       </SectionErrorBoundary>
                     }
                   />

@@ -1,27 +1,25 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import {
   useKioskDevices,
   useKioskSendCommand,
-  useKioskRenameDevice,
   useKioskDeleteDevice,
 } from '@/hooks/metier/api/kiosk'
 import DevicesTab from './components/DevicesTab'
-import DeviceDetailSheet from './components/DeviceDetailSheet'
 import DeviceCommandDialog from './components/DeviceCommandDialog'
 import KioskErrorState from './components/KioskErrorState'
 
 export default function KioskDevicesPage() {
+  const navigate = useNavigate()
   const devicesQuery = useKioskDevices()
   const sendCommandMutation = useKioskSendCommand()
-  const renameDeviceMutation = useKioskRenameDevice()
   const deleteDeviceMutation = useKioskDeleteDevice()
 
   const [deviceFilters, setDeviceFilters] = useState({
     search: '',
     onlineFilter: 'all',
   })
-  const [selectedDevice, setSelectedDevice] = useState(null)
   const [commandDialog, setCommandDialog] = useState({ open: false, data: null })
 
   const handleDeviceCommand = (device, preset) => {
@@ -39,10 +37,9 @@ export default function KioskDevicesPage() {
     setCommandDialog({ open: true, data: device })
   }
 
-  const handleRenameDevice = device => {
-    const newName = window.prompt('Nouveau nom de la tablette', device.deviceName || '')
-    if (!newName || !newName.trim()) return
-    renameDeviceMutation.mutate({ deviceId: device.deviceId, deviceName: newName.trim() })
+  const handleSelectDevice = device => {
+    if (!device) return
+    navigate(`/kiosk/tablettes/${device.deviceId}`)
   }
 
   const handleDeleteDevice = device => {
@@ -90,15 +87,7 @@ export default function KioskDevicesPage() {
         setDeviceFilters={setDeviceFilters}
         onCommand={handleDeviceCommand}
         onDelete={handleDeleteDevice}
-        onSelectDevice={setSelectedDevice}
-      />
-
-      <DeviceDetailSheet
-        device={selectedDevice}
-        open={Boolean(selectedDevice)}
-        onClose={() => setSelectedDevice(null)}
-        onCommand={payload => sendCommandMutation.mutate(payload)}
-        onRename={handleRenameDevice}
+        onSelectDevice={handleSelectDevice}
       />
 
       <DeviceCommandDialog
