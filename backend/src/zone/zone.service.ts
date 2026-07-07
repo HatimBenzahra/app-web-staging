@@ -362,6 +362,52 @@ export class ZoneService {
     }
   }
 
+  /**
+   * Résout le type et le nom (snapshot) du créateur d'une zone selon son rôle.
+   * admin → type null + libellé 'Admin' ; utilisateur introuvable → nom null.
+   */
+  private async resolveCreatedBy(
+    userId?: number,
+    userRole?: string,
+  ): Promise<{
+    createdById: number | null;
+    createdByType: UserType | null;
+    createdByName: string | null;
+  }> {
+    if (userId === undefined) {
+      return { createdById: null, createdByType: null, createdByName: null };
+    }
+
+    if (userRole === 'admin') {
+      return { createdById: userId, createdByType: null, createdByName: 'Admin' };
+    }
+
+    const select = { prenom: true, nom: true };
+    let createdByType: UserType | null = null;
+    let user: { prenom: string; nom: string } | null = null;
+
+    switch (userRole) {
+      case 'manager':
+        createdByType = UserType.MANAGER;
+        user = await this.prisma.manager.findUnique({ where: { id: userId }, select });
+        break;
+      case 'directeur':
+        createdByType = UserType.DIRECTEUR;
+        user = await this.prisma.directeur.findUnique({ where: { id: userId }, select });
+        break;
+      case 'commercial':
+        createdByType = UserType.COMMERCIAL;
+        user = await this.prisma.commercial.findUnique({ where: { id: userId }, select });
+        break;
+    }
+
+    return {
+      createdById: userId,
+      createdByType,
+      createdByName: user ? `${user.prenom} ${user.nom}` : null,
+    };
+  }
+
   async create(data: CreateZoneInput, userId?: number, userRole?: string) {
     const { polygon, xOrigin, yOrigin, rayon, ...rest } = data;
 
@@ -371,10 +417,18 @@ export class ZoneService {
       rest.managerId = userId;
     }
 
+    // Snapshot du créateur (qui a créé la zone) pour l'historique.
+    const createdBy = await this.resolveCreatedBy(userId, userRole);
+
     // Zone polygonale : on calcule et persiste xOrigin/yOrigin/rayon depuis le polygone.
     if (polygon !== undefined && polygon !== null) {
       return this.prisma.zone.create({
-        data: { ...rest, polygon, ...this.deriveCircleFromPolygon(polygon) },
+        data: {
+          ...rest,
+          ...createdBy,
+          polygon,
+          ...this.deriveCircleFromPolygon(polygon),
+        },
       });
     }
 
@@ -386,7 +440,7 @@ export class ZoneService {
     }
 
     return this.prisma.zone.create({
-      data: { ...rest, xOrigin, yOrigin, rayon },
+      data: { ...rest, ...createdBy, xOrigin, yOrigin, rayon },
     });
   }
 

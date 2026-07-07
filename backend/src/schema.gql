@@ -1510,6 +1510,9 @@ type WinleadPlusUser {
 
 type Zone {
   createdAt: DateTime!
+  createdById: Int
+  createdByName: String
+  createdByType: UserType
   directeurId: Int
   id: Int!
   immeubles: [Immeuble!]

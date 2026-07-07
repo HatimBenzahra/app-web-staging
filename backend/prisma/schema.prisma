@@ -90,6 +90,9 @@ model Zone {
   polygon     Json? // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée
   directeurId Int?
   managerId   Int?
+  createdById   Int? // Id de l'utilisateur créateur (null si admin ou inconnu)
+  createdByType UserType? // Type du créateur (null pour un admin : pas de valeur ADMIN dans l'enum)
+  createdByName String? // Snapshot du nom du créateur à la création (dénormalisé, cf. commercialNom)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

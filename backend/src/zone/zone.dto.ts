@@ -9,14 +9,13 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { GraphQLJSON } from 'graphql-type-json';
+import { UserType } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { Immeuble } from '../immeuble/immeuble.dto';
 
-export enum UserType {
-  COMMERCIAL = 'COMMERCIAL',
-  MANAGER = 'MANAGER',
-  DIRECTEUR = 'DIRECTEUR',
-}
+// On réutilise l'enum UserType généré par Prisma (source unique) plutôt que d'en
+// dupliquer une copie : les résultats Prisma restent directement assignables aux DTO.
+export { UserType };
 
 registerEnumType(UserType, {
   name: 'UserType',
@@ -49,6 +48,16 @@ export class Zone {
 
   @Field(() => Int, { nullable: true })
   managerId?: number | null;
+
+  // Créateur de la zone (snapshot pour l'historique).
+  @Field(() => Int, { nullable: true })
+  createdById?: number | null;
+
+  @Field(() => UserType, { nullable: true })
+  createdByType?: UserType | null;
+
+  @Field(() => String, { nullable: true })
+  createdByName?: string | null;
 
   @Field(() => [Immeuble], { nullable: true })
   immeubles?: Immeuble[];
