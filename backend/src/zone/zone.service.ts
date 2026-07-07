@@ -619,6 +619,7 @@ export class ZoneService {
       include: {
         immeubles: true,
       },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
