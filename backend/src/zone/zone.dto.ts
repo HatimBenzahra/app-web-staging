@@ -6,6 +6,7 @@ import {
   IsNumber,
   Min,
   IsEnum,
+  IsBoolean,
 } from 'class-validator';
 import { GraphQLJSON } from 'graphql-type-json';
 import type { Prisma } from '@prisma/client';
@@ -246,4 +247,11 @@ export class AssignZoneInput {
   @Field(() => UserType)
   @IsEnum(UserType)
   userType: UserType;
+
+  // Si false, n'assigne QUE l'utilisateur cible sans cascader sur ses subordonnés.
+  // Défaut = true pour préserver le comportement web admin/directeur.
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  cascade?: boolean;
 }

@@ -262,6 +262,7 @@ export class ZoneService {
     userType: UserType,
     requestUserId?: number,
     requestUserRole?: string,
+    cascade: boolean = true,
   ) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Vérifier que la zone existe
@@ -292,41 +293,48 @@ export class ZoneService {
       );
 
       // 4. CASCADE: Assigner les subordonnés selon le type d'utilisateur
-      if (userType === UserType.MANAGER) {
-        // Récupérer tous les commerciaux du manager
-        const commercialIds = await this.getCommercialsUnderManager(userId, tx);
-
-        // Assigner chaque commercial à la même zone
-        for (const commercialId of commercialIds) {
-          await this.assignSingleUserToZone(
-            zoneId,
-            commercialId,
-            UserType.COMMERCIAL,
+      // Désactivable (cascade=false) pour n'assigner QUE l'utilisateur cible
+      // (ex: flow mobile où le manager choisit explicitement les assignés).
+      if (cascade) {
+        if (userType === UserType.MANAGER) {
+          // Récupérer tous les commerciaux du manager
+          const commercialIds = await this.getCommercialsUnderManager(
+            userId,
             tx,
           );
-        }
-      } else if (userType === UserType.DIRECTEUR) {
-        // Récupérer tous les managers et commerciaux du directeur
-        const team = await this.getTeamUnderDirector(userId, tx);
 
-        // Assigner tous les managers
-        for (const managerId of team.managers) {
-          await this.assignSingleUserToZone(
-            zoneId,
-            managerId,
-            UserType.MANAGER,
-            tx,
-          );
-        }
+          // Assigner chaque commercial à la même zone
+          for (const commercialId of commercialIds) {
+            await this.assignSingleUserToZone(
+              zoneId,
+              commercialId,
+              UserType.COMMERCIAL,
+              tx,
+            );
+          }
+        } else if (userType === UserType.DIRECTEUR) {
+          // Récupérer tous les managers et commerciaux du directeur
+          const team = await this.getTeamUnderDirector(userId, tx);
 
-        // Assigner tous les commerciaux
-        for (const commercialId of team.commercials) {
-          await this.assignSingleUserToZone(
-            zoneId,
-            commercialId,
-            UserType.COMMERCIAL,
-            tx,
-          );
+          // Assigner tous les managers
+          for (const managerId of team.managers) {
+            await this.assignSingleUserToZone(
+              zoneId,
+              managerId,
+              UserType.MANAGER,
+              tx,
+            );
+          }
+
+          // Assigner tous les commerciaux
+          for (const commercialId of team.commercials) {
+            await this.assignSingleUserToZone(
+              zoneId,
+              commercialId,
+              UserType.COMMERCIAL,
+              tx,
+            );
+          }
         }
       }
 

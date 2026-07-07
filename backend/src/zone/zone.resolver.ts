@@ -123,6 +123,7 @@ export class ZoneResolver {
       input.userType,
       user.id,
       user.role,
+      input.cascade ?? true,
     );
   }
 
