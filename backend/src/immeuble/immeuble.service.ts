@@ -219,46 +219,12 @@ export class ImmeubleService {
       return data.zoneId;
     }
 
-    // b. Calcul géométrique UNIQUE à la création : zone contenant le point.
-    const geometricZoneId = await this.resolveZoneIdByGeometry(data);
-    if (geometricZoneId) {
-      return geometricZoneId;
-    }
-
-    // c. Fallback : zone active (ZoneEnCours) du commercial/manager.
-    let zoneId = data.zoneId;
-
-    if (!zoneId && data.commercialId) {
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.commercialId,
-            userType: 'COMMERCIAL',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
-
-    if (!zoneId && data.managerId) {
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.managerId,
-            userType: 'MANAGER',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
-
-    return zoneId;
+    // b. Appartenance PUREMENT géométrique, calculée une fois à la création :
+    //    le bâtiment est rattaché à la zone (du périmètre du créateur) qui
+    //    contient sa position. S'il n'est dans aucune zone → aucune zone
+    //    (zoneId = null). Pas de fallback sur la zone active du créateur : la
+    //    membership reflète la réalité géographique du tracé.
+    return this.resolveZoneIdByGeometry(data);
   }
 
   private async ensureImmeubleAccess(
