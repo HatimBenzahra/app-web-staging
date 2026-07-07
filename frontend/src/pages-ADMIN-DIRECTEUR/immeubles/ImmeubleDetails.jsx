@@ -31,7 +31,6 @@ export default function ImmeubleDetails() {
           {habitatMeta.label}
         </Badge>
       }
-      headerAccent={`border-l-4 ${habitatMeta.accentBorderLeft}`}
       data={immeubleData}
       personalInfo={personalInfo}
       statsCards={statsCards}

@@ -65,7 +65,6 @@ export function effectiveTypeHabitat(immeuble) {
  * @property {string} accentColor - Classe texte d'accent (ex. "text-blue-600")
  * @property {string} accentBg - Classe fond doux d'accent (ex. "bg-blue-500/10")
  * @property {string} accentBorder - Classe bordure d'accent (ex. "border-blue-500")
- * @property {string} accentBorderLeft - Classe bordure gauche d'accent (ex. "border-l-blue-500")
  * @property {string} badgeClasses - Classes complètes pour un badge (fond + texte)
  * @property {string} unitLabel - Libellé singulier de l'unité ("Étage" / "Foyer" / "Maison")
  * @property {string} unitLabelPlural - Libellé pluriel de l'unité
@@ -83,7 +82,6 @@ const HABITAT_CONFIG = {
     accentColor: 'text-blue-600',
     accentBg: 'bg-blue-500/10',
     accentBorder: 'border-blue-500',
-    accentBorderLeft: 'border-l-blue-500',
     badgeClasses: 'bg-blue-100 text-blue-800',
     unitLabel: 'Étage',
     unitLabelPlural: 'étages',
@@ -98,7 +96,6 @@ const HABITAT_CONFIG = {
     accentColor: 'text-emerald-600',
     accentBg: 'bg-emerald-500/10',
     accentBorder: 'border-emerald-500',
-    accentBorderLeft: 'border-l-emerald-500',
     badgeClasses: 'bg-emerald-100 text-emerald-800',
     unitLabel: 'Foyer',
     unitLabelPlural: 'foyers',
@@ -113,7 +110,6 @@ const HABITAT_CONFIG = {
     accentColor: 'text-amber-600',
     accentBg: 'bg-amber-500/10',
     accentBorder: 'border-amber-500',
-    accentBorderLeft: 'border-l-amber-500',
     badgeClasses: 'bg-amber-100 text-amber-800',
     unitLabel: 'Maison',
     unitLabelPlural: 'maisons',
