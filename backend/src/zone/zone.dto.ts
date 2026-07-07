@@ -67,6 +67,11 @@ export class Zone {
 
   @Field()
   updatedAt: Date;
+
+  // Rempli uniquement dans le contexte zonesForUser (date d'assignation de
+  // l'utilisateur courant), null sinon.
+  @Field(() => Date, { nullable: true })
+  assignedAt?: Date | null;
 }
 
 @InputType()

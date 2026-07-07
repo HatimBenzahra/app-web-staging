@@ -1509,6 +1509,7 @@ type WinleadPlusUser {
 }
 
 type Zone {
+  assignedAt: DateTime
   createdAt: DateTime!
   createdById: Int
   createdByName: String

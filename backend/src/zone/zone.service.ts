@@ -668,13 +668,26 @@ export class ZoneService {
               ],
             };
 
-    return this.prisma.zone.findMany({
+    const zones = await this.prisma.zone.findMany({
       where,
       include: {
         immeubles: true,
+        // Restreint à l'assignation de l'utilisateur courant pour exposer sa
+        // date d'assignation (filtrage côté mobile par date d'assignation).
+        zoneEnCours: {
+          where: { userId, userType },
+          select: { assignedAt: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // On n'expose que le champ assignedAt (date d'assignation de l'utilisateur
+    // courant) plutôt que le tableau zoneEnCours brut.
+    return zones.map(({ zoneEnCours, ...zone }) => ({
+      ...zone,
+      assignedAt: zoneEnCours[0]?.assignedAt ?? null,
+    }));
   }
 
   async assignToCommercial(
