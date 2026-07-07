@@ -116,6 +116,48 @@ export function enclosingRadiusMeters(
  * projection équirectangulaire locale centrée sur la latitude du centroïde.
  * Approximation adaptée aux zones de prospection (petites surfaces).
  */
+/**
+ * Test point-dans-anneau par lancer de rayon (ray casting standard).
+ * Convention GeoJSON : `lng` = x, `lat` = y. L'anneau est supposé déjà
+ * normalisé (ouvert, ≥ 3 sommets) — voir `parseRing`.
+ */
+export function pointInRing(lng: number, lat: number, ring: Ring): boolean {
+  let inside = false;
+  const n = ring.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Test point-dans-zone. Si la zone a un `polygon` valide (≥ 3 sommets via
+ * `parseRing`) on utilise le lancer de rayon ; sinon on retombe sur le disque
+ * hérité `haversineMeters(centre, point) <= rayon` (`xOrigin` = lng, `yOrigin` = lat).
+ * Un `polygon` présent mais invalide bascule sur le disque.
+ */
+export function pointInZone(
+  lng: number,
+  lat: number,
+  zone: { polygon?: unknown; xOrigin: number; yOrigin: number; rayon: number },
+): boolean {
+  if (zone.polygon != null) {
+    try {
+      return pointInRing(lng, lat, parseRing(zone.polygon));
+    } catch {
+      // polygon invalide → repli sur le disque hérité.
+    }
+  }
+  return haversineMeters(zone.yOrigin, zone.xOrigin, lat, lng) <= zone.rayon;
+}
+
 export function polygonAreaM2(ring: Ring): number {
   const validRing = parseRing(ring);
   const lat0 = centroid(validRing).yOrigin;

@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { parseRing, pointInZone, polygonAreaM2 } from '../zone/zone.geometry';
 import {
   CreateImmeubleInput,
   CreateQuartierInput,
@@ -107,7 +109,123 @@ export class ImmeubleService {
     }
   }
 
-  private async resolveZoneId(data: Pick<CreateImmeubleInput, 'zoneId' | 'commercialId' | 'managerId'>) {
+  /**
+   * Résout géométriquement la zone contenant le point (lat/lng) de l'immeuble,
+   * une seule fois à la création. Périmètre des zones candidates :
+   * - commercial (data.commercialId) : zones de SON manager (`managerId`) +
+   *   celles de SON directeur (`directeurId`) auquel il est directement rattaché ;
+   * - manager (data.managerId) : SES zones (`managerId`).
+   * Seules les zones AVEC géométrie (polygon non null OU rayon > 0) sont retenues,
+   * en une seule requête. Si plusieurs zones contiennent le point → la plus petite
+   * aire (`polygonAreaM2`, ou π·rayon² pour un cercle). Retourne l'id ou undefined.
+   */
+  private async resolveZoneIdByGeometry(
+    data: Pick<
+      CreateImmeubleInput,
+      'commercialId' | 'managerId' | 'latitude' | 'longitude'
+    >,
+  ): Promise<number | undefined> {
+    const { latitude, longitude } = data;
+    if (
+      latitude == null ||
+      longitude == null ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      return undefined;
+    }
+
+    // Déterminer le périmètre (managers / directeurs) dont dépendent les zones.
+    const managerIds = new Set<number>();
+    const directeurIds = new Set<number>();
+
+    if (data.commercialId) {
+      const commercial = await this.prisma.commercial.findUnique({
+        where: { id: data.commercialId },
+        select: { managerId: true, directeurId: true },
+      });
+      if (commercial?.managerId != null) managerIds.add(commercial.managerId);
+      if (commercial?.directeurId != null)
+        directeurIds.add(commercial.directeurId);
+    }
+
+    if (data.managerId != null) {
+      managerIds.add(data.managerId);
+    }
+
+    const orConditions: { managerId?: { in: number[] }; directeurId?: { in: number[] } }[] = [];
+    if (managerIds.size > 0) orConditions.push({ managerId: { in: [...managerIds] } });
+    if (directeurIds.size > 0) orConditions.push({ directeurId: { in: [...directeurIds] } });
+    if (orConditions.length === 0) {
+      return undefined;
+    }
+
+    // Une seule requête : zones du périmètre avec une géométrie exploitable.
+    const candidates = await this.prisma.zone.findMany({
+      where: {
+        OR: orConditions,
+        // polygon non null OU rayon > 0 (le disque hérité).
+        NOT: { polygon: { equals: Prisma.DbNull }, rayon: { lte: 0 } },
+      },
+      select: {
+        id: true,
+        polygon: true,
+        xOrigin: true,
+        yOrigin: true,
+        rayon: true,
+      },
+    });
+
+    let best: { id: number; area: number } | undefined;
+    for (const zone of candidates) {
+      if (!pointInZone(longitude, latitude, zone)) {
+        continue;
+      }
+      const area = this.zoneAreaM2(zone);
+      if (!best || area < best.area) {
+        best = { id: zone.id, area };
+      }
+    }
+
+    return best?.id;
+  }
+
+  /**
+   * Aire (m²) d'une zone : polygone via `polygonAreaM2`, sinon disque π·rayon².
+   * Sert uniquement à départager plusieurs zones contenant le même point (la plus petite gagne).
+   */
+  private zoneAreaM2(zone: {
+    polygon: unknown;
+    rayon: number;
+  }): number {
+    if (zone.polygon != null) {
+      try {
+        return polygonAreaM2(parseRing(zone.polygon));
+      } catch {
+        // polygon invalide → repli sur le disque.
+      }
+    }
+    return Math.PI * zone.rayon * zone.rayon;
+  }
+
+  private async resolveZoneId(
+    data: Pick<
+      CreateImmeubleInput,
+      'zoneId' | 'commercialId' | 'managerId' | 'latitude' | 'longitude'
+    >,
+  ) {
+    // a. zoneId explicite fourni → comportement inchangé.
+    if (data.zoneId) {
+      return data.zoneId;
+    }
+
+    // b. Calcul géométrique UNIQUE à la création : zone contenant le point.
+    const geometricZoneId = await this.resolveZoneIdByGeometry(data);
+    if (geometricZoneId) {
+      return geometricZoneId;
+    }
+
+    // c. Fallback : zone active (ZoneEnCours) du commercial/manager.
     let zoneId = data.zoneId;
 
     if (!zoneId && data.commercialId) {
@@ -679,11 +797,17 @@ export class ImmeubleService {
     }
 
     const ownership = await this.resolveCreationOwnership(data, userId, userRole);
-    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
     const latitude =
       data.points.reduce((sum, point) => sum + point.latitude, 0) / data.points.length;
     const longitude =
       data.points.reduce((sum, point) => sum + point.longitude, 0) / data.points.length;
+    // Résolution géométrique sur le centroïde du quartier (à la création).
+    const zoneId = await this.resolveZoneId({
+      ...data,
+      ...ownership,
+      latitude,
+      longitude,
+    });
     const nom =
       data.nom?.trim() ||
       `Quartier ${new Date().toLocaleDateString('fr-FR')}`;
