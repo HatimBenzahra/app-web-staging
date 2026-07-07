@@ -73,10 +73,18 @@ export interface Zone extends BaseEntity {
   immeubles?: Immeuble[]
 }
 
+/**
+ * Type de bâtiment (synchronisé avec l'enum backend TypeHabitat).
+ * IMMEUBLE = étages × portes ; MAISON = 1 foyer ; PAVILLON = N maisons.
+ */
+export type TypeHabitat = 'IMMEUBLE' | 'MAISON' | 'PAVILLON'
+
 export interface Immeuble extends BaseEntity {
   adresse: string
+  typeHabitat?: TypeHabitat
   nbEtages: number
   nbPortesParEtage: number
+  nbMaisonsPrevu?: number | null
   commercialId?: number | null
   managerId?: number | null
   zoneId?: number | null

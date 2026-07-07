@@ -16,10 +16,12 @@ export const GET_ZONES = `
       immeubles {
         id
         adresse
+        typeHabitat
         latitude
         longitude
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         commercialId
         zoneId
       }
@@ -65,10 +67,12 @@ export const GET_ZONE = `
       immeubles {
         id
         adresse
+        typeHabitat
         latitude
         longitude
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         commercialId
         zoneId
       }

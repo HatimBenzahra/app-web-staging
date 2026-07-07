@@ -69,7 +69,7 @@ export default function Immeubles() {
         <Card className="transition-all duration-300 hover:shadow-lg hover:border-primary/20 dark:hover:border-primary/20 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Immeubles
+              Total Bâtiments
             </CardTitle>
             <div className="p-2 bg-blue-500/10 rounded-full">
               <Building className="h-4 w-4 text-blue-500" />
@@ -79,7 +79,10 @@ export default function Immeubles() {
             <div className="text-3xl font-bold tracking-tight tabular-nums text-foreground">
               {stats.totalImmeubles}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Dans votre parc immobilier</p>
+            <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+              {stats.typeBreakdown.IMMEUBLE} immeubles · {stats.typeBreakdown.MAISON} maisons ·{' '}
+              {stats.typeBreakdown.PAVILLON} pavillons
+            </p>
           </CardContent>
         </Card>
 
@@ -136,9 +139,7 @@ export default function Immeubles() {
 
         <Card className="transition-all duration-300 hover:shadow-lg hover:border-primary/20 dark:hover:border-primary/20 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Non Visités
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Non Visités</CardTitle>
             <div className="p-2 bg-gray-500/10 rounded-full">
               <EyeOff className="h-4 w-4 text-gray-500" />
             </div>

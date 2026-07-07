@@ -7,10 +7,12 @@ export const GET_IMMEUBLES = `
     immeubles {
       id
       adresse
+      typeHabitat
       latitude
       longitude
       nbEtages
       nbPortesParEtage
+      nbMaisonsPrevu
       ascenseurPresent
       digitalCode
       commercialId
@@ -30,10 +32,12 @@ export const GET_IMMEUBLE = `
     immeuble(id: $id) {
       id
       adresse
+      typeHabitat
       latitude
       longitude
       nbEtages
       nbPortesParEtage
+      nbMaisonsPrevu
       ascenseurPresent
       digitalCode
       commercialId

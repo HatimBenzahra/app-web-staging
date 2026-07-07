@@ -11,6 +11,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { mapboxCache } from '@/services/core'
 import { logError } from '@/services/core'
 import AssignedZoneCard from '@/components/AssignedZoneCard'
+import { habitatBreakdown } from '@/constants/domain/habitat'
 
 const fetchLocationName = async (longitude, latitude) => {
   const roundedLng = longitude.toFixed(4)
@@ -92,14 +93,16 @@ export function useZoneDetailsLogic() {
         .map(assignment => assignment.userId) || []
     const assignedCommercials = commercials?.filter(c => assignedCommercialIds.includes(c.id)) || []
 
-    // Compter les immeubles dans cette zone
+    // Compter et ventiler les bâtiments de cette zone
     const immeubles_count = zone.immeubles?.length || 0
+    const typeBreakdown = habitatBreakdown(zone.immeubles || [])
 
     return {
       ...zone,
       name: zone.nom,
       region: `Zone ${zone.nom}`,
       immeubles_count,
+      typeBreakdown,
       manager:
         assignedCommercials.length > 0
           ? assignedCommercials.map(c => `${c.prenom} ${c.nom}`).join(', ')
@@ -197,7 +200,12 @@ export function useZoneDetailsLogic() {
       { label: 'Région', value: zoneData.region, icon: 'mapPin' },
       { label: 'Commerciaux assignés', value: zoneData.manager, icon: 'users' },
       { label: 'Nombre de commerciaux', value: zoneData.commercial_count, icon: 'users' },
-      { label: "Nombre d'immeubles", value: zoneData.immeubles_count, icon: 'building' },
+      { label: 'Nombre de bâtiments', value: zoneData.immeubles_count, icon: 'building' },
+      {
+        label: 'Répartition des bâtiments',
+        value: `${zoneData.typeBreakdown.IMMEUBLE} immeubles · ${zoneData.typeBreakdown.MAISON} maisons · ${zoneData.typeBreakdown.PAVILLON} pavillons`,
+        icon: 'building',
+      },
       { label: 'Rayon de couverture', value: zoneData.surface_area, icon: 'mapPin' },
       {
         label: 'Coordonnées centre',
@@ -224,9 +232,9 @@ export function useZoneDetailsLogic() {
         icon: 'calendar',
       },
       {
-        title: 'Immeubles visités',
+        title: 'Bâtiments visités',
         value: aggregatedStats.immeublesVisites,
-        description: 'Immeubles visités dans cette zone',
+        description: 'Bâtiments visités dans cette zone',
         icon: 'building',
       },
       {

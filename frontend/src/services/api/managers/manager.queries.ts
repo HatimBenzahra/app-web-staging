@@ -73,8 +73,10 @@ export const GET_MANAGER_PERSONAL = `
       immeubles {
         id
         adresse
+        typeHabitat
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         ascenseurPresent
         digitalCode
         latitude
@@ -226,8 +228,10 @@ export const GET_MANAGER_FULL = `
       immeubles {
         id
         adresse
+        typeHabitat
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         ascenseurPresent
         digitalCode
         commercialId
@@ -236,7 +240,7 @@ export const GET_MANAGER_FULL = `
         createdAt
         updatedAt
       }
-      
+
       personalStatistics {
         id
         commercialId

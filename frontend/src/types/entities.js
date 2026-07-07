@@ -52,10 +52,16 @@
  */
 
 /**
+ * @typedef {'IMMEUBLE'|'MAISON'|'PAVILLON'} TypeHabitat
+ */
+
+/**
  * @typedef {BaseEntity & Object} Immeuble
  * @property {string} adresse
+ * @property {TypeHabitat} [typeHabitat]
  * @property {number} nbEtages
  * @property {number} nbPortesParEtage
+ * @property {number|null} [nbMaisonsPrevu]
  * @property {boolean} ascenseurPresent
  * @property {string|null} digitalCode
  * @property {number} commercialId
