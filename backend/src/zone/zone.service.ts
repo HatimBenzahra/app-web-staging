@@ -504,6 +504,116 @@ export class ZoneService {
     return zone;
   }
 
+  /**
+   * Vérifie que le demandeur a le droit de consulter les zones d'un utilisateur cible.
+   * - le demandeur peut toujours consulter les siennes (même id ET même type que son rôle)
+   * - admin : tout le monde
+   * - directeur : les managers et commerciaux de son équipe
+   * - manager : ses commerciaux
+   * - commercial : uniquement lui-même
+   */
+  private async assertZonesForUserAccess(
+    userId: number,
+    userType: UserType,
+    requestUserId: number,
+    requestUserRole: string,
+  ) {
+    // Un utilisateur peut toujours consulter ses propres zones (id + type cohérents avec son rôle)
+    const roleUserType: Record<string, UserType> = {
+      commercial: UserType.COMMERCIAL,
+      manager: UserType.MANAGER,
+      directeur: UserType.DIRECTEUR,
+    };
+    if (
+      userId === requestUserId &&
+      roleUserType[requestUserRole] === userType
+    ) {
+      return;
+    }
+
+    switch (requestUserRole) {
+      case 'admin':
+        return;
+
+      case 'directeur': {
+        const team = await this.getTeamUnderDirector(requestUserId);
+        if (userType === UserType.MANAGER && team.managers.includes(userId)) {
+          return;
+        }
+        if (
+          userType === UserType.COMMERCIAL &&
+          team.commercials.includes(userId)
+        ) {
+          return;
+        }
+        break;
+      }
+
+      case 'manager': {
+        if (userType === UserType.COMMERCIAL) {
+          const commercialIds = await this.getCommercialsUnderManager(
+            requestUserId,
+          );
+          if (commercialIds.includes(userId)) {
+            return;
+          }
+        }
+        break;
+      }
+    }
+
+    throw new ForbiddenException('Access denied');
+  }
+
+  /**
+   * Source de vérité unifiée des zones à afficher pour un utilisateur, quelle que
+   * soit la façon dont elles ont été assignées (ZoneEnCours ou FK directe).
+   * - COMMERCIAL : zones où il est assigné via ZoneEnCours
+   * - MANAGER    : ses zones (FK managerId) OU zones assignées via ZoneEnCours
+   * - DIRECTEUR  : ses zones (FK directeurId) OU zones assignées via ZoneEnCours
+   */
+  async getZonesForUser(
+    userId: number,
+    userType: UserType,
+    requestUserId: number,
+    requestUserRole: string,
+  ) {
+    await this.assertZonesForUserAccess(
+      userId,
+      userType,
+      requestUserId,
+      requestUserRole,
+    );
+
+    const where: Prisma.ZoneWhereInput =
+      userType === UserType.COMMERCIAL
+        ? { zoneEnCours: { some: { userId, userType: UserType.COMMERCIAL } } }
+        : userType === UserType.MANAGER
+          ? {
+              OR: [
+                { managerId: userId },
+                { zoneEnCours: { some: { userId, userType: UserType.MANAGER } } },
+              ],
+            }
+          : {
+              OR: [
+                { directeurId: userId },
+                {
+                  zoneEnCours: {
+                    some: { userId, userType: UserType.DIRECTEUR },
+                  },
+                },
+              ],
+            };
+
+    return this.prisma.zone.findMany({
+      where,
+      include: {
+        immeubles: true,
+      },
+    });
+  }
+
   async assignToCommercial(
     zoneId: number,
     commercialId: number,

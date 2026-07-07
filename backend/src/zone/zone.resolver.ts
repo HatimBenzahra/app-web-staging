@@ -42,6 +42,16 @@ export class ZoneResolver {
     return this.zoneService.findOne(id, user.id, user.role);
   }
 
+  @Query(() => [Zone], { name: 'zonesForUser' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  getZonesForUser(
+    @Args('userId', { type: () => Int }) userId: number,
+    @Args('userType', { type: () => UserType }) userType: UserType,
+    @CurrentUser() user: any,
+  ) {
+    return this.zoneService.getZonesForUser(userId, userType, user.id, user.role);
+  }
+
   @Mutation(() => Zone)
   @Roles('admin', 'directeur', 'manager')
   updateZone(@Args('updateZoneInput') updateZoneInput: UpdateZoneInput) {
