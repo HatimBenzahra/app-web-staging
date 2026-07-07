@@ -1536,6 +1536,8 @@ type ZoneProspection {
   dureeSec: Int
   immeubleAdresse: String!
   immeubleId: Int!
+  managerId: Int
+  managerNom: String
   porteId: Int!
   porteNumero: String!
   statut: String!

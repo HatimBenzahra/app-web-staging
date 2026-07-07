@@ -1126,6 +1126,13 @@ export class ZoneService {
             prenom: true,
           },
         },
+        manager: {
+          select: {
+            id: true,
+            nom: true,
+            prenom: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -1140,6 +1147,10 @@ export class ZoneService {
       commercialId: h.commercial?.id ?? null,
       commercialNom: h.commercial
         ? `${h.commercial.prenom} ${h.commercial.nom}`
+        : null,
+      managerId: h.manager?.id ?? null,
+      managerNom: h.manager
+        ? `${h.manager.prenom} ${h.manager.nom}`
         : null,
       statut: h.statut,
       date: h.createdAt,

@@ -217,6 +217,12 @@ export class ZoneProspection {
   @Field(() => String, { nullable: true })
   commercialNom?: string | null;
 
+  @Field(() => Int, { nullable: true })
+  managerId?: number | null;
+
+  @Field(() => String, { nullable: true })
+  managerNom?: string | null;
+
   @Field(() => String)
   statut: string;
 
