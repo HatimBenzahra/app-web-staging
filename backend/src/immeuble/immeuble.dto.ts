@@ -1,4 +1,11 @@
-import { ObjectType, Field, Int, InputType, Float, registerEnumType } from '@nestjs/graphql';
+import {
+  ObjectType,
+  Field,
+  Int,
+  InputType,
+  Float,
+  registerEnumType,
+} from '@nestjs/graphql';
 import {
   IsNotEmpty,
   IsString,
@@ -22,6 +29,20 @@ export enum TypeHabitat {
 registerEnumType(TypeHabitat, {
   name: 'TypeHabitat',
   description: 'Type de lieu terrain prospecte',
+});
+
+export enum ImmeubleProgressFilter {
+  ALL = 'ALL',
+  INCOMPLETE = 'INCOMPLETE',
+  LOW = 'LOW',
+  MID = 'MID',
+  HIGH = 'HIGH',
+  COMPLETE = 'COMPLETE',
+}
+
+registerEnumType(ImmeubleProgressFilter, {
+  name: 'ImmeubleProgressFilter',
+  description: 'Filtre de progression de prospection (calcule cote serveur)',
 });
 
 @ObjectType()
@@ -79,6 +100,65 @@ export class Immeuble {
 }
 
 @InputType()
+export class ImmeublesPageInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @Field(() => Int, { nullable: true, defaultValue: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @Field(() => TypeHabitat, { nullable: true })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
+
+  @Field(() => ImmeubleProgressFilter, {
+    nullable: true,
+    defaultValue: ImmeubleProgressFilter.ALL,
+  })
+  @IsOptional()
+  @IsEnum(ImmeubleProgressFilter)
+  progress?: ImmeubleProgressFilter;
+}
+
+@ObjectType()
+export class ImmeublesPageSummary {
+  @Field(() => Int)
+  coveragePercent: number;
+
+  @Field(() => Int)
+  standaloneCount: number;
+}
+
+@ObjectType()
+export class ImmeublesPage {
+  @Field(() => [Immeuble])
+  items: Immeuble[];
+
+  @Field({ nullable: true })
+  nextCursor?: string;
+
+  @Field()
+  hasMore: boolean;
+
+  @Field(() => Int)
+  totalCount: number;
+
+  @Field(() => ImmeublesPageSummary)
+  summary: ImmeublesPageSummary;
+}
+
+@InputType()
 export class CreateImmeubleInput {
   @Field()
   @IsNotEmpty()
@@ -95,7 +175,10 @@ export class CreateImmeubleInput {
   @IsNumber()
   longitude?: number;
 
-  @Field(() => TypeHabitat, { nullable: true, defaultValue: TypeHabitat.IMMEUBLE })
+  @Field(() => TypeHabitat, {
+    nullable: true,
+    defaultValue: TypeHabitat.IMMEUBLE,
+  })
   @IsOptional()
   @IsEnum(TypeHabitat)
   typeHabitat?: TypeHabitat;

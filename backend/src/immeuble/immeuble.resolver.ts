@@ -5,6 +5,8 @@ import {
   Immeuble,
   CreateImmeubleInput,
   CreateQuartierInput,
+  ImmeublesPage,
+  ImmeublesPageInput,
   Quartier,
   UpdateImmeubleInput,
 } from './immeuble.dto';
@@ -33,7 +35,11 @@ export class ImmeubleResolver {
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.createMaison(createImmeubleInput, user.id, user.role);
+    return this.immeubleService.createMaison(
+      createImmeubleInput,
+      user.id,
+      user.role,
+    );
   }
 
   @Mutation(() => Quartier)
@@ -42,13 +48,30 @@ export class ImmeubleResolver {
     @Args('createQuartierInput') createQuartierInput: CreateQuartierInput,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.createQuartier(createQuartierInput, user.id, user.role);
+    return this.immeubleService.createQuartier(
+      createQuartierInput,
+      user.id,
+      user.role,
+    );
   }
 
   @Query(() => [Immeuble], { name: 'immeubles' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   findAll(@CurrentUser() user: any) {
     return this.immeubleService.findAll(user.id, user.role);
+  }
+
+  @Query(() => ImmeublesPage, { name: 'immeublesPage' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  immeublesPage(
+    @Args('input') input: ImmeublesPageInput,
+    @CurrentUser() user: any,
+  ) {
+    return this.immeubleService.findStandalonePaginated(
+      input,
+      user.id,
+      user.role,
+    );
   }
 
   @Query(() => [Quartier], { name: 'quartiers' })
@@ -59,7 +82,10 @@ export class ImmeubleResolver {
 
   @Query(() => Immeuble, { name: 'immeuble' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  findOne(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+  findOne(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.immeubleService.findOne(id, user.id, user.role);
   }
 
@@ -74,13 +100,19 @@ export class ImmeubleResolver {
 
   @Mutation(() => Immeuble)
   @Roles('admin', 'directeur')
-  removeImmeuble(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+  removeImmeuble(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.immeubleService.remove(id, user.id, user.role);
   }
 
   @Mutation(() => Immeuble)
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  removeTerrainLieu(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+  removeTerrainLieu(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.immeubleService.removeTerrainLieu(id, user.id, user.role);
   }
 
@@ -91,7 +123,12 @@ export class ImmeubleResolver {
     @Args('etage', { type: () => Int }) etage: number,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.addPorteToEtage(immeubleId, etage, user.id, user.role);
+    return this.immeubleService.addPorteToEtage(
+      immeubleId,
+      etage,
+      user.id,
+      user.role,
+    );
   }
 
   @Mutation(() => Immeuble)
@@ -101,18 +138,29 @@ export class ImmeubleResolver {
     @Args('etage', { type: () => Int }) etage: number,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.removePorteFromEtage(immeubleId, etage, user.id, user.role);
+    return this.immeubleService.removePorteFromEtage(
+      immeubleId,
+      etage,
+      user.id,
+      user.role,
+    );
   }
 
   @Mutation(() => Immeuble)
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  addEtageToImmeuble(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+  addEtageToImmeuble(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.immeubleService.addEtage(id, user.id, user.role);
   }
 
   @Mutation(() => Immeuble)
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  removeEtageFromImmeuble(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
+  removeEtageFromImmeuble(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.immeubleService.removeEtage(id, user.id, user.role);
   }
 
@@ -122,7 +170,11 @@ export class ImmeubleResolver {
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.createEmpty(createImmeubleInput, user.id, user.role);
+    return this.immeubleService.createEmpty(
+      createImmeubleInput,
+      user.id,
+      user.role,
+    );
   }
 
   @Mutation(() => Immeuble)
@@ -141,6 +193,11 @@ export class ImmeubleResolver {
     @Args('etage', { type: () => Int }) etage: number,
     @CurrentUser() user: any,
   ) {
-    return this.immeubleService.addPorteToEtageCapped(immeubleId, etage, user.id, user.role);
+    return this.immeubleService.addPorteToEtageCapped(
+      immeubleId,
+      etage,
+      user.id,
+      user.role,
+    );
   }
 }
