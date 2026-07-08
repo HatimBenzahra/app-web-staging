@@ -516,12 +516,18 @@ export class ZoneService {
   async findOne(id: number, userId: number, userRole: string) {
     // Admin can access all zones
     if (userRole === 'admin') {
-      return this.prisma.zone.findUnique({
+      const zone = await this.prisma.zone.findUnique({
         where: { id },
         include: {
           immeubles: true,
         },
       });
+
+      if (!zone) {
+        throw new NotFoundException('Zone not found');
+      }
+
+      return zone;
     }
 
     // Get the zone
