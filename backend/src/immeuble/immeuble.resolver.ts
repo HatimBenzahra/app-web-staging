@@ -9,11 +9,17 @@ import {
   ImmeublesPageInput,
   Quartier,
   UpdateImmeubleInput,
+  MobileMapPlace,
 } from './immeuble.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+type AuthenticatedUser = {
+  id: number;
+  role: string;
+};
 
 @Resolver(() => Immeuble)
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,7 +30,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createImmeuble(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.create(createImmeubleInput, user.id, user.role);
   }
@@ -33,7 +39,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createMaisonFromImmeubleInput(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.createMaison(
       createImmeubleInput,
@@ -46,7 +52,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createQuartier(
     @Args('createQuartierInput') createQuartierInput: CreateQuartierInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.createQuartier(
       createQuartierInput,
@@ -57,15 +63,37 @@ export class ImmeubleResolver {
 
   @Query(() => [Immeuble], { name: 'immeubles' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  findAll(@CurrentUser() user: any) {
+  findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.immeubleService.findAll(user.id, user.role);
+  }
+
+  @Query(() => [MobileMapPlace], { name: 'mobileManagerMapPlaces' })
+  @Roles('manager')
+  mobileManagerMapPlaces(
+    @Args('includeTeam', { type: () => Boolean, defaultValue: false })
+    includeTeam: boolean,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.immeubleService.findMobileManagerMapPlaces(
+      user.id,
+      includeTeam,
+    );
+  }
+
+  @Query(() => Immeuble, { name: 'mobileImmeubleDetail' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  mobileImmeubleDetail(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.immeubleService.findMobileDetail(id, user.id, user.role);
   }
 
   @Query(() => ImmeublesPage, { name: 'immeublesPage' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   immeublesPage(
     @Args('input') input: ImmeublesPageInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.findStandalonePaginated(
       input,
@@ -76,15 +104,21 @@ export class ImmeubleResolver {
 
   @Query(() => [Quartier], { name: 'quartiers' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  findQuartiers(@CurrentUser() user: any) {
+  findQuartiers(@CurrentUser() user: AuthenticatedUser) {
     return this.immeubleService.findQuartiers(user.id, user.role);
+  }
+
+  @Query(() => [Quartier], { name: 'mobileMapQuartiers' })
+  @Roles('admin', 'directeur', 'manager', 'commercial')
+  mobileMapQuartiers(@CurrentUser() user: AuthenticatedUser) {
+    return this.immeubleService.findMobileMapQuartiers(user.id, user.role);
   }
 
   @Query(() => Immeuble, { name: 'immeuble' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   findOne(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.findOne(id, user.id, user.role);
   }
@@ -93,7 +127,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   updateImmeuble(
     @Args('updateImmeubleInput') updateImmeubleInput: UpdateImmeubleInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.update(updateImmeubleInput, user.id, user.role);
   }
@@ -102,7 +136,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur')
   removeImmeuble(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.remove(id, user.id, user.role);
   }
@@ -111,7 +145,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   removeTerrainLieu(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.removeTerrainLieu(id, user.id, user.role);
   }
@@ -121,7 +155,7 @@ export class ImmeubleResolver {
   addPorteToEtage(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
     @Args('etage', { type: () => Int }) etage: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.addPorteToEtage(
       immeubleId,
@@ -136,7 +170,7 @@ export class ImmeubleResolver {
   removePorteFromEtage(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
     @Args('etage', { type: () => Int }) etage: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.removePorteFromEtage(
       immeubleId,
@@ -150,7 +184,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   addEtageToImmeuble(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.addEtage(id, user.id, user.role);
   }
@@ -159,7 +193,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   removeEtageFromImmeuble(
     @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.removeEtage(id, user.id, user.role);
   }
@@ -168,7 +202,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   createImmeubleEmpty(
     @Args('createImmeubleInput') createImmeubleInput: CreateImmeubleInput,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.createEmpty(
       createImmeubleInput,
@@ -181,7 +215,7 @@ export class ImmeubleResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   addEtageEmpty(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.addEtageEmpty(immeubleId, user.id, user.role);
   }
@@ -191,7 +225,7 @@ export class ImmeubleResolver {
   addPorteToEtageCapped(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
     @Args('etage', { type: () => Int }) etage: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.immeubleService.addPorteToEtageCapped(
       immeubleId,

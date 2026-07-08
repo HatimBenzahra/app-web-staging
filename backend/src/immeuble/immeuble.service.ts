@@ -12,6 +12,7 @@ import {
   CreateQuartierInput,
   ImmeubleProgressFilter,
   ImmeublesPageInput,
+  MobileMapPlace,
   TypeHabitat,
   UpdateImmeubleInput,
 } from './immeuble.dto';
@@ -441,6 +442,79 @@ export class ImmeubleService {
     });
   }
 
+  async findMobileManagerMapPlaces(
+    userId: number,
+    includeTeam: boolean,
+  ): Promise<MobileMapPlace[]> {
+    const rows = await this.prisma.immeuble.findMany({
+      where: {
+        latitude: { not: null },
+        longitude: { not: null },
+        ...(includeTeam
+          ? {
+              OR: [
+                { managerId: userId },
+                { commercial: { managerId: userId } },
+              ],
+            }
+          : { managerId: userId }),
+      },
+      select: {
+        id: true,
+        adresse: true,
+        latitude: true,
+        longitude: true,
+        typeHabitat: true,
+        nbEtages: true,
+        nbPortesParEtage: true,
+        nbMaisonsPrevu: true,
+        commercialId: true,
+        managerId: true,
+        zoneId: true,
+        quartierId: true,
+        updatedAt: true,
+        commercial: {
+          select: {
+            id: true,
+            nom: true,
+            prenom: true,
+            managerId: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return rows.map((immeuble) => {
+      const isTeam =
+        immeuble.commercialId != null &&
+        immeuble.commercial?.managerId === userId;
+      const creatorName = isTeam
+        ? [immeuble.commercial?.prenom, immeuble.commercial?.nom]
+            .filter(Boolean)
+            .join(' ')
+        : undefined;
+
+      return {
+        id: immeuble.id,
+        adresse: immeuble.adresse,
+        latitude: immeuble.latitude!,
+        longitude: immeuble.longitude!,
+        typeHabitat: immeuble.typeHabitat as TypeHabitat,
+        nbEtages: immeuble.nbEtages,
+        nbPortesParEtage: immeuble.nbPortesParEtage,
+        nbMaisonsPrevu: immeuble.nbMaisonsPrevu ?? undefined,
+        commercialId: immeuble.commercialId ?? undefined,
+        managerId: immeuble.managerId ?? undefined,
+        zoneId: immeuble.zoneId ?? undefined,
+        quartierId: immeuble.quartierId ?? undefined,
+        ownership: isTeam ? 'TEAM' : 'MINE',
+        creatorName,
+        updatedAt: immeuble.updatedAt,
+      };
+    });
+  }
+
   /**
    * Portée « MES propres immeubles » pour l'onglet Lieux (mobile). Ce n'est PAS
    * le périmètre d'équipe (`buildRoleWhere`) : un manager ne voit QUE ses propres
@@ -716,6 +790,72 @@ export class ImmeubleService {
     }
   }
 
+  async findMobileMapQuartiers(userId?: number, userRole?: string) {
+    if (userId === undefined || !userRole) {
+      throw new ForbiddenException('UNAUTHORIZED');
+    }
+
+    const include = {
+      include: {
+        immeubles: {
+          select: {
+            id: true,
+            adresse: true,
+            latitude: true,
+            longitude: true,
+            typeHabitat: true,
+            nbEtages: true,
+            nbPortesParEtage: true,
+            nbMaisonsPrevu: true,
+            commercialId: true,
+            managerId: true,
+            zoneId: true,
+            quartierId: true,
+            updatedAt: true,
+          },
+        },
+      },
+    };
+
+    switch (userRole) {
+      case 'admin':
+        return this.prisma.quartier.findMany(include);
+
+      case 'directeur':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { commercial: { directeurId: userId } },
+              { manager: { directeurId: userId } },
+              { zone: { directeurId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'manager':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { managerId: userId },
+              { commercial: { managerId: userId } },
+              { zone: { managerId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'commercial':
+        return this.prisma.quartier.findMany({
+          where: { commercialId: userId },
+          ...include,
+        });
+
+      default:
+        return [];
+    }
+  }
+
   async findOne(id: number, userId: number, userRole: string) {
     await this.ensureImmeubleAccess(id, userId, userRole);
 
@@ -735,6 +875,35 @@ export class ImmeubleService {
             derniereVisite: true,
             updatedAt: true,
           },
+        },
+      },
+    });
+  }
+
+  async findMobileDetail(id: number, userId: number, userRole: string) {
+    await this.ensureImmeubleAccess(id, userId, userRole);
+
+    return this.prisma.immeuble.findUnique({
+      where: { id },
+      include: {
+        portes: {
+          select: {
+            id: true,
+            numero: true,
+            nomPersonnalise: true,
+            etage: true,
+            immeubleId: true,
+            statut: true,
+            nbRepassages: true,
+            nbContrats: true,
+            rdvDate: true,
+            rdvTime: true,
+            commentaire: true,
+            derniereVisite: true,
+            duree: true,
+            updatedAt: true,
+          },
+          orderBy: [{ etage: 'asc' }, { numero: 'asc' }],
         },
       },
     });

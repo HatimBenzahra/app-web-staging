@@ -99,6 +99,54 @@ export class Immeuble {
   updatedAt: Date;
 }
 
+@ObjectType()
+export class MobileMapPlace {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  adresse: string;
+
+  @Field(() => Float)
+  latitude: number;
+
+  @Field(() => Float)
+  longitude: number;
+
+  @Field(() => TypeHabitat)
+  typeHabitat: TypeHabitat;
+
+  @Field(() => Int)
+  nbEtages: number;
+
+  @Field(() => Int)
+  nbPortesParEtage: number;
+
+  @Field(() => Int, { nullable: true })
+  nbMaisonsPrevu?: number;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  quartierId?: number;
+
+  @Field()
+  ownership: string;
+
+  @Field({ nullable: true })
+  creatorName?: string;
+
+  @Field()
+  updatedAt: Date;
+}
+
 @InputType()
 export class ImmeublesPageInput {
   @Field({ nullable: true })
