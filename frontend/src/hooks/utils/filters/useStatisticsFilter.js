@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { filterStatisticsByDate, filterPortesByDate } from './useDateFilter'
+import { filterPortesByDate } from './useDateFilter'
+import { buildingDoorCount, effectiveTypeHabitat } from '@/constants/domain/habitat'
 
 function sortPortesByRecentCreation(portes) {
   return [...portes].sort((a, b) => {
@@ -112,7 +113,7 @@ export function useImmeublesTableData(immeubles, appliedStartDate, appliedEndDat
         appliedStartDate,
         appliedEndDate
       )
-      const totalDoors = immeuble.nbEtages * immeuble.nbPortesParEtage
+      const totalDoors = buildingDoorCount(immeuble)
 
       // Calculer les statistiques à partir des portes
       const visitedAt = portesImmeuble.reduce((latest, porte) => {
@@ -168,6 +169,8 @@ export function useImmeublesTableData(immeubles, appliedStartDate, appliedEndDat
       return {
         id: immeuble.id,
         address: immeuble.adresse,
+        type: effectiveTypeHabitat(immeuble),
+        typeHabitat: immeuble.typeHabitat,
         floors: immeuble.nbEtages,
         doors_per_floor: immeuble.nbPortesParEtage,
         total_doors: totalDoors,

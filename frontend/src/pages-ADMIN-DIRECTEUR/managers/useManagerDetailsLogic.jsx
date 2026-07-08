@@ -20,6 +20,7 @@ import { Mic } from 'lucide-react'
 import { calculateRank, calculateRankFromStats, aggregateStats } from '@/utils/business/ranks'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { AdvancedDataTable } from '@/components/tableau'
@@ -654,6 +655,7 @@ export function useManagerDetailsLogic() {
 
   const immeublesColumns = [
     { header: 'Adresse', accessor: 'address', sortable: true, className: 'font-medium' },
+    { header: 'Type', accessor: 'type', sortable: true, className: 'hidden md:table-cell', cell: row => <BuildingTypeBadge type={row.type} className="text-[10px]" /> },
     { header: 'Étages', accessor: 'floors', className: 'hidden md:table-cell text-center', cell: row => `${row.floors} étages` },
     { header: 'Total Portes', accessor: 'total_doors', className: 'hidden lg:table-cell text-center' },
     { header: 'Couverture', accessor: 'couverture', sortable: true, className: 'hidden lg:table-cell text-center', cell: row => <Badge className={row.couverture >= 80 ? 'bg-green-100 text-green-800' : row.couverture >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>{row.couverture || 0}%</Badge> },
@@ -722,8 +724,8 @@ export function useManagerDetailsLogic() {
       },
     },
     {
-      title: 'Immeubles prospectés',
-      description: 'Liste des immeubles prospectés par ce manager',
+      title: 'Bâtiments prospectés',
+      description: 'Liste des bâtiments prospectés par ce manager',
       type: 'custom',
       component: 'ImmeublesTable',
       data: {
@@ -744,7 +746,7 @@ export function useManagerDetailsLogic() {
           onChangeEnd={immeubleDateFilter.setEndDate}
           onApply={immeubleDateFilter.handleApplyFilters}
           onReset={immeubleDateFilter.handleResetFilters}
-          title="Filtrer les immeubles"
+          title="Filtrer les bâtiments"
           showDateTypeSelector={true}
           dateType={immeubleDateType}
           onDateTypeChange={setImmeubleDateType}

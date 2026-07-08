@@ -404,9 +404,7 @@ export default function AssignedZoneCard({
                     <div className="font-semibold text-[13px]">{immeuble.adresse}</div>
                     <div className="text-gray-300">
                       {immeuble.nbEtages} ét. × {immeuble.nbPortesParEtage} ={' '}
-                      {totalPortes > 0
-                        ? totalPortes
-                        : immeuble.nbEtages * immeuble.nbPortesParEtage}{' '}
+                      {totalPortes > 0 ? totalPortes : buildingDoorCount(immeuble)}{' '}
                       portes
                     </div>
                     {totalPortes > 0 && (

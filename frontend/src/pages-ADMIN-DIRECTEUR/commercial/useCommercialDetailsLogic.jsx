@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Mic } from 'lucide-react'
 import { calculateRank, aggregateStats } from '@/utils/business/ranks'
 import { Badge } from '@/components/ui/badge'
+import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import UserRecordingsSection from '@/pages-ADMIN-DIRECTEUR/ecoutes/UserRecordingsSection'
 import { useDateFilter } from '@/hooks/utils/filters/useDateFilter'
@@ -317,6 +318,13 @@ export function useCommercialDetailsLogic() {
       className: 'font-medium',
     },
     {
+      header: 'Type',
+      accessor: 'type',
+      sortable: true,
+      className: 'hidden md:table-cell',
+      cell: row => <BuildingTypeBadge type={row.type} className="text-[10px]" />,
+    },
+    {
       header: 'Étages',
       accessor: 'floors',
       className: 'hidden md:table-cell text-center',
@@ -528,8 +536,8 @@ export function useCommercialDetailsLogic() {
       },
     },
     {
-      title: 'Immeubles prospectés',
-      description: 'Liste des immeubles prospectés par ce commercial avec leurs statistiques',
+      title: 'Bâtiments prospectés',
+      description: 'Liste des bâtiments prospectés par ce commercial avec leurs statistiques',
       type: 'custom',
       component: 'ImmeublesTable',
       data: {
@@ -549,7 +557,7 @@ export function useCommercialDetailsLogic() {
           onChangeEnd={immeubleDateFilter.setEndDate}
           onApply={immeubleDateFilter.handleApplyFilters}
           onReset={immeubleDateFilter.handleResetFilters}
-          title="Filtrer les immeubles"
+          title="Filtrer les bâtiments"
           showDateTypeSelector={true}
           dateType={immeubleDateType}
           onDateTypeChange={setImmeubleDateType}

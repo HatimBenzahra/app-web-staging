@@ -12,7 +12,8 @@ import {
 } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { Badge } from '@/components/ui/badge'
-import { effectiveTypeHabitat, getHabitatMeta, habitatBreakdown } from '@/constants/domain/habitat'
+import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
+import { habitatBreakdown } from '@/constants/domain/habitat'
 
 function calculnbcontrats(immeuble) {
   return (immeuble.portes || [])
@@ -127,16 +128,7 @@ export function useImmeublesLogic() {
         accessor: 'typeHabitat',
         sortable: true,
         className: 'hidden lg:table-cell',
-        cell: row => {
-          const meta = getHabitatMeta(effectiveTypeHabitat(row))
-          const TypeIcon = meta.Icon
-          return (
-            <Badge className={`${meta.badgeClasses} gap-1 text-[10px]`}>
-              <TypeIcon className="h-3 w-3" />
-              {meta.label}
-            </Badge>
-          )
-        },
+        cell: row => <BuildingTypeBadge immeuble={row} className="text-[10px]" />,
       },
       {
         header: 'Commercial',
