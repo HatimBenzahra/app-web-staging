@@ -1,30 +1,25 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import {
   useKioskDevices,
   useKioskSendCommand,
-  useKioskRenameDevice,
   useKioskDeleteDevice,
 } from '@/hooks/metier/api/kiosk'
-import { useSetDeviceCommercial } from '@/hooks/metier/api/gps-tracking'
 import DevicesTab from './components/DevicesTab'
-import DeviceDetailSheet from './components/DeviceDetailSheet'
 import DeviceCommandDialog from './components/DeviceCommandDialog'
 import KioskErrorState from './components/KioskErrorState'
 
 export default function KioskDevicesPage() {
+  const navigate = useNavigate()
   const devicesQuery = useKioskDevices()
   const sendCommandMutation = useKioskSendCommand()
-  const renameDeviceMutation = useKioskRenameDevice()
   const deleteDeviceMutation = useKioskDeleteDevice()
-  const setCommercialMutation = useSetDeviceCommercial()
 
   const [deviceFilters, setDeviceFilters] = useState({
     search: '',
     onlineFilter: 'all',
-    lockFilter: 'all',
   })
-  const [selectedDevice, setSelectedDevice] = useState(null)
   const [commandDialog, setCommandDialog] = useState({ open: false, data: null })
 
   const handleDeviceCommand = (device, preset) => {
@@ -42,20 +37,15 @@ export default function KioskDevicesPage() {
     setCommandDialog({ open: true, data: device })
   }
 
-  const handleRenameDevice = device => {
-    const newName = window.prompt('Nouveau nom de la tablette', device.deviceName || '')
-    if (!newName || !newName.trim()) return
-    renameDeviceMutation.mutate({ deviceId: device.deviceId, deviceName: newName.trim() })
+  const handleSelectDevice = device => {
+    if (!device) return
+    navigate(`/kiosk/tablettes/${device.deviceId}`)
   }
 
   const handleDeleteDevice = device => {
     if (window.confirm(`Supprimer la tablette ${device.deviceName || device.deviceId} ?`)) {
       deleteDeviceMutation.mutate(device.deviceId)
     }
-  }
-
-  const handleSetCommercial = ({ deviceId, commercialName }) => {
-    setCommercialMutation.mutate({ deviceId, commercialName })
   }
 
   if (devicesQuery.isLoading) {
@@ -96,18 +86,8 @@ export default function KioskDevicesPage() {
         deviceFilters={deviceFilters}
         setDeviceFilters={setDeviceFilters}
         onCommand={handleDeviceCommand}
-        onSetCommercial={handleSetCommercial}
-        onRename={handleRenameDevice}
         onDelete={handleDeleteDevice}
-        onSelectDevice={setSelectedDevice}
-      />
-
-      <DeviceDetailSheet
-        device={selectedDevice}
-        open={Boolean(selectedDevice)}
-        onClose={() => setSelectedDevice(null)}
-        onCommand={payload => sendCommandMutation.mutate(payload)}
-        onRename={handleRenameDevice}
+        onSelectDevice={handleSelectDevice}
       />
 
       <DeviceCommandDialog

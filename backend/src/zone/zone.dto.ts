@@ -6,14 +6,16 @@ import {
   IsNumber,
   Min,
   IsEnum,
+  IsBoolean,
 } from 'class-validator';
+import { GraphQLJSON } from 'graphql-type-json';
+import { UserType } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { Immeuble } from '../immeuble/immeuble.dto';
 
-export enum UserType {
-  COMMERCIAL = 'COMMERCIAL',
-  MANAGER = 'MANAGER',
-  DIRECTEUR = 'DIRECTEUR',
-}
+// On réutilise l'enum UserType généré par Prisma (source unique) plutôt que d'en
+// dupliquer une copie : les résultats Prisma restent directement assignables aux DTO.
+export { UserType };
 
 registerEnumType(UserType, {
   name: 'UserType',
@@ -37,11 +39,25 @@ export class Zone {
   @Field(() => Float)
   rayon: number;
 
+  // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée.
+  @Field(() => GraphQLJSON, { nullable: true })
+  polygon?: Prisma.JsonValue;
+
   @Field(() => Int, { nullable: true })
   directeurId?: number | null;
 
   @Field(() => Int, { nullable: true })
   managerId?: number | null;
+
+  // Créateur de la zone (snapshot pour l'historique).
+  @Field(() => Int, { nullable: true })
+  createdById?: number | null;
+
+  @Field(() => UserType, { nullable: true })
+  createdByType?: UserType | null;
+
+  @Field(() => String, { nullable: true })
+  createdByName?: string | null;
 
   @Field(() => [Immeuble], { nullable: true })
   immeubles?: Immeuble[];
@@ -51,6 +67,11 @@ export class Zone {
 
   @Field()
   updatedAt: Date;
+
+  // Rempli uniquement dans le contexte zonesForUser (date d'assignation de
+  // l'utilisateur courant), null sinon.
+  @Field(() => Date, { nullable: true })
+  assignedAt?: Date | null;
 }
 
 @InputType()
@@ -60,18 +81,25 @@ export class CreateZoneInput {
   @IsString()
   nom: string;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
-  xOrigin: number;
+  xOrigin?: number;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
-  yOrigin: number;
+  yOrigin?: number;
 
-  @Field(() => Float)
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  rayon: number;
+  rayon?: number;
+
+  @Field(() => GraphQLJSON, { nullable: true })
+  @IsOptional()
+  polygon?: number[][];
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -107,6 +135,10 @@ export class UpdateZoneInput {
   @IsNumber()
   @Min(0)
   rayon?: number;
+
+  @Field(() => GraphQLJSON, { nullable: true })
+  @IsOptional()
+  polygon?: number[][] | null;
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -180,6 +212,42 @@ export class HistoriqueZone {
   zone?: Zone;
 }
 
+@ObjectType()
+export class ZoneProspection {
+  @Field(() => Int)
+  immeubleId: number;
+
+  @Field()
+  immeubleAdresse: string;
+
+  @Field(() => Int)
+  porteId: number;
+
+  @Field()
+  porteNumero: string;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number | null;
+
+  @Field(() => String, { nullable: true })
+  commercialNom?: string | null;
+
+  @Field(() => Int, { nullable: true })
+  managerId?: number | null;
+
+  @Field(() => String, { nullable: true })
+  managerNom?: string | null;
+
+  @Field(() => String)
+  statut: string;
+
+  @Field()
+  date: Date;
+
+  @Field(() => Int, { nullable: true })
+  dureeSec?: number | null;
+}
+
 @InputType()
 export class AssignZoneInput {
   @Field(() => Int)
@@ -193,4 +261,11 @@ export class AssignZoneInput {
   @Field(() => UserType)
   @IsEnum(UserType)
   userType: UserType;
+
+  // Si false, n'assigne QUE l'utilisateur cible sans cascader sur ses subordonnés.
+  // Défaut = true pour préserver le comportement web admin/directeur.
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  cascade?: boolean;
 }

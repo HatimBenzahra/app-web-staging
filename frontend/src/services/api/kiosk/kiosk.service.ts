@@ -1,4 +1,4 @@
-import { kioskClient, secondaryKioskClient } from './kiosk.client'
+import { kioskClient } from './kiosk.client'
 import type {
   KioskHealthResponse,
   KioskDevice,
@@ -12,64 +12,50 @@ import type {
   KioskDeployHistoryFilters,
   KioskCommandAction,
   KioskSuccessResponse,
+  KioskAlignTarget,
+  KioskAlignResponse,
 } from './kiosk.types'
-
-// Fusionne les devices de plusieurs kiosks en dédoublonnant par tablette
-// (serialNumber sinon deviceId). Une tablette physique garde le même identifiant
-// sur tous les kiosks ; on conserve la remontée la plus fraîche (lastSeen).
-function mergeKioskDevices(...sources: KioskDevice[][]): KioskDevice[] {
-  const byDevice = new Map<string, KioskDevice>()
-  for (const list of sources) {
-    for (const d of list) {
-      const key = d.serialNumber || d.deviceId
-      const existing = byDevice.get(key)
-      const tNew = d.lastSeen ? new Date(d.lastSeen).getTime() : 0
-      const tOld = existing?.lastSeen ? new Date(existing.lastSeen).getTime() : 0
-      if (!existing || tNew >= tOld) byDevice.set(key, d)
-    }
-  }
-  return Array.from(byDevice.values())
-}
 
 export const kioskApi = {
   // ── Read ───────────────────────────────────────────────────────────────────
 
-  getHealth: () =>
-    kioskClient.get<KioskHealthResponse>('/api/health'),
+  getHealth: () => kioskClient.get<KioskHealthResponse>('/api/health'),
 
-  getDevices: async (): Promise<KioskDevice[]> => {
-    const primary = await kioskClient.get<KioskDevice[]>('/api/devices')
-    if (!secondaryKioskClient) return primary
-    let secondary: KioskDevice[] = []
-    try {
-      secondary = await secondaryKioskClient.get<KioskDevice[]>('/api/devices')
-    } catch {
-      // Kiosk secondaire optionnel : son indisponibilité ne doit pas casser la vue.
-    }
-    return mergeKioskDevices(primary, secondary)
-  },
+  getDevices: () => kioskClient.get<KioskDevice[]>('/api/devices'),
 
-  getReleases: () =>
-    kioskClient.get<KioskRelease[]>('/api/releases'),
+  getDevice: (deviceId: string) => kioskClient.get<KioskDevice>(`/api/devices/${deviceId}`),
+
+  getReleases: () => kioskClient.get<KioskRelease[]>('/api/releases'),
 
   getLogs: (filters?: KioskLogFilters) =>
-    kioskClient.get<KioskLogsResponse>('/api/logs', filters as Record<string, string | number | undefined>),
+    kioskClient.get<KioskLogsResponse>(
+      '/api/logs',
+      filters as Record<string, string | number | undefined>
+    ),
 
   getDeviceLogs: (deviceId: string, filters?: Omit<KioskLogFilters, 'deviceId'>) =>
-    kioskClient.get<KioskLogsResponse>(`/api/logs/device/${deviceId}`, filters as Record<string, string | number | undefined>),
+    kioskClient.get<KioskLogsResponse>(
+      `/api/logs/device/${deviceId}`,
+      filters as Record<string, string | number | undefined>
+    ),
 
-  getLogTypes: () =>
-    kioskClient.get<string[]>('/api/logs/types'),
+  getLogTypes: () => kioskClient.get<string[]>('/api/logs/types'),
 
-  getVersionMatrix: () =>
-    kioskClient.get<KioskVersionMatrixResponse>('/api/versions/matrix'),
+  getVersionMatrix: () => kioskClient.get<KioskVersionMatrixResponse>('/api/versions/matrix'),
 
   getDeployHistory: (filters?: KioskDeployHistoryFilters) =>
-    kioskClient.get<KioskDeployHistoryResponse>('/api/versions/history', filters as Record<string, string | number | undefined>),
+    kioskClient.get<KioskDeployHistoryResponse>(
+      '/api/versions/history',
+      filters as Record<string, string | number | undefined>
+    ),
 
   // ── Write ──────────────────────────────────────────────────────────────────
 
-  sendDeviceCommand: (deviceId: string, action: KioskCommandAction, payload?: Record<string, unknown>) =>
+  sendDeviceCommand: (
+    deviceId: string,
+    action: KioskCommandAction,
+    payload?: Record<string, unknown>
+  ) =>
     kioskClient.post<KioskSuccessResponse>(`/api/devices/${deviceId}/command`, { action, payload }),
 
   renameDevice: (deviceId: string, deviceName: string) =>
@@ -93,6 +79,8 @@ export const kioskApi = {
   deployToDevice: (deviceId: string, releaseId: string) =>
     kioskClient.post<KioskSuccessResponse>('/api/versions/deploy', { deviceId, releaseId }),
 
-  clearLogs: () =>
-    kioskClient.del<KioskSuccessResponse>('/api/logs'),
+  alignVersions: (target: KioskAlignTarget) =>
+    kioskClient.post<KioskAlignResponse>('/api/versions/align', { target }),
+
+  clearLogs: () => kioskClient.del<KioskSuccessResponse>('/api/logs'),
 }

@@ -20,6 +20,14 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import {
   CheckCircle,
   AlertTriangle,
   XCircle,
@@ -32,8 +40,12 @@ import {
   ShieldCheck,
   ShieldAlert,
   Wifi,
+  Layers,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react'
-import useDeviceCommercialNames from '../useDeviceCommercialNames'
+import { VersionText } from './versionPresentation'
+import { useDeviceCommercialNames } from '../useDeviceCommercialNames'
 
 const formatRelativeTime = value => {
   if (!value) return 'Inconnu'
@@ -115,13 +127,15 @@ export default function DeploymentsTab({
   deployHistory,
   loading,
   onDeploy,
+  onAlign,
+  aligning,
   deployHistoryFilters,
   setDeployHistoryFilters,
   devices,
   activeTab,
   setActiveTab,
 }) {
-  const { getCommercialName, getDeviceLabel } = useDeviceCommercialNames()
+  const { getCommercialName } = useDeviceCommercialNames()
   const rows = useMemo(() => versionMatrix?.matrix || [], [versionMatrix])
   const historyRows = useMemo(() => deployHistory?.entries || [], [deployHistory])
   const [matrixFilter, setMatrixFilter] = useState('all')
@@ -185,24 +199,13 @@ export default function DeploymentsTab({
       if (!passesFilter) return false
       if (!normalizedSearch) return true
 
-      const commercialName =
-        getCommercialName({
-          serialNumber: entry.deviceId,
-          deviceId: entry.deviceId,
-        }) || ''
-
-      const haystack = [
-        commercialName,
-        entry.deviceName || '',
-        entry.deviceId || '',
-        entry.deviceModel || '',
-      ]
+      const haystack = [entry.deviceName || '', entry.deviceId || '', entry.deviceModel || '']
         .join(' ')
         .toLowerCase()
 
       return haystack.includes(normalizedSearch)
     })
-  }, [rows, matrixFilter, matrixSearch, getCommercialName])
+  }, [rows, matrixFilter, matrixSearch])
 
   const filteredHistoryRows = useMemo(() => {
     if (historyStatusFilter === 'all') return historyRows
@@ -211,6 +214,44 @@ export default function DeploymentsTab({
 
   return (
     <div className="space-y-6">
+      {onAlign && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-md bg-primary/10 p-2 shrink-0">
+              <Layers className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-tight">Aligner la flotte</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pousse la dernière version active vers les tablettes en retard.
+              </p>
+            </div>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 shrink-0" disabled={aligning}>
+                {aligning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Layers className="h-4 w-4" />
+                )}
+                Aligner la flotte sur la dernière version
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Cible</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onAlign('kiosk')}>Kiosk</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAlign('prospection')}>
+                Prospection
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAlign('all')}>Toutes les apps</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-border/60 bg-card/70">
           <CardContent className="p-4">
@@ -377,10 +418,7 @@ export default function DeploymentsTab({
                       const prowinStatus = getVersionStatusUI(entry.prowin?.status)
                       const KioskIcon = kioskStatus.icon
                       const ProwinIcon = prowinStatus.icon
-                      const commercialName = getCommercialName({
-                        serialNumber: entry.deviceId,
-                        deviceId: entry.deviceId,
-                      })
+                      const commercialName = getCommercialName(entry.deviceId)
                       const isOutdated =
                         entry.kiosk?.status !== 'up_to_date' ||
                         entry.prowin?.status !== 'up_to_date'
@@ -403,15 +441,18 @@ export default function DeploymentsTab({
                               />
                               <div>
                                 <p className="text-sm font-semibold leading-tight">
-                                  {commercialName || 'Non assigné'}
+                                  {commercialName || entry.deviceName || entry.deviceId}
                                 </p>
-                                <p className="text-xs leading-tight text-muted-foreground">
-                                  {entry.deviceName || entry.deviceId}
-                                </p>
-                                {entry.deviceModel && (
+                                {commercialName ? (
                                   <p className="text-xs leading-tight text-muted-foreground">
-                                    {entry.deviceModel}
+                                    {entry.deviceName || entry.deviceId}
                                   </p>
+                                ) : (
+                                  entry.deviceModel && (
+                                    <p className="text-xs leading-tight text-muted-foreground">
+                                      {entry.deviceModel}
+                                    </p>
+                                  )
                                 )}
                               </div>
                             </div>
@@ -419,9 +460,11 @@ export default function DeploymentsTab({
 
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium tabular-nums">
-                                {entry.kiosk?.version || '—'}
-                              </span>
+                              <VersionText
+                                versionName={entry.kiosk?.version}
+                                versionCode={entry.kiosk?.versionCode}
+                                className="text-sm font-medium"
+                              />
                               <Badge
                                 variant="outline"
                                 className={`gap-1 text-xs ${kioskStatus.className}`}
@@ -434,9 +477,11 @@ export default function DeploymentsTab({
 
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium tabular-nums">
-                                {entry.prowin?.version || '—'}
-                              </span>
+                              <VersionText
+                                versionName={entry.prowin?.version}
+                                versionCode={entry.prowin?.versionCode}
+                                className="text-sm font-medium"
+                              />
                               <Badge
                                 variant="outline"
                                 className={`gap-1 text-xs ${prowinStatus.className}`}
@@ -507,7 +552,7 @@ export default function DeploymentsTab({
                     <SelectItem value="all">Toutes les tablettes</SelectItem>
                     {(devices || []).map(device => (
                       <SelectItem key={device.deviceId} value={device.deviceId}>
-                        {getDeviceLabel(device)}
+                        {device.deviceName || device.deviceId}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -566,10 +611,6 @@ export default function DeploymentsTab({
                     {filteredHistoryRows.map((entry, index) => {
                       const statusUI = getHistoryStatusUI(entry.status)
                       const StatusIcon = statusUI.icon
-                      const commercialName = getCommercialName({
-                        serialNumber: entry.deviceId,
-                        deviceId: entry.deviceId,
-                      })
 
                       return (
                         <TableRow
@@ -586,11 +627,15 @@ export default function DeploymentsTab({
                           <TableCell>
                             <div>
                               <span className="text-sm font-medium block">
-                                {commercialName || 'Non assigné'}
+                                {getCommercialName(entry.deviceId) ||
+                                  entry.deviceName ||
+                                  entry.deviceId}
                               </span>
-                              <span className="text-xs text-muted-foreground block">
-                                {entry.deviceName || entry.deviceId}
-                              </span>
+                              {getCommercialName(entry.deviceId) && (
+                                <span className="text-xs text-muted-foreground block">
+                                  {entry.deviceName || entry.deviceId}
+                                </span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -599,15 +644,11 @@ export default function DeploymentsTab({
                             </span>
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm tabular-nums">
-                              {entry.versionName || '—'}
-                              {entry.versionCode ? (
-                                <span className="text-xs text-muted-foreground">
-                                  {' '}
-                                  ({entry.versionCode})
-                                </span>
-                              ) : null}
-                            </span>
+                            <VersionText
+                              versionName={entry.versionName}
+                              versionCode={entry.versionCode}
+                              className="text-sm"
+                            />
                           </TableCell>
                           <TableCell>
                             <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">

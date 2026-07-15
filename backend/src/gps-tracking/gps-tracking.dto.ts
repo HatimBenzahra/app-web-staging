@@ -1,25 +1,20 @@
 import { ObjectType, Field, Int, Float, InputType } from '@nestjs/graphql';
-import {
-  IsNotEmpty,
-  IsString,
-  IsOptional,
-  IsNumber,
-  IsBoolean,
-  IsArray,
-  ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsNumber, IsDate } from 'class-validator';
+// UserType (enum GraphQL) est enregistre une seule fois dans zone.dto ; on le reutilise
+// ici pour l'acteur polymorphe des positions GPS (meme pattern que ZoneEnCours).
+import { UserType } from '../zone/zone.dto';
 
 @ObjectType()
 export class GpsPosition {
   @Field(() => Int)
   id: number;
 
-  @Field()
-  deviceId: string;
+  // Acteur polymorphe : nullable pour les anciennes lignes kiosk (deviceId sans acteur).
+  @Field(() => Int, { nullable: true })
+  userId?: number;
 
-  @Field({ nullable: true })
-  deviceName?: string;
+  @Field(() => UserType, { nullable: true })
+  userType?: UserType;
 
   @Field(() => Float)
   latitude: number;
@@ -38,23 +33,12 @@ export class GpsPosition {
 
   @Field()
   recordedAt: Date;
-
-  @Field()
-  createdAt: Date;
 }
 
+// Position remontee par l'app mobile. L'identite de l'acteur (userId/userType) n'est
+// JAMAIS acceptee du client : elle est derivee du token cote resolveur (reportMyPositions).
 @InputType()
-export class GpsPositionInput {
-  @Field()
-  @IsNotEmpty()
-  @IsString()
-  deviceId: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  deviceName?: string;
-
+export class ReportPositionInput {
   @Field(() => Float)
   @IsNumber()
   latitude: number;
@@ -73,66 +57,9 @@ export class GpsPositionInput {
   @IsNumber()
   batteryLevel?: number;
 
+  // Horodatage client optionnel ; le serveur applique now() si absent.
   @Field({ nullable: true })
   @IsOptional()
-  @IsBoolean()
-  isOnline?: boolean;
-}
-
-@InputType()
-export class SaveGpsPositionsInput {
-  @Field(() => [GpsPositionInput])
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => GpsPositionInput)
-  positions: GpsPositionInput[];
-}
-
-@ObjectType()
-export class GpsHistoryResponse {
-  @Field(() => Int)
-  total: number;
-
-  @Field(() => [GpsPosition])
-  positions: GpsPosition[];
-}
-
-@ObjectType()
-export class SaveGpsPositionsResponse {
-  @Field()
-  success: boolean;
-
-  @Field(() => Int)
-  saved: number;
-}
-
-@ObjectType()
-export class DeviceMapping {
-  @Field(() => Int)
-  id: number;
-
-  @Field()
-  deviceId: string;
-
-  @Field()
-  commercialName: string;
-
-  @Field()
-  createdAt: Date;
-
-  @Field()
-  updatedAt: Date;
-}
-
-@InputType()
-export class SetDeviceCommercialInput {
-  @Field()
-  @IsNotEmpty()
-  @IsString()
-  deviceId: string;
-
-  @Field()
-  @IsNotEmpty()
-  @IsString()
-  commercialName: string;
+  @IsDate()
+  recordedAt?: Date;
 }

@@ -1,9 +1,75 @@
 import {
+  createGeoJSONCircle,
   getAssignedUserIdsFromZone,
   parseAssignedUserId,
   parseAssignedUserIds,
+  polygonAreaKm2,
   removeRedundantAssignments,
+  zoneToGeoJSON,
 } from './zones-utils'
+
+describe('zoneToGeoJSON', () => {
+  it('builds a Feature<Polygon> from zone.polygon (new polygon zones)', () => {
+    const ring = [
+      [2.0, 48.0],
+      [2.1, 48.0],
+      [2.1, 48.1],
+      [2.0, 48.1],
+      [2.0, 48.0],
+    ]
+    const feature = zoneToGeoJSON({ polygon: ring })
+
+    expect(feature).toEqual({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [ring] },
+      properties: {},
+    })
+  })
+
+  it('falls back to a generated circle for legacy circle zones', () => {
+    const zone = { xOrigin: 2.3522, yOrigin: 48.8566, rayon: 1000 }
+    const feature = zoneToGeoJSON(zone)
+    const expected = createGeoJSONCircle([zone.xOrigin, zone.yOrigin], zone.rayon)
+
+    expect(feature).toEqual(expected)
+    expect(feature.geometry.type).toBe('Polygon')
+    // Anneau fermé
+    const coords = feature.geometry.coordinates[0]
+    expect(coords[0]).toEqual(coords[coords.length - 1])
+  })
+
+  it('returns null when no geometry is available', () => {
+    expect(zoneToGeoJSON(null)).toBeNull()
+    expect(zoneToGeoJSON({ nom: 'sans géométrie' })).toBeNull()
+  })
+})
+
+describe('polygonAreaKm2', () => {
+  it('returns 0 for invalid or degenerate rings', () => {
+    expect(polygonAreaKm2(null)).toBe(0)
+    expect(polygonAreaKm2([])).toBe(0)
+    expect(polygonAreaKm2([[2, 48], [2.1, 48], [2, 48]])).toBe(0)
+  })
+
+  it('matches the area of a generated circle (~π·r²)', () => {
+    const ring = createGeoJSONCircle([2.3522, 48.8566], 1000).geometry.coordinates[0]
+    // Disque de rayon 1 km -> π km²
+    expect(polygonAreaKm2(ring)).toBeCloseTo(Math.PI, 1)
+  })
+
+  it('computes a positive area regardless of winding order', () => {
+    const ring = [
+      [2.0, 48.0],
+      [2.1, 48.0],
+      [2.1, 48.1],
+      [2.0, 48.1],
+      [2.0, 48.0],
+    ]
+    const reversed = [...ring].reverse()
+    expect(polygonAreaKm2(ring)).toBeGreaterThan(0)
+    expect(polygonAreaKm2(reversed)).toBeCloseTo(polygonAreaKm2(ring), 6)
+  })
+})
 
 describe('parseAssignedUserId', () => {
   it('parses commercial-42', () => {

@@ -4,6 +4,12 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { CalendarDays, Mic } from 'lucide-react'
 import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
+import {
+  effectiveTypeHabitat,
+  getHabitatMeta,
+  buildingDoorCount,
+  TypeHabitat,
+} from '@/constants/domain/habitat'
 import { porteApi } from '@/services/api/portes/porte.service'
 
 export function useImmeubleDetailsLogic() {
@@ -52,9 +58,11 @@ export function useImmeubleDetailsLogic() {
   const immeubleData = useMemo(() => {
     if (!immeuble) return null
 
+    const type = effectiveTypeHabitat(immeuble)
+    const meta = getHabitatMeta(type)
     const commercial = commercials?.find(c => c.id === immeuble.commercialId)
     const manager = managers?.find(m => m.id === immeuble.managerId)
-    const totalDoors = portes?.length || immeuble.nbEtages * immeuble.nbPortesParEtage
+    const totalDoors = portes?.length || buildingDoorCount(immeuble)
 
     // Déterminer le responsable (commercial ou manager)
     let commercialName = 'Non assigné'
@@ -64,34 +72,60 @@ export function useImmeubleDetailsLogic() {
       commercialName = `${manager.prenom} ${manager.nom} (Manager)`
     }
 
-    // Grouper les portes par étage à partir des vraies données
-    const floorDetails = portes
-      ? Array.from({ length: immeuble.nbEtages }, (_, index) => {
-          const floorNumber = index + 1
-          const portesEtage = portes.filter(p => p.etage === floorNumber)
+    // Nombre d'unités selon le type : étages (immeuble), 1 foyer (maison), maisons (pavillon)
+    let unitCount
+    if (type === TypeHabitat.MAISON) {
+      unitCount = 1
+    } else if (type === TypeHabitat.PAVILLON) {
+      unitCount = immeuble.nbMaisonsPrevu ?? 0
+    } else {
+      unitCount = immeuble.nbEtages ?? 0
+    }
 
+    const mapPorte = porte => ({
+      id: porte.id,
+      number: porte.numero,
+      nomPersonnalise: porte.nomPersonnalise || null,
+      status: porte.statut.toLowerCase(),
+      rdvDate: porte.rdvDate || null,
+      rdvTime: porte.rdvTime || null,
+      comment: porte.commentaire || null,
+      lastVisit: porte.updatedAt || null,
+      nbRepassages: porte.nbRepassages || 0,
+      nbContrats: porte.nbContrats || 0,
+    })
+
+    // Regrouper les portes par unité à partir des vraies données.
+    // MAISON : un foyer unique regroupe toutes les portes ; sinon groupement par étage/maison.
+    let floorDetails = []
+    if (portes) {
+      if (type === TypeHabitat.MAISON) {
+        floorDetails = [
+          {
+            floor: 1,
+            unitLabel: meta.unitLabel,
+            totalDoors: portes.length,
+            doors: portes.map(mapPorte),
+          },
+        ]
+      } else {
+        floorDetails = Array.from({ length: unitCount }, (_, index) => {
+          const unitNumber = index + 1
+          const portesUnit = portes.filter(p => p.etage === unitNumber)
           return {
-            floor: floorNumber,
-            totalDoors: portesEtage.length,
-            doors: portesEtage.map(porte => ({
-              id: porte.id,
-              number: porte.numero,
-              nomPersonnalise: porte.nomPersonnalise || null,
-              status: porte.statut.toLowerCase(),
-              rdvDate: porte.rdvDate || null,
-              rdvTime: porte.rdvTime || null,
-              comment: porte.commentaire || null,
-              lastVisit: porte.updatedAt || null,
-              nbRepassages: porte.nbRepassages || 0,
-              nbContrats: porte.nbContrats || 0,
-            })),
+            floor: unitNumber,
+            unitLabel: meta.unitLabel,
+            totalDoors: portesUnit.length,
+            doors: portesUnit.map(mapPorte),
           }
         })
-      : []
+      }
+    }
 
     return {
       ...immeuble,
-      name: `Immeuble ${immeuble.adresse.split(',')[0]}`,
+      effectiveType: type,
+      name: immeuble.adresse.split(',')[0],
       address: immeuble.adresse,
       floors: immeuble.nbEtages,
       apartments: totalDoors,
@@ -105,27 +139,34 @@ export function useImmeubleDetailsLogic() {
     }
   }, [immeuble, commercials, managers, portes])
 
+  const habitatMeta = useMemo(
+    () => getHabitatMeta(immeubleData?.effectiveType),
+    [immeubleData?.effectiveType]
+  )
+
   // Préparer les données pour le tableau - DOIT être après immeubleData mais avant les returns conditionnels
   const doorsData = useMemo(() => {
     if (!immeubleData?.floorDetails) return []
 
     const allDoors = []
+    const isMaison = immeubleData.effectiveType === TypeHabitat.MAISON
     immeubleData.floorDetails.forEach(floor => {
+      const unitLabel = isMaison ? floor.unitLabel : `${floor.unitLabel} ${floor.floor}`
       floor.doors.forEach(door => {
         allDoors.push({
           ...door,
           floor: Number(floor.floor),
-          floorLabel: `Étage ${floor.floor}`,
+          floorLabel: unitLabel,
           porteId: door.id, // ID de la base de données pour l'historique
           tableId: `${floor.floor}-${door.number}`, // Clé unique pour le tableau React
-          etage: `Étage ${floor.floor}`,
+          etage: unitLabel,
           rdvTimestamp: door.rdvDate ? new Date(door.rdvDate).getTime() : null,
           lastVisitTimestamp: door.lastVisit ? new Date(door.lastVisit).getTime() : null,
         })
       })
     })
     return allDoors
-  }, [immeubleData?.floorDetails])
+  }, [immeubleData?.floorDetails, immeubleData?.effectiveType])
 
   const formatRelativeDate = useCallback(dateValue => {
     if (!dateValue) return null
@@ -164,16 +205,39 @@ export function useImmeubleDetailsLogic() {
 
   const personalInfo = useMemo(() => {
     if (!immeubleData) return []
-    return [
+    const type = immeubleData.effectiveType
+    const info = [
       { label: 'Adresse complète', value: immeubleData.address, icon: 'mapPin' },
       { label: 'Zone', value: immeubleData.zone, icon: 'mapPin' },
       { label: 'Commercial responsable', value: immeubleData.commercial_name, icon: 'users' },
-      { label: "Nombre d'étages", value: immeubleData.floors, icon: 'building' },
-      { label: 'Portes par étage', value: immeubleData.nbPortesParEtage, icon: 'building' },
-      { label: 'Ascenseur', value: immeubleData.has_elevator ? 'Oui' : 'Non', icon: 'building' },
-      { label: 'Code digital', value: immeubleData.digital_code, icon: 'key' },
+      { label: 'Type de bâtiment', value: habitatMeta.label, icon: 'building' },
     ]
-  }, [immeubleData])
+
+    if (type === TypeHabitat.MAISON) {
+      info.push({ label: 'Configuration', value: 'Foyer unique (1 porte)', icon: 'building' })
+    } else if (type === TypeHabitat.PAVILLON) {
+      info.push({
+        label: 'Nombre de maisons',
+        value: immeubleData.nbMaisonsPrevu ?? 0,
+        icon: 'building',
+      })
+    } else {
+      info.push({ label: "Nombre d'étages", value: immeubleData.floors, icon: 'building' })
+      info.push({
+        label: 'Portes par étage',
+        value: immeubleData.nbPortesParEtage,
+        icon: 'building',
+      })
+      info.push({
+        label: 'Ascenseur',
+        value: immeubleData.has_elevator ? 'Oui' : 'Non',
+        icon: 'building',
+      })
+    }
+
+    info.push({ label: 'Code digital', value: immeubleData.digital_code, icon: 'key' })
+    return info
+  }, [immeubleData, habitatMeta.label])
 
   const statsCards = useMemo(() => {
     if (!immeubleData) return []
@@ -244,7 +308,10 @@ export function useImmeubleDetailsLogic() {
               {row.number}
             </Link>
             {row.nomPersonnalise && (
-              <div className="text-[11px] text-muted-foreground mt-1 truncate" title={row.nomPersonnalise}>
+              <div
+                className="text-[11px] text-muted-foreground mt-1 truncate"
+                title={row.nomPersonnalise}
+              >
                 {row.nomPersonnalise}
               </div>
             )}
@@ -252,7 +319,7 @@ export function useImmeubleDetailsLogic() {
         ),
       },
       {
-        header: 'Étage',
+        header: habitatMeta.unitLabel,
         accessor: 'etage',
         sortKey: 'floor',
         sortable: true,
@@ -358,7 +425,10 @@ export function useImmeubleDetailsLogic() {
             const truncatedComment =
               row.comment.length > 60 ? `${row.comment.slice(0, 60).trim()}...` : row.comment
             return (
-              <div className="max-w-xs text-sm wrap-break-word whitespace-normal" title={row.comment}>
+              <div
+                className="max-w-xs text-sm wrap-break-word whitespace-normal"
+                title={row.comment}
+              >
                 {truncatedComment}
               </div>
             )
@@ -367,11 +437,137 @@ export function useImmeubleDetailsLogic() {
         },
       },
     ],
-    [id, porteSegmentCounts, formatDateLabel, formatRelativeDate]
+    [id, porteSegmentCounts, formatDateLabel, formatRelativeDate, habitatMeta.unitLabel]
   )
 
   const additionalSections = useMemo(
     () => [
+      {
+        title: habitatMeta.planTitle,
+        description: 'Représentation du bâtiment et statut des portes',
+        type: 'custom',
+        render: () => {
+          const meta = habitatMeta
+          const PlanIcon = meta.Icon
+          const type = immeubleData?.effectiveType
+          const units = immeubleData?.floorDetails || []
+          const nbMaisons = immeubleData?.nbMaisonsPrevu ?? 0
+          const nbEtages = immeubleData?.floors ?? 0
+          const nbPortesParEtage = immeubleData?.nbPortesParEtage ?? 0
+
+          const subtitle =
+            type === TypeHabitat.MAISON
+              ? 'Maison individuelle · 1 porte'
+              : type === TypeHabitat.PAVILLON
+                ? `${nbMaisons} maison${nbMaisons > 1 ? 's' : ''} · 1 porte par maison`
+                : `${nbEtages} étage${nbEtages > 1 ? 's' : ''} · ${nbPortesParEtage} portes/étage`
+
+          const renderDoor = door => (
+            <div
+              key={door.id}
+              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${getStatusColor((door.status || '').toUpperCase())}`}
+            >
+              <span className="font-semibold">Porte {door.number}</span>
+              <span className="opacity-80">
+                {getStatusLabel((door.status || '').toUpperCase())}
+              </span>
+            </div>
+          )
+
+          return (
+            <div className="space-y-5">
+              {/* Bandeau d'accent coloré : identification du type au premier coup d'œil */}
+              <div
+                className={`flex items-center gap-3 rounded-xl border ${meta.accentBorder} ${meta.accentBg} p-4`}
+              >
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl bg-background/70 ${meta.accentColor}`}
+                >
+                  <PlanIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{meta.label}</p>
+                  <p className="text-xs text-muted-foreground">{subtitle}</p>
+                </div>
+              </div>
+
+              {/* Corps du plan, réellement différent selon le type */}
+              {type === TypeHabitat.MAISON ? (
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <PlanIcon className={`h-4 w-4 ${meta.accentColor}`} />
+                    <h3 className="text-base font-semibold">Foyer unique</h3>
+                  </div>
+                  {units[0]?.doors?.length ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {units[0].doors.map(renderDoor)}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      1 porte · aucune donnée de prospection
+                    </p>
+                  )}
+                </div>
+              ) : type === TypeHabitat.PAVILLON ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {units.length ? (
+                    units.map(unit => (
+                      <div
+                        key={unit.floor}
+                        className="rounded-xl border border-border/60 bg-muted/20 p-4"
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <PlanIcon className={`h-4 w-4 ${meta.accentColor}`} />
+                          <h3 className="text-sm font-semibold">Maison {unit.floor}</h3>
+                        </div>
+                        {unit.doors.length ? (
+                          <div className="space-y-1.5">{unit.doors.map(renderDoor)}</div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">1 porte</p>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Aucune maison renseignée</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {units.length ? (
+                    units.map(floor => (
+                      <div
+                        key={floor.floor}
+                        className="rounded-xl border border-border/60 bg-muted/20 p-4"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <PlanIcon className={`h-4 w-4 ${meta.accentColor}`} />
+                            <h3 className="text-sm font-semibold">Étage {floor.floor}</h3>
+                          </div>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {floor.totalDoors} porte{floor.totalDoors > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {floor.doors.length ? (
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {floor.doors.map(renderDoor)}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Aucune porte sur cet étage
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Aucun étage renseigné</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        },
+      },
       ...(segments.length > 0
         ? [
             {
@@ -450,7 +646,7 @@ export function useImmeubleDetailsLogic() {
         },
       },
     ],
-    [doorsData, columns, segments, id]
+    [doorsData, columns, segments, id, habitatMeta, immeubleData]
   )
 
   return {
@@ -461,5 +657,6 @@ export function useImmeubleDetailsLogic() {
     personalInfo,
     statsCards,
     additionalSections,
+    habitatMeta,
   }
 }

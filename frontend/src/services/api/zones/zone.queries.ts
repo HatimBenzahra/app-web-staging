@@ -7,6 +7,7 @@ export const GET_ZONES = `
     zones {
       id
       nom
+      polygon
       xOrigin
       yOrigin
       rayon
@@ -15,10 +16,12 @@ export const GET_ZONES = `
       immeubles {
         id
         adresse
+        typeHabitat
         latitude
         longitude
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         commercialId
         zoneId
       }
@@ -37,6 +40,7 @@ export const GET_ZONES_WITH_COMMERCIALS = `
       zones {
         id
         nom
+        polygon
         xOrigin
         yOrigin
         rayon
@@ -54,6 +58,7 @@ export const GET_ZONE = `
     zone(id: $id) {
       id
       nom
+      polygon
       xOrigin
       yOrigin
       rayon
@@ -62,10 +67,12 @@ export const GET_ZONE = `
       immeubles {
         id
         adresse
+        typeHabitat
         latitude
         longitude
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         commercialId
         zoneId
       }
@@ -86,6 +93,7 @@ export const GET_CURRENT_USER_ASSIGNMENT = `
       zone {
         id
         nom
+        polygon
         xOrigin
         yOrigin
         rayon
@@ -130,6 +138,7 @@ export const GET_ALL_CURRENT_ASSIGNMENTS = `
       zone {
         id
         nom
+        polygon
         xOrigin
         yOrigin
         rayon

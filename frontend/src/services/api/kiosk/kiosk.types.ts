@@ -30,13 +30,14 @@ export interface KioskDevice {
   kioskVersionCode: number
   prowinVersion: string
   prowinVersionCode: number
-  kioskLocked: boolean
   batteryLevel: number
   batteryCharging: boolean
   networkType: string
   networkName: string
   networkSubtype: string
-  operatorName: string
+  operatorName?: string | null
+  commercialId?: string | null
+  commercialName?: string | null
   signalStrength: number | null
   ipAddress: string
   latitude: number | null
@@ -67,6 +68,9 @@ export interface KioskRelease {
   size: number
   sizeHuman: string
   notes: string
+  gitSha: string | null
+  gitMessage: string | null
+  channel: string | null
   apkSha256: string
   nonMonotonicVersionCode: boolean
   uploadedAt: string
@@ -156,12 +160,15 @@ export interface KioskAvailableRelease {
 
 export interface KioskVersionMatrixResponse {
   matrix: KioskVersionMatrixEntry[]
-  latestVersions: Record<string, {
-    releaseId: string
-    versionCode: number
-    versionName: string
-    appName: string
-  }>
+  latestVersions: Record<
+    string,
+    {
+      releaseId: string
+      versionCode: number
+      versionName: string
+      appName: string
+    }
+  >
   availableReleases: KioskAvailableRelease[]
 }
 
@@ -194,7 +201,14 @@ export interface KioskDeployHistoryFilters {
 
 // ── Commands & Actions ───────────────────────────────────────────────────────
 
-export type KioskCommandAction = 'lock' | 'unlock' | 'ota_check' | 'set_pin' | 'ota_update'
+export type KioskCommandAction =
+  | 'lock'
+  | 'ota_check'
+  | 'ota_update'
+  | 'reboot'
+  | 'uninstall'
+  | 'set_setting'
+  | 'run_command'
 
 export interface KioskCommandPayload {
   action: KioskCommandAction
@@ -204,6 +218,15 @@ export interface KioskCommandPayload {
 export interface KioskDeployPayload {
   deviceId: string
   releaseId: string
+}
+
+// ── Version Alignment ────────────────────────────────────────────────────────
+
+export type KioskAlignTarget = 'kiosk' | 'prospection' | 'all'
+
+export interface KioskAlignResponse {
+  success: boolean
+  aligned: Record<string, number>
 }
 
 export interface KioskSuccessResponse {

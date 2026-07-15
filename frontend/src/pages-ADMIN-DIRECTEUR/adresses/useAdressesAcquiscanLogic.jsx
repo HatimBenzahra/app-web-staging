@@ -127,19 +127,21 @@ const enrichTerritoryGeoJson = (geoJson, rows, level) => {
       const row = statsByCode.get(code)
       const summary = row?.summary || {}
       if (!row || !summary.totalBuildings) return []
-      return [{
-        ...feature,
-        properties: {
-          ...feature.properties,
-          level,
-          code,
-          name: feature.properties?.nom || row?.nomCommune || code,
-          totalBuildings: summary.totalBuildings,
-          copperShutdown: summary.copperShutdown || 0,
-          fiberBuildings: summary.fiberBuildings || 0,
-          opportunityScore: summary.opportunityScore || 0,
+      return [
+        {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            level,
+            code,
+            name: feature.properties?.nom || row?.nomCommune || code,
+            totalBuildings: summary.totalBuildings,
+            copperShutdown: summary.copperShutdown || 0,
+            fiberBuildings: summary.fiberBuildings || 0,
+            opportunityScore: summary.opportunityScore || 0,
+          },
         },
-      }]
+      ]
     }),
   }
 }
@@ -763,7 +765,9 @@ export function useAdressesAcquiscanLogic() {
 
   const selectedCommuneGeoJson = useMemo(() => {
     if (!selectedCommune?.code || !communeGeoJson?.features?.length) return null
-    const feature = communeGeoJson.features.find(item => item.properties?.code === selectedCommune.code)
+    const feature = communeGeoJson.features.find(
+      item => item.properties?.code === selectedCommune.code
+    )
     if (!feature) return null
     return {
       type: 'FeatureCollection',

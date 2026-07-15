@@ -6,15 +6,41 @@ import {
   useKioskDeployHistory,
   useKioskDevices,
   useKioskDeploy,
+  useKioskAlignVersions,
 } from '@/hooks/metier/api/kiosk'
+import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import DeploymentsTab from './components/DeploymentsTab'
 import DeployDialog from './components/DeployDialog'
 import KioskErrorState from './components/KioskErrorState'
+
+const ALIGN_TARGET_LABELS = {
+  kiosk: 'Kiosk',
+  prospection: 'Prospection',
+  all: 'toutes les apps',
+}
 
 export default function KioskDeploymentsPage() {
   const versionMatrixQuery = useKioskVersionMatrix()
   const devicesQuery = useKioskDevices()
   const deployMutation = useKioskDeploy()
+  const alignMutation = useKioskAlignVersions()
+  const { showSuccess, showError } = useErrorToast()
+
+  const handleAlign = target => {
+    alignMutation.mutate(target, {
+      onSuccess: result => {
+        const total = Object.values(result?.aligned || {}).reduce((sum, n) => sum + (n || 0), 0)
+        const label = ALIGN_TARGET_LABELS[target] || target
+        showSuccess(
+          total > 0
+            ? `${total} tablette${total > 1 ? 's' : ''} alignée${total > 1 ? 's' : ''} sur la dernière version (${label}).`
+            : `Aucune tablette à aligner (${label}) : la flotte est déjà à jour.`,
+          { title: 'Alignement terminé' }
+        )
+      },
+      onError: error => showError(error, 'KioskDeployments.handleAlign'),
+    })
+  }
 
   const [deployDialog, setDeployDialog] = useState({ open: false, data: null })
   const [activeTab, setActiveTab] = useState('deploy')
@@ -121,6 +147,8 @@ export default function KioskDeploymentsPage() {
         deployHistory={deployHistoryQuery.data}
         loading={initialLoading}
         onDeploy={device => setDeployDialog({ open: true, data: device })}
+        onAlign={handleAlign}
+        aligning={alignMutation.isPending}
         deployHistoryFilters={deployHistoryFilters}
         setDeployHistoryFilters={setDeployHistoryFilters}
         devices={devicesQuery.data || []}

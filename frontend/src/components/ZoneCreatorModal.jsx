@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
-import Map, { Marker, Source, Layer, NavigationControl, useControl } from 'react-map-gl/mapbox'
+import Map, { Source, Layer, NavigationControl, useControl } from 'react-map-gl/mapbox'
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder'
+import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css'
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import mapboxgl from 'mapbox-gl'
 
 import { Button } from '@/components/ui/button'
@@ -13,26 +15,10 @@ import { MapSkeleton } from '@/components/LoadingSkeletons'
 import { X, Check, MousePointerClick, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThreeDButton, MapStyleButton, ZonesToggleButton } from './MapControls'
+import { createGeoJSONCircle, zoneToGeoJSON, polygonAreaKm2 } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
 
 // Set Mapbox access token
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
-
-// Helper functions
-function haversineDistance(coords1, coords2) {
-  const [lon1, lat1] = coords1
-  const [lon2, lat2] = coords2
-  const toRad = x => (x * Math.PI) / 180
-  const R = 6371e3 // metres
-  const φ1 = toRad(lat1)
-  const φ2 = toRad(lat2)
-  const Δφ = toRad(lat2 - lat1)
-  const Δλ = toRad(lon2 - lon1)
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
-}
 
 // Generate a deterministic color from zone ID
 function getZoneColor(zoneId) {
@@ -49,27 +35,6 @@ function getZoneColor(zoneId) {
     '#f97316', // Dark Orange
   ]
   return colors[zoneId % colors.length]
-}
-
-function createGeoJSONCircle(center, radiusInMeters, points = 64) {
-  const coords = { latitude: center[1], longitude: center[0] }
-  const km = radiusInMeters / 1000
-  const ret = []
-  const distanceX = km / (111.32 * Math.cos((coords.latitude * Math.PI) / 180))
-  const distanceY = km / 110.574
-  let theta, x, y
-  for (let i = 0; i < points; i++) {
-    theta = (i / points) * (2 * Math.PI)
-    x = distanceX * Math.cos(theta)
-    y = distanceY * Math.sin(theta)
-    ret.push([coords.longitude + x, coords.latitude + y])
-  }
-  ret.push(ret[0])
-  return {
-    type: 'Feature',
-    geometry: { type: 'Polygon', coordinates: [ret] },
-    properties: {},
-  }
 }
 
 // Geocoder Control Component
@@ -90,6 +55,70 @@ const GeocoderControl = React.memo(({ onResult, position }) => {
   return null
 })
 
+/**
+ * Contrôle de dessin de polygone (mapbox-gl-draw) intégré à react-map-gl.
+ * - Sans géométrie initiale : démarre directement en mode dessin de polygone.
+ * - Avec géométrie initiale (édition) : précharge l'anneau et laisse l'édition des sommets.
+ * `onChange` reçoit l'anneau fermé [[lng,lat],...] du polygone courant, ou null.
+ */
+const DrawControl = React.memo(({ position, initialPolygon, onChange }) => {
+  const drawRef = useRef(null)
+  const handlersRef = useRef({})
+
+  useControl(
+    () => {
+      drawRef.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: { polygon: true, trash: true },
+        defaultMode: initialPolygon && initialPolygon.length ? 'simple_select' : 'draw_polygon',
+      })
+      return drawRef.current
+    },
+    ({ map }) => {
+      const emit = () => {
+        const data = drawRef.current?.getAll()
+        const feature = data?.features?.[data.features.length - 1]
+        onChange(feature?.geometry?.type === 'Polygon' ? feature.geometry.coordinates[0] : null)
+      }
+      // N'autoriser qu'un seul polygone : supprimer les anciens à la création d'un nouveau
+      const onCreate = e => {
+        const data = drawRef.current.getAll()
+        if (data.features.length > 1) {
+          const keepId = e.features[e.features.length - 1].id
+          data.features
+            .filter(f => f.id !== keepId)
+            .forEach(f => drawRef.current.delete(f.id))
+        }
+        emit()
+      }
+      handlersRef.current = { onCreate, emit }
+      map.on('draw.create', onCreate)
+      map.on('draw.update', emit)
+      map.on('draw.delete', emit)
+
+      // Précharger la géométrie existante (édition d'une zone)
+      if (initialPolygon && initialPolygon.length) {
+        drawRef.current.add({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [initialPolygon] },
+        })
+        emit()
+      }
+    },
+    ({ map }) => {
+      const { onCreate, emit } = handlersRef.current
+      if (onCreate) map.off('draw.create', onCreate)
+      if (emit) {
+        map.off('draw.update', emit)
+        map.off('draw.delete', emit)
+      }
+    },
+    { position }
+  )
+  return null
+})
+
 export const ZoneCreatorModal = ({
   onValidate,
   onClose,
@@ -102,14 +131,24 @@ export const ZoneCreatorModal = ({
   const isEditMode = !!zoneToEdit
   const mapRef = useRef(null)
 
-  // Initialize state based on edit mode
-  const [center, setCenter] = useState(
-    isEditMode && zoneToEdit?.xOrigin && zoneToEdit?.yOrigin
-      ? [zoneToEdit.xOrigin, zoneToEdit.yOrigin]
-      : null
-  )
-  const [radius, setRadius] = useState(isEditMode ? zoneToEdit?.rayon || 1000 : 0)
-  const [step, setStep] = useState(isEditMode ? 3 : 1)
+  // Géométrie initiale à précharger dans l'éditeur (édition uniquement).
+  // Zone polygone : on reprend son anneau. Ancienne zone cercle : on la convertit
+  // en polygone (aide visuelle), la sauvegarde deviendra un vrai polygon.
+  const initialPolygon = React.useMemo(() => {
+    if (!isEditMode || !zoneToEdit) return null
+    if (Array.isArray(zoneToEdit.polygon) && zoneToEdit.polygon.length > 0) {
+      return zoneToEdit.polygon
+    }
+    if (zoneToEdit.xOrigin != null && zoneToEdit.yOrigin != null && zoneToEdit.rayon != null) {
+      return createGeoJSONCircle([zoneToEdit.xOrigin, zoneToEdit.yOrigin], zoneToEdit.rayon)
+        .geometry.coordinates[0]
+    }
+    return null
+  }, [isEditMode, zoneToEdit])
+
+  // Anneau fermé [[lng,lat],...] du polygone tracé, ou null tant qu'aucun tracé
+  const [polygon, setPolygon] = useState(initialPolygon)
+  const [step, setStep] = useState(isEditMode ? 2 : 1)
   const [zoneName, setZoneName] = useState(isEditMode ? zoneToEdit?.nom || '' : '')
   const [assignedUserIds, setAssignedUserIds] = useState(
     isEditMode && zoneToEdit?.assignedUserIds
@@ -118,14 +157,13 @@ export const ZoneCreatorModal = ({
         ? [zoneToEdit.assignedUserId]
         : []
   )
-  const [zoneColor, setZoneColor] = useState(
-    isEditMode && zoneToEdit?.id ? getZoneColor(zoneToEdit.id) : '#3388ff'
-  )
   const [show3D, setShow3D] = useState(false)
   const [isSatellite, setIsSatellite] = useState(false)
   // Default to FALSE for existing zones
   const [showExistingZones, setShowExistingZones] = useState(false)
   const [mapLoading, setMapLoading] = useState(true)
+  // Incrémenté pour remonter (réinitialiser) le contrôle de dessin
+  const [drawKey, setDrawKey] = useState(0)
 
   // Map view state - Focus sur l'Île-de-France
   const initialMapViewState =
@@ -155,76 +193,54 @@ export const ZoneCreatorModal = ({
   // Removed auto-fit bounds on existing zones toggle to prevent unwanted zooming
   // Users typically want to stay in their current context when toggling layers
 
-  const handleMapClick = e => {
-    const { lng, lat } = e.lngLat
-    if (step === 1) {
-      setCenter([lng, lat])
-      setStep(2)
-    } else if (step === 2) {
-      setStep(3)
-    }
-  }
-
-  const handleMouseMove = e => {
-    if (step === 2 && center) {
-      const currentRadius = haversineDistance(center, [e.lngLat.lng, e.lngLat.lat])
-      setRadius(currentRadius)
-    }
+  // Réception de l'anneau tracé/édité depuis le contrôle de dessin
+  const handlePolygonChange = ring => {
+    setPolygon(ring)
+    setStep(ring && ring.length >= 4 ? 2 : 1)
   }
 
   const handleReset = () => {
-    setCenter(null)
-    setRadius(0)
+    setPolygon(null)
     setStep(1)
     setZoneName('')
     setAssignedUserIds([])
-    setZoneColor('#3388ff')
+    // Remonter le contrôle de dessin pour repartir sur un tracé vierge
+    setDrawKey(k => k + 1)
   }
 
   const handleValidate = () => {
-    if (center && zoneName && radius > 0) {
-      const zoneData = {
-        nom: zoneName,
-        xOrigin: center[0], // longitude
-        yOrigin: center[1], // latitude
-        rayon: Math.round(radius), // en mètres
-      }
+    if (!isFormValid) return
 
-      if (isEditMode && zoneToEdit?.id) {
-        zoneData.id = zoneToEdit.id
-      }
-
-      onValidate(zoneData, assignedUserIds)
+    const zoneData = {
+      nom: zoneName,
+      polygon, // anneau fermé [[lng,lat],...] ; le backend dérive xOrigin/yOrigin/rayon
     }
+
+    if (isEditMode && zoneToEdit?.id) {
+      zoneData.id = zoneToEdit.id
+    }
+
+    onValidate(zoneData, assignedUserIds)
   }
 
   const handleGeocoderResult = e => {
     const { result } = e
     if (result && result.center) {
-      // 1. Déplacer la carte
       mapRef.current?.flyTo({ center: result.center, zoom: 14 })
-      
-      // 2. Placer le marqueur central pour définir la zone
-      setCenter([result.center[0], result.center[1]])
-      
-      // 3. Passer automatiquement à l'étape rayon si on est à l'étape 1
-      if (step === 1) {
-        setStep(2)
-      }
     }
   }
 
-  // Validation de la couleur pour s'assurer qu'elle est valide
-  const validZoneColor = zoneColor.match(/^#[0-9A-Fa-f]{6}$/) ? zoneColor : '#3388ff'
+  // Un anneau valide comporte au moins 3 sommets distincts + le point de fermeture
+  const hasValidPolygon = Array.isArray(polygon) && polygon.length >= 4
 
   const isFormValid =
-    center &&
+    hasValidPolygon &&
     zoneName &&
-    radius > 0 &&
     (userRole === 'directeur' || userRole === 'manager' || userRole === 'admin'
       ? assignedUserIds.length > 0
       : true)
-  const currentCircleGeoJSON = center && radius > 0 ? createGeoJSONCircle(center, radius) : null
+
+  const polygonArea = hasValidPolygon ? polygonAreaKm2(polygon) : 0
 
   /**
    * Détermine si une option doit être désactivée
@@ -300,9 +316,6 @@ export const ZoneCreatorModal = ({
             style={{ height: '100%', width: '100%' }}
             // Toggle between Standard Streets (colorful) and Satellite Streets
             mapStyle={isSatellite ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/streets-v12"}
-            onClick={handleMapClick}
-            onMouseMove={handleMouseMove}
-            cursor={step < 3 ? 'crosshair' : 'default'}
             onLoad={() => setMapLoading(false)}
             onError={() => setMapLoading(false)}
             attributionControl={false} // Clean look
@@ -310,6 +323,14 @@ export const ZoneCreatorModal = ({
           >
             <NavigationControl position="top-right" showCompass={false} />
             <GeocoderControl onResult={handleGeocoderResult} position="top-left" />
+
+            {/* Contrôle de dessin du polygone de la zone */}
+            <DrawControl
+              key={drawKey}
+              position="top-left"
+              initialPolygon={initialPolygon}
+              onChange={handlePolygonChange}
+            />
             
             {/* Custom 3D Button */}
             <ThreeDButton onClick={() => setShow3D(!show3D)} show3D={show3D} />
@@ -354,18 +375,19 @@ export const ZoneCreatorModal = ({
               />
             )}
 
-            {/* Display existing zones - CONDITIONAL RENDERING */}
+            {/* Display existing zones - CONDITIONAL RENDERING (modèle mixte polygone/cercle) */}
             {showExistingZones && existingZones
-              .filter(z => z.id !== zoneToEdit?.id && z.xOrigin && z.yOrigin)
+              .filter(z => z.id !== zoneToEdit?.id)
               .map(zone => {
-                const circle = createGeoJSONCircle([zone.xOrigin, zone.yOrigin], zone.rayon || 1000)
+                const geojson = zoneToGeoJSON(zone)
+                if (!geojson) return null
                 const color = getZoneColor(zone.id)
                 return (
                   <Source
                     key={`existing-${zone.id}`}
                     id={`existing-${zone.id}`}
                     type="geojson"
-                    data={circle}
+                    data={geojson}
                   >
                     <Layer
                       key={`fill-existing-${zone.id}`}
@@ -391,24 +413,7 @@ export const ZoneCreatorModal = ({
                 )
               })}
 
-            {/* Display current zone being created/edited */}
-            {center && <Marker longitude={center[0]} latitude={center[1]} color={validZoneColor} />}
-            {currentCircleGeoJSON && (
-              <Source id="current-zone" type="geojson" data={currentCircleGeoJSON}>
-                <Layer
-                  key="current-zone-fill"
-                  id="current-zone-fill"
-                  type="fill"
-                  paint={{ 'fill-color': validZoneColor, 'fill-opacity': isSatellite ? 0.4 : 0.25 }}
-                />
-                <Layer
-                  key="current-zone-line"
-                  id="current-zone-line"
-                  type="line"
-                  paint={{ 'line-color': validZoneColor, 'line-width': 2 }}
-                />
-              </Source>
-            )}
+            {/* La zone en cours de tracé/édition est rendue par le contrôle de dessin */}
           </Map>
 
           {/* Premium Glassmorphic Control Panel */}
@@ -421,9 +426,8 @@ export const ZoneCreatorModal = ({
                     {isEditMode ? 'Modifier la Zone' : 'Nouvelle Zone'}
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {step === 1 && 'Définissez le centre géographique'}
-                    {step === 2 && 'Ajustez le rayon de couverture'}
-                    {step === 3 && 'Configurez les détails et assignations'}
+                    {step === 1 && 'Dessinez le contour de la zone'}
+                    {step === 2 && 'Configurez les détails et assignations'}
                   </p>
                 </div>
                 <Button 
@@ -439,13 +443,13 @@ export const ZoneCreatorModal = ({
               {/* Progress Indicator */}
               {!isEditMode && (
                 <div className="flex gap-2 mb-6">
-                  {[1, 2, 3].map((s) => (
-                    <div 
-                      key={s} 
+                  {[1, 2].map((s) => (
+                    <div
+                      key={s}
                       className={cn(
                         "h-1.5 flex-1 rounded-full transition-all duration-300",
                         step >= s ? "bg-primary" : "bg-primary/20"
-                      )} 
+                      )}
                     />
                   ))}
                 </div>
@@ -453,49 +457,45 @@ export const ZoneCreatorModal = ({
 
               {/* Step Instructions & Inputs */}
               <div className="space-y-6">
-                
-                {/* Step 1 & 2 Info */}
-                {step < 3 && (
+
+                {/* Step 1 Info : tracé du polygone */}
+                {step < 2 && (
                   <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 flex items-start gap-3">
                     <div className="bg-primary/10 p-2 rounded-full">
                       <MousePointerClick className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-medium text-sm text-foreground">
-                        {step === 1 ? 'Cliquez sur la carte' : 'Ajustez le rayon'}
+                        Tracez la zone
                       </h3>
                       <p className="text-sm text-muted-foreground leading-relaxed mt-1">
-                        {step === 1 
-                          ? 'Positionnez le marqueur central pour définir le point de départ de votre zone.'
-                          : 'Déplacez votre souris pour agrandir ou réduire la zone, puis cliquez pour valider.'
-                        }
+                        Cliquez sur la carte pour ajouter les sommets du contour, puis
+                        double-cliquez (ou cliquez sur le premier point) pour fermer le polygone.
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Live Data Display */}
-                {center && (
+                {/* Live Data Display : sommets & superficie */}
+                {hasValidPolygon && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Centre</span>
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sommets</span>
                       <div className="font-mono text-sm bg-muted/50 p-2 rounded-lg border border-border/50">
-                        {center[1].toFixed(4)}, {center[0].toFixed(4)}
+                        {polygon.length - 1}
                       </div>
                     </div>
-                    {radius > 0 && (
-                       <div className="space-y-1">
-                       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rayon</span>
-                       <div className="font-mono text-sm bg-muted/50 p-2 rounded-lg border border-border/50">
-                         {(radius / 1000).toFixed(2)} km
-                       </div>
-                     </div>
-                    )}
+                    <div className="space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Superficie</span>
+                      <div className="font-mono text-sm bg-muted/50 p-2 rounded-lg border border-border/50">
+                        {polygonArea.toFixed(2)} km²
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Form Fields (Step 3) */}
-                {(step >= 3 || isEditMode) && (
+                {/* Form Fields (étape 2) */}
+                {(step >= 2 || isEditMode) && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <div className="space-y-2">
                       <Label htmlFor="zone-name" className="text-sm font-medium">Nom de la zone</Label>

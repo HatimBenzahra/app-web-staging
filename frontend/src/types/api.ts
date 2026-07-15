@@ -59,6 +59,11 @@ export interface Commercial extends BaseEntity {
 
 export interface Zone extends BaseEntity {
   nom: string
+  /**
+   * Anneau fermé `[[lng, lat], ...]` pour les zones polygone (nouveau modèle).
+   * `null` pour les zones cercle héritées (repli sur xOrigin/yOrigin/rayon).
+   */
+  polygon?: number[][] | null
   xOrigin: number
   yOrigin: number
   rayon: number
@@ -68,10 +73,18 @@ export interface Zone extends BaseEntity {
   immeubles?: Immeuble[]
 }
 
+/**
+ * Type de bâtiment (synchronisé avec l'enum backend TypeHabitat).
+ * IMMEUBLE = étages × portes ; MAISON = 1 foyer ; PAVILLON = N maisons.
+ */
+export type TypeHabitat = 'IMMEUBLE' | 'MAISON' | 'PAVILLON'
+
 export interface Immeuble extends BaseEntity {
   adresse: string
+  typeHabitat?: TypeHabitat
   nbEtages: number
   nbPortesParEtage: number
+  nbMaisonsPrevu?: number | null
   commercialId?: number | null
   managerId?: number | null
   zoneId?: number | null
@@ -229,9 +242,14 @@ export interface CreateCommercialInput {
 
 export interface CreateZoneInput {
   nom: string
-  xOrigin: number
-  yOrigin: number
-  rayon: number
+  /**
+   * Anneau fermé `[[lng, lat], ...]`. Le backend dérive et persiste
+   * xOrigin/yOrigin/rayon : ne pas les envoyer pour une zone polygone.
+   */
+  polygon?: number[][]
+  xOrigin?: number
+  yOrigin?: number
+  rayon?: number
 }
 
 export interface CreateImmeubleInput {
@@ -313,6 +331,11 @@ export interface UpdateCommercialInput {
 export interface UpdateZoneInput {
   id: number
   nom?: string
+  /**
+   * Anneau fermé `[[lng, lat], ...]`. Le backend dérive et persiste
+   * xOrigin/yOrigin/rayon : ne pas les envoyer pour une zone polygone.
+   */
+  polygon?: number[][]
   xOrigin?: number
   yOrigin?: number
   rayon?: number

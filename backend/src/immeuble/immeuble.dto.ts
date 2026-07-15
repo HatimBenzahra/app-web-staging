@@ -1,4 +1,11 @@
-import { ObjectType, Field, Int, InputType, Float } from '@nestjs/graphql';
+import {
+  ObjectType,
+  Field,
+  Int,
+  InputType,
+  Float,
+  registerEnumType,
+} from '@nestjs/graphql';
 import {
   IsNotEmpty,
   IsString,
@@ -7,8 +14,37 @@ import {
   Min,
   IsBoolean,
   IsNumber,
+  IsEnum,
+  IsDate,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Porte } from '../porte/porte.dto';
+
+export enum TypeHabitat {
+  IMMEUBLE = 'IMMEUBLE',
+  MAISON = 'MAISON',
+  PAVILLON = 'PAVILLON',
+}
+
+registerEnumType(TypeHabitat, {
+  name: 'TypeHabitat',
+  description: 'Type de lieu terrain prospecte',
+});
+
+export enum ImmeubleProgressFilter {
+  ALL = 'ALL',
+  INCOMPLETE = 'INCOMPLETE',
+  LOW = 'LOW',
+  MID = 'MID',
+  HIGH = 'HIGH',
+  COMPLETE = 'COMPLETE',
+}
+
+registerEnumType(ImmeubleProgressFilter, {
+  name: 'ImmeubleProgressFilter',
+  description: 'Filtre de progression de prospection (calcule cote serveur)',
+});
 
 @ObjectType()
 export class Immeuble {
@@ -23,6 +59,9 @@ export class Immeuble {
 
   @Field(() => Float, { nullable: true })
   longitude?: number;
+
+  @Field(() => TypeHabitat)
+  typeHabitat: TypeHabitat;
 
   @Field(() => Int)
   nbEtages: number;
@@ -45,6 +84,12 @@ export class Immeuble {
   @Field(() => Int, { nullable: true })
   zoneId?: number;
 
+  @Field(() => Int, { nullable: true })
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  nbMaisonsPrevu?: number;
+
   @Field(() => [Porte], { nullable: true })
   portes?: Porte[];
 
@@ -53,6 +98,125 @@ export class Immeuble {
 
   @Field()
   updatedAt: Date;
+}
+
+@ObjectType()
+export class MobileMapPlace {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  adresse: string;
+
+  @Field(() => Float)
+  latitude: number;
+
+  @Field(() => Float)
+  longitude: number;
+
+  @Field(() => TypeHabitat)
+  typeHabitat: TypeHabitat;
+
+  @Field(() => Int)
+  nbEtages: number;
+
+  @Field(() => Int)
+  nbPortesParEtage: number;
+
+  @Field(() => Int, { nullable: true })
+  nbMaisonsPrevu?: number;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  quartierId?: number;
+
+  @Field()
+  ownership: string;
+
+  @Field({ nullable: true })
+  creatorName?: string;
+
+  @Field()
+  updatedAt: Date;
+}
+
+@InputType()
+export class ImmeublesPageInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @Field(() => Int, { nullable: true, defaultValue: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @Field(() => TypeHabitat, { nullable: true })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
+
+  @Field(() => ImmeubleProgressFilter, {
+    nullable: true,
+    defaultValue: ImmeubleProgressFilter.ALL,
+  })
+  @IsOptional()
+  @IsEnum(ImmeubleProgressFilter)
+  progress?: ImmeubleProgressFilter;
+
+  // Filtre plage de dates sur la date de création du lieu (onglet Lieux mobile).
+  // Bornes optionnelles ; `createdTo` est attendu en fin de journée (inclusif).
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  @IsDate()
+  createdFrom?: Date;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  @IsDate()
+  createdTo?: Date;
+}
+
+@ObjectType()
+export class ImmeublesPageSummary {
+  @Field(() => Int)
+  coveragePercent: number;
+
+  @Field(() => Int)
+  standaloneCount: number;
+}
+
+@ObjectType()
+export class ImmeublesPage {
+  @Field(() => [Immeuble])
+  items: Immeuble[];
+
+  @Field({ nullable: true })
+  nextCursor?: string;
+
+  @Field()
+  hasMore: boolean;
+
+  @Field(() => Int)
+  totalCount: number;
+
+  @Field(() => ImmeublesPageSummary)
+  summary: ImmeublesPageSummary;
 }
 
 @InputType()
@@ -71,6 +235,14 @@ export class CreateImmeubleInput {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @Field(() => TypeHabitat, {
+    nullable: true,
+    defaultValue: TypeHabitat.IMMEUBLE,
+  })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
 
   @Field(() => Int)
   @IsInt()
@@ -105,6 +277,17 @@ export class CreateImmeubleInput {
   @IsOptional()
   @IsInt()
   zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
 }
 
 @InputType()
@@ -126,6 +309,11 @@ export class UpdateImmeubleInput {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @Field(() => TypeHabitat, { nullable: true })
+  @IsOptional()
+  @IsEnum(TypeHabitat)
+  typeHabitat?: TypeHabitat;
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -163,4 +351,114 @@ export class UpdateImmeubleInput {
   @IsOptional()
   @IsInt()
   zoneId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  quartierId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
+}
+
+@ObjectType()
+export class Quartier {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  nom: string;
+
+  @Field(() => Float, { nullable: true })
+  latitude?: number;
+
+  @Field(() => Float, { nullable: true })
+  longitude?: number;
+
+  @Field(() => Int, { nullable: true })
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  zoneId?: number;
+
+  @Field(() => [Immeuble], { nullable: true })
+  immeubles?: Immeuble[];
+
+  @Field()
+  createdAt: Date;
+
+  @Field()
+  updatedAt: Date;
+}
+
+@InputType()
+export class CreateQuartierPointInput {
+  @Field()
+  @IsNotEmpty()
+  @IsString()
+  adresse: string;
+
+  @Field(() => Float)
+  @IsNumber()
+  latitude: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  longitude: number;
+
+  @Field(() => TypeHabitat)
+  @IsEnum(TypeHabitat)
+  typeHabitat: TypeHabitat;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbEtages?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbPortesParEtage?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  nbMaisonsPrevu?: number;
+}
+
+@InputType()
+export class CreateQuartierInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  nom?: string;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  commercialId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  managerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  zoneId?: number;
+
+  @Field(() => [CreateQuartierPointInput])
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuartierPointInput)
+  points: CreateQuartierPointInput[];
 }

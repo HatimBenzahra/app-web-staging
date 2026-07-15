@@ -61,7 +61,12 @@ const terrainItems = [
       { title: 'Historique', url: '/zones/historique' },
     ],
   },
-  { title: 'Localisation', url: '/kiosk/localisation', icon: Navigation2, entity: 'kiosk' },
+  {
+    title: 'Suivi GPS',
+    url: '/gps-tracking',
+    icon: Navigation2,
+    entity: 'gps-tracking',
+  },
 ]
 
 const teamItems = [
@@ -389,7 +394,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="gap-1 px-1 py-2">
         {navigationGroups.map((group, idx) => {
           const groupVisible = group.items.filter(
             item => !item.entity || hasPermission(currentRole, item.entity, 'view')
@@ -398,13 +403,13 @@ export function AppSidebar() {
           return (
             <SidebarGroup
               key={group.label}
-              className={idx > 0 ? 'border-t border-sidebar-border/50 pt-2' : ''}
+              className={cn('px-2 py-1', idx > 0 && 'mt-2 border-t border-sidebar-border/50 pt-3')}
             >
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">
+              <SidebarGroupLabel className="h-6 mb-1 px-2 text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">
                 {group.label}
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-0.5">
                   {groupVisible.map(item => {
                     const enriched = enrichedItems.find(e => e.title === item.title) || item
                     return renderMenuItem(enriched)

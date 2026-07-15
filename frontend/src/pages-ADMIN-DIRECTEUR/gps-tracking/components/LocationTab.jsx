@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   MapPin,
-  Wifi,
   Info,
   Route,
   Clock,
@@ -37,7 +36,7 @@ const MAP_STYLES = [
 ]
 
 const BUILDINGS_LAYER_DEF = {
-  id: 'kiosk-3d-buildings',
+  id: 'gps-3d-buildings',
   source: 'composite',
   'source-layer': 'building',
   filter: ['==', 'extrude', 'true'],
@@ -51,18 +50,7 @@ const BUILDINGS_LAYER_DEF = {
   },
 }
 
-const ROUTE_COLORS = [
-  '#6366f1',
-  '#f43f5e',
-  '#10b981',
-  '#f59e0b',
-  '#8b5cf6',
-  '#06b6d4',
-  '#ec4899',
-  '#84cc16',
-  '#ef4444',
-  '#14b8a6',
-]
+const ROUTE_COLOR = '#6366f1'
 
 const TRAJET_QUICK_FILTERS = [
   { key: 'today', label: "Aujourd'hui" },
@@ -80,6 +68,7 @@ const haversineDistance = (lat1, lng1, lat2, lng2) => {
 }
 
 function detectStops(positions) {
+  if (!Array.isArray(positions) || positions.length < 2) return []
   const STOP_THRESHOLD_METERS = 50
   const STOP_MIN_DURATION_MS = 5 * 60 * 1000
   const stops = []
@@ -125,7 +114,7 @@ function detectStops(positions) {
 }
 
 function buildEnrichedEvents(positions, stops) {
-  if (positions.length < 1) return []
+  if (!Array.isArray(positions) || positions.length < 1) return []
   const first = positions[0]
   const last = positions[positions.length - 1]
   const allEvents = [
@@ -212,8 +201,9 @@ const formatDistanceKm = meters => {
   return `${(meters / 1000).toFixed(1)} km`
 }
 
-const getDeviceInitial = device =>
-  ((device.deviceName || device.deviceId || '?')[0] || '?').toUpperCase()
+const getActorRoleLabel = actor => (actor?.userType === 'MANAGER' ? 'Manager' : 'Commercial')
+
+const getActorInitial = actor => getActorRoleLabel(actor).charAt(0).toUpperCase()
 
 const AVATAR_COLORS = [
   'bg-chart-2/15 text-chart-2',
@@ -228,12 +218,12 @@ const getAvatarColor = (_id, index) => AVATAR_COLORS[index % AVATAR_COLORS.lengt
 const sanitizeId = id => (id || '').replace(/[^a-zA-Z0-9]/g, '_')
 
 export default function LocationTab({
-  devices,
+  actors,
   loading,
   mode,
   setMode,
-  selectedDeviceId,
-  setSelectedDeviceId,
+  selectedActorKey,
+  setSelectedActorKey,
   periodKey,
   setPeriodKey,
   periodLabel,
@@ -245,11 +235,9 @@ export default function LocationTab({
   setCustomFromTime,
   customToTime,
   setCustomToTime,
-  routePositionsByDevice,
+  routePositions,
   routeLoading,
   routeTotal,
-  allDevicesForFilter,
-  getCommercialName,
 }) {
   const [viewState, setViewState] = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -267,144 +255,79 @@ export default function LocationTab({
   const is3DBuildingsRef = useRef(false)
   const timelineRef = useRef(null)
 
-  const devicesWithGps = useMemo(
+  const actorsWithGps = useMemo(
     () =>
-      (devices || []).filter(
-        d => typeof d.latitude === 'number' && typeof d.longitude === 'number'
-      ),
-    [devices]
+      (actors || []).filter(a => typeof a.latitude === 'number' && typeof a.longitude === 'number'),
+    [actors]
   )
 
-  // En mode Live on ne montre que les tablettes actuellement en ligne :
-  // afficher la dernière position d'une tablette hors ligne est trompeur pour
-  // une vue « temps réel ». Le Trajet, lui, continue d'utiliser devicesWithGps
-  // (on doit pouvoir consulter l'historique d'une tablette même hors ligne).
-  const liveDevices = useMemo(() => devicesWithGps.filter(d => d.online), [devicesWithGps])
+  // En mode Live on ne montre que les commerciaux actuellement en ligne :
+  // afficher la dernière position d'un commercial hors ligne est trompeur pour
+  // une vue « temps réel ». Le Trajet, lui, continue d'utiliser actorsWithGps
+  // (on doit pouvoir consulter l'historique d'un commercial même hors ligne).
+  const liveActors = useMemo(() => actorsWithGps.filter(a => a.online), [actorsWithGps])
 
-  const selectedDevice = useMemo(
-    () => devicesWithGps.find(d => d.deviceId === selectedDeviceId) || null,
-    [devicesWithGps, selectedDeviceId]
+  const selectedActor = useMemo(
+    () => (actors || []).find(a => a.key === selectedActorKey) || null,
+    [actors, selectedActorKey]
+  )
+
+  const selectedLiveActor = useMemo(
+    () => actorsWithGps.find(a => a.key === selectedActorKey) || null,
+    [actorsWithGps, selectedActorKey]
   )
 
   const defaultCenter = useMemo(() => {
-    if (!devicesWithGps.length) return { latitude: 48.86, longitude: 2.35, zoom: 10 }
+    if (!actorsWithGps.length) return { latitude: 48.86, longitude: 2.35, zoom: 10 }
     const lat =
-      devicesWithGps.reduce((s, d) => s + Number(d.latitude || 0), 0) / devicesWithGps.length
+      actorsWithGps.reduce((s, a) => s + Number(a.latitude || 0), 0) / actorsWithGps.length
     const lng =
-      devicesWithGps.reduce((s, d) => s + Number(d.longitude || 0), 0) / devicesWithGps.length
+      actorsWithGps.reduce((s, a) => s + Number(a.longitude || 0), 0) / actorsWithGps.length
     return { latitude: lat, longitude: lng, zoom: 11 }
-  }, [devicesWithGps])
+  }, [actorsWithGps])
 
-  const deviceColorMap = useMemo(() => {
-    const map = new Map()
-    ;(allDevicesForFilter || []).forEach((d, i) => {
-      const color = ROUTE_COLORS[i % ROUTE_COLORS.length]
-      map.set(d.deviceId, color)
-      if (d.serialNumber) map.set(d.serialNumber, color)
-    })
-    return map
-  }, [allDevicesForFilter])
-
-  const routeEntries = useMemo(() => {
-    if (!routePositionsByDevice) return []
-    const entries = []
-    let fallbackIndex = 0
-    for (const [deviceId, positions] of routePositionsByDevice) {
-      if (positions.length < 2) {
-        fallbackIndex++
-        continue
-      }
-      const color =
-        deviceColorMap.get(deviceId) || ROUTE_COLORS[fallbackIndex % ROUTE_COLORS.length]
-      const filterDevice = (allDevicesForFilter || []).find(
-        d => d.deviceId === deviceId || d.serialNumber === deviceId
-      )
-      const label = filterDevice
-        ? getCommercialName(filterDevice) || filterDevice.deviceName || deviceId
-        : deviceId
-      entries.push({ deviceId, safeId: sanitizeId(deviceId), positions, color, label })
-      fallbackIndex++
-    }
-    return entries
-  }, [routePositionsByDevice, deviceColorMap, allDevicesForFilter, getCommercialName])
-
-  const deviceStats = useMemo(() => {
-    const stats = new Map()
-    if (!routePositionsByDevice) return stats
-    for (const [deviceId, positions] of routePositionsByDevice) {
-      if (positions.length < 2) {
-        stats.set(deviceId, {
-          positions,
-          totalDistance: 0,
-          stops: [],
-          firstPos: positions[0] || null,
-          lastPos: positions[positions.length - 1] || null,
-        })
-        continue
-      }
-      let dist = 0
-      for (let i = 1; i < positions.length; i++) {
-        dist += haversineDistance(
-          positions[i - 1].latitude,
-          positions[i - 1].longitude,
-          positions[i].latitude,
-          positions[i].longitude
-        )
-      }
-      const stops = detectStops(positions)
-      stats.set(deviceId, {
+  // Un seul actor est sélectionné à la fois : le trajet est un simple tableau
+  // chronologique de positions, dont on dérive distance / arrêts / événements.
+  const routeStats = useMemo(() => {
+    const positions = routePositions || []
+    if (positions.length < 2) {
+      return {
         positions,
-        totalDistance: dist,
-        stops,
-        firstPos: positions[0],
-        lastPos: positions[positions.length - 1],
-      })
+        totalDistance: 0,
+        stops: [],
+        firstPos: positions[0] || null,
+        lastPos: positions[positions.length - 1] || null,
+      }
     }
-    return stats
-  }, [routePositionsByDevice])
-
-  // Resolve selectedDeviceId to the actual key used in routePositionsByDevice
-  // (chips use kiosk deviceId but GPS positions may use serialNumber)
-  const resolvedRouteDeviceId = useMemo(() => {
-    if (!selectedDeviceId) return null
-    if (routePositionsByDevice.has(selectedDeviceId)) return selectedDeviceId
-    const filterDevice = (allDevicesForFilter || []).find(
-      d => d.deviceId === selectedDeviceId || d.serialNumber === selectedDeviceId
-    )
-    if (filterDevice) {
-      if (routePositionsByDevice.has(filterDevice.serialNumber)) return filterDevice.serialNumber
-      if (routePositionsByDevice.has(filterDevice.deviceId)) return filterDevice.deviceId
-    }
-    const matchEntry = routeEntries.find(e => {
-      const fd = (allDevicesForFilter || []).find(
-        d => d.deviceId === e.deviceId || d.serialNumber === e.deviceId
+    let dist = 0
+    for (let i = 1; i < positions.length; i++) {
+      dist += haversineDistance(
+        positions[i - 1].latitude,
+        positions[i - 1].longitude,
+        positions[i].latitude,
+        positions[i].longitude
       )
-      return fd && (fd.deviceId === selectedDeviceId || fd.serialNumber === selectedDeviceId)
-    })
-    return matchEntry?.deviceId || selectedDeviceId
-  }, [selectedDeviceId, routePositionsByDevice, allDevicesForFilter, routeEntries])
-
-  const selectedStats = useMemo(() => {
-    if (!resolvedRouteDeviceId) return null
-    return deviceStats.get(resolvedRouteDeviceId) || null
-  }, [resolvedRouteDeviceId, deviceStats])
+    }
+    const stops = detectStops(positions)
+    return {
+      positions,
+      totalDistance: dist,
+      stops,
+      firstPos: positions[0],
+      lastPos: positions[positions.length - 1],
+    }
+  }, [routePositions])
 
   const selectedEnrichedEvents = useMemo(() => {
-    if (!selectedStats || selectedStats.positions.length < 2) return []
-    return buildEnrichedEvents(selectedStats.positions, selectedStats.stops)
-  }, [selectedStats])
+    if (routeStats.positions.length < 2) return []
+    return buildEnrichedEvents(routeStats.positions, routeStats.stops)
+  }, [routeStats])
 
-  const selectedStopEvents = useMemo(() => selectedStats?.stops || [], [selectedStats])
+  const selectedStopEvents = useMemo(() => routeStats.stops || [], [routeStats])
 
-  const visibleRouteEntry = useMemo(() => {
-    if (!resolvedRouteDeviceId) return null
-    return routeEntries.find(e => e.deviceId === resolvedRouteDeviceId) || null
-  }, [resolvedRouteDeviceId, routeEntries])
+  const hasRoute = routeStats.positions.length >= 2
 
-  const entriesToDraw = useMemo(() => {
-    if (selectedDeviceId) return visibleRouteEntry ? [visibleRouteEntry] : []
-    return routeEntries
-  }, [selectedDeviceId, visibleRouteEntry, routeEntries])
+  const routeSafeId = useMemo(() => sanitizeId(selectedActorKey || 'route'), [selectedActorKey])
 
   useEffect(() => {
     is3DTerrainRef.current = is3DTerrain
@@ -428,10 +351,8 @@ export default function LocationTab({
   }, [mode])
 
   useEffect(() => {
-    if (mode !== 'trajet' || !mapRef.current || !routePositionsByDevice) return
-    const positions = resolvedRouteDeviceId
-      ? routePositionsByDevice.get(resolvedRouteDeviceId) || []
-      : Array.from(routePositionsByDevice.values()).flat()
+    if (mode !== 'trajet' || !mapRef.current) return
+    const positions = routePositions || []
     if (!positions.length) return
     const bounds = new mapboxgl.LngLatBounds()
     for (const p of positions) {
@@ -442,7 +363,7 @@ export default function LocationTab({
     } catch (error) {
       void error
     }
-  }, [mode, routePositionsByDevice, resolvedRouteDeviceId])
+  }, [mode, routePositions])
 
   const setupMapExtras = useCallback(() => {
     const map = mapRef.current?.getMap()
@@ -457,7 +378,7 @@ export default function LocationTab({
         })
       }
       if (is3DTerrainRef.current) map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
-      if (is3DBuildingsRef.current && !map.getLayer('kiosk-3d-buildings')) {
+      if (is3DBuildingsRef.current && !map.getLayer('gps-3d-buildings')) {
         map.addLayer(BUILDINGS_LAYER_DEF)
       }
     } catch (error) {
@@ -507,9 +428,9 @@ export default function LocationTab({
     const next = !is3DBuildings
     try {
       if (next) {
-        if (!map.getLayer('kiosk-3d-buildings')) map.addLayer(BUILDINGS_LAYER_DEF)
+        if (!map.getLayer('gps-3d-buildings')) map.addLayer(BUILDINGS_LAYER_DEF)
       } else {
-        if (map.getLayer('kiosk-3d-buildings')) map.removeLayer('kiosk-3d-buildings')
+        if (map.getLayer('gps-3d-buildings')) map.removeLayer('gps-3d-buildings')
       }
       setIs3DBuildings(next)
       is3DBuildingsRef.current = next
@@ -533,10 +454,8 @@ export default function LocationTab({
 
   const handleCenterOnDevices = useCallback(() => {
     if (!mapRef.current) return
-    if (mode === 'trajet' && routePositionsByDevice) {
-      const positions = selectedDeviceId
-        ? routePositionsByDevice.get(selectedDeviceId) || []
-        : Array.from(routePositionsByDevice.values()).flat()
+    if (mode === 'trajet') {
+      const positions = routePositions || []
       if (positions.length) {
         const bounds = new mapboxgl.LngLatBounds()
         for (const p of positions) {
@@ -550,30 +469,30 @@ export default function LocationTab({
         return
       }
     }
-    const centerSet = mode === 'live' ? liveDevices : devicesWithGps
+    const centerSet = mode === 'live' ? liveActors : actorsWithGps
     if (!centerSet.length) return
     const bounds = new mapboxgl.LngLatBounds()
-    for (const d of centerSet) {
-      bounds.extend([d.longitude, d.latitude])
+    for (const a of centerSet) {
+      bounds.extend([a.longitude, a.latitude])
     }
     try {
       mapRef.current.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1000 })
     } catch (error) {
       void error
     }
-  }, [devicesWithGps, liveDevices, mode, routePositionsByDevice, selectedDeviceId])
+  }, [actorsWithGps, liveActors, mode, routePositions])
 
   const handleCardClick = useCallback(
-    device => {
-      setSelectedDeviceId(device.deviceId)
+    actor => {
+      setSelectedActorKey(actor.key)
       setViewState({
-        latitude: Number(device.latitude),
-        longitude: Number(device.longitude),
+        latitude: Number(actor.latitude),
+        longitude: Number(actor.longitude),
         zoom: 14,
         transitionDuration: 800,
       })
     },
-    [setSelectedDeviceId]
+    [setSelectedActorKey]
   )
 
   const handlePeriodChange = useCallback(
@@ -671,30 +590,30 @@ export default function LocationTab({
                 >
                   <button
                     type="button"
-                    onClick={() => setSelectedDeviceId(null)}
+                    onClick={() => setSelectedActorKey(null)}
                     className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      !selectedDeviceId
+                      !selectedActorKey
                         ? 'border-primary/40 bg-primary/10 text-primary'
                         : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     Tous
                   </button>
-                  {liveDevices.map(device => {
-                    const active = selectedDeviceId === device.deviceId
+                  {liveActors.map(actor => {
+                    const active = selectedActorKey === actor.key
                     return (
                       <button
-                        key={device.deviceId}
+                        key={actor.key}
                         type="button"
-                        onClick={() => setSelectedDeviceId(device.deviceId)}
+                        onClick={() => setSelectedActorKey(actor.key)}
                         className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors max-w-[180px] truncate ${
                           active
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
                         }`}
-                        title={getCommercialName(device) || device.deviceName || device.deviceId}
+                        title={actor.name}
                       >
-                        {getCommercialName(device) || device.deviceName || device.deviceId}
+                        {actor.name}
                       </button>
                     )
                   })}
@@ -792,27 +711,26 @@ export default function LocationTab({
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedDeviceId(null)
+                      setSelectedActorKey(null)
                       setTrajetPopupPos(null)
                       setSelectedStopIndex(null)
                     }}
                     className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      !selectedDeviceId
+                      !selectedActorKey
                         ? 'border-primary/40 bg-primary/10 text-primary'
                         : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     Tous
                   </button>
-                  {(allDevicesForFilter || []).map(device => {
-                    const active = selectedDeviceId === device.deviceId
-                    const label = getCommercialName(device) || device.deviceName || device.deviceId
+                  {(actors || []).map(actor => {
+                    const active = selectedActorKey === actor.key
                     return (
                       <button
-                        key={device.deviceId}
+                        key={actor.key}
                         type="button"
                         onClick={() => {
-                          setSelectedDeviceId(device.deviceId)
+                          setSelectedActorKey(actor.key)
                           setTrajetPopupPos(null)
                           setSelectedStopIndex(null)
                         }}
@@ -821,9 +739,9 @@ export default function LocationTab({
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
                         }`}
-                        title={label}
+                        title={actor.name}
                       >
-                        {label}
+                        {actor.name}
                       </button>
                     )
                   })}
@@ -851,7 +769,7 @@ export default function LocationTab({
           style={{ scrollbarWidth: 'thin' }}
         >
           {mode === 'live' ? (
-            liveDevices.length === 0 ? (
+            liveActors.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-muted-foreground">
                 <div className="rounded-full bg-muted/40 p-4">
                   <MapPin className="h-7 w-7 text-muted-foreground/30" />
@@ -860,45 +778,44 @@ export default function LocationTab({
               </div>
             ) : (
               <div className="divide-y divide-border/40">
-                {liveDevices.map((device, index) => {
-                  const isSelected = device.deviceId === selectedDeviceId
-                  const BattIcon = getBatteryIcon(device.batteryLevel)
-                  const battColor = getBatteryColor(device.batteryLevel)
-                  const commercialName = getCommercialName(device)
+                {liveActors.map((actor, index) => {
+                  const isSelected = actor.key === selectedActorKey
+                  const BattIcon = getBatteryIcon(actor.batteryLevel)
+                  const battColor = getBatteryColor(actor.batteryLevel)
                   return (
                     <button
-                      key={device.deviceId}
+                      key={actor.key}
                       type="button"
-                      onClick={() => handleCardClick(device)}
+                      onClick={() => handleCardClick(actor)}
                       className={`w-full p-3 text-left transition-colors ${
                         isSelected ? 'bg-primary/6 ring-1 ring-primary/20' : 'hover:bg-muted/25'
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         <div
-                          className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${getAvatarColor(device.deviceId, index)}`}
+                          className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${getAvatarColor(actor.key, index)}`}
                         >
-                          {getDeviceInitial(device)}
+                          {getActorInitial(actor)}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-sm font-semibold truncate">
-                              {commercialName || 'Non assigné'}
+                              {actor.name || 'Non assigné'}
                             </p>
                             <span
                               className={`h-2 w-2 rounded-full shrink-0 ${
-                                device.online ? 'bg-chart-2' : 'bg-muted-foreground/40'
+                                actor.online ? 'bg-chart-2' : 'bg-muted-foreground/40'
                               }`}
                             />
                           </div>
                           <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                            {device.deviceName || device.deviceId}
+                            {getActorRoleLabel(actor)}
                           </p>
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5">
                               <BattIcon className={`h-3 w-3 ${battColor}`} />
                               <span className={`text-[11px] font-medium tabular-nums ${battColor}`}>
-                                {formatBattery(device.batteryLevel)}
+                                {formatBattery(actor.batteryLevel)}
                               </span>
                             </div>
                             <Button
@@ -907,7 +824,7 @@ export default function LocationTab({
                               className="h-auto px-0 py-0 text-[11px] text-primary/70 hover:text-primary hover:bg-transparent gap-0.5"
                               onClick={e => {
                                 e.stopPropagation()
-                                setSelectedDeviceId(device.deviceId)
+                                setSelectedActorKey(actor.key)
                                 setMode('trajet')
                               }}
                             >
@@ -935,14 +852,14 @@ export default function LocationTab({
                 </div>
               ))}
             </div>
-          ) : selectedDeviceId ? (
-            selectedStats && selectedStats.positions.length >= 2 ? (
+          ) : selectedActorKey ? (
+            hasRoute ? (
               <>
                 <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-sm border-b border-border/40 p-3 space-y-2">
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedDeviceId(null)
+                      setSelectedActorKey(null)
                       setTrajetPopupPos(null)
                       setSelectedStopIndex(null)
                     }}
@@ -954,17 +871,17 @@ export default function LocationTab({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-bold truncate">
-                        {visibleRouteEntry?.label || 'Non assigné'}
+                        {selectedActor?.name || 'Non assigné'}
                       </p>
                       <p className="text-[11px] text-muted-foreground">{periodLabel}</p>
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-sm font-semibold tabular-nums">
-                        {formatDistanceKm(selectedStats.totalDistance)}
+                        {formatDistanceKm(routeStats.totalDistance)}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {selectedStats.stops.length} arrêt
-                        {selectedStats.stops.length !== 1 ? 's' : ''}
+                        {routeStats.stops.length} arrêt
+                        {routeStats.stops.length !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
@@ -1071,51 +988,6 @@ export default function LocationTab({
                 </div>
               </div>
             )
-          ) : routeEntries.length > 0 ? (
-            <div className="p-3 space-y-2.5">
-              {routeEntries.map(entry => {
-                const stats = deviceStats.get(entry.deviceId)
-                if (!stats) return null
-                return (
-                  <button
-                    key={entry.safeId}
-                    type="button"
-                    onClick={() => setSelectedDeviceId(entry.deviceId)}
-                    className="w-full text-left rounded-xl border border-border/40 bg-background/60 hover:bg-background/80 hover:shadow-sm transition-all p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-2 w-2 rounded-full shrink-0"
-                            style={{ backgroundColor: entry.color }}
-                          />
-                          <p className="text-sm font-semibold truncate">{entry.label}</p>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                          {entry.deviceId.length > 10
-                            ? `···${entry.deviceId.slice(-8)}`
-                            : entry.deviceId}
-                        </p>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                    </div>
-                    <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground gap-2">
-                      <span className="tabular-nums">{formatDistanceKm(stats.totalDistance)}</span>
-                      <span>
-                        {stats.stops.length} arrêt{stats.stops.length !== 1 ? 's' : ''}
-                      </span>
-                      {stats.firstPos && stats.lastPos && (
-                        <span className="tabular-nums">
-                          {formatTime(stats.firstPos.recordedAt)} →{' '}
-                          {formatTime(stats.lastPos.recordedAt)}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
               <div className="h-16 w-16 rounded-full border-2 border-dashed border-muted-foreground/20 flex items-center justify-center">
@@ -1166,37 +1038,32 @@ export default function LocationTab({
           )}
 
           {mode === 'trajet' &&
-            entriesToDraw.map(entry => {
-              const routeColor = selectedDeviceId ? '#6366f1' : entry.color
+            hasRoute &&
+            (() => {
               const geoJson = {
                 type: 'Feature',
                 geometry: {
                   type: 'LineString',
-                  coordinates: entry.positions.map(p => [p.longitude, p.latitude]),
+                  coordinates: routeStats.positions.map(p => [p.longitude, p.latitude]),
                 },
                 properties: {},
               }
               return (
-                <Source
-                  key={entry.safeId}
-                  id={`route-${entry.safeId}`}
-                  type="geojson"
-                  data={geoJson}
-                >
+                <Source id={`route-${routeSafeId}`} type="geojson" data={geoJson}>
                   <Layer
-                    id={`route-shadow-${entry.safeId}`}
+                    id={`route-shadow-${routeSafeId}`}
                     type="line"
-                    paint={{ 'line-color': routeColor, 'line-width': 6, 'line-opacity': 0.15 }}
+                    paint={{ 'line-color': ROUTE_COLOR, 'line-width': 6, 'line-opacity': 0.15 }}
                     layout={{ 'line-join': 'round', 'line-cap': 'round' }}
                   />
                   <Layer
-                    id={`route-line-${entry.safeId}`}
+                    id={`route-line-${routeSafeId}`}
                     type="line"
-                    paint={{ 'line-color': routeColor, 'line-width': 3, 'line-opacity': 0.85 }}
+                    paint={{ 'line-color': ROUTE_COLOR, 'line-width': 3, 'line-opacity': 0.85 }}
                     layout={{ 'line-join': 'round', 'line-cap': 'round' }}
                   />
                   <Layer
-                    id={`route-arrows-${entry.safeId}`}
+                    id={`route-arrows-${routeSafeId}`}
                     type="symbol"
                     layout={{
                       'symbol-placement': 'line',
@@ -1209,7 +1076,7 @@ export default function LocationTab({
                       'text-allow-overlap': true,
                     }}
                     paint={{
-                      'text-color': routeColor,
+                      'text-color': ROUTE_COLOR,
                       'text-opacity': 0.65,
                       'text-halo-color': '#ffffff',
                       'text-halo-width': 1,
@@ -1217,14 +1084,15 @@ export default function LocationTab({
                   />
                 </Source>
               )
-            })}
+            })()}
 
           {mode === 'trajet' &&
-            entriesToDraw.map(entry => {
-              const firstPos = entry.positions[0]
-              const lastPos = entry.positions[entry.positions.length - 1]
+            hasRoute &&
+            (() => {
+              const firstPos = routeStats.positions[0]
+              const lastPos = routeStats.positions[routeStats.positions.length - 1]
               return (
-                <React.Fragment key={`endpts-${entry.safeId}`}>
+                <React.Fragment key={`endpts-${routeSafeId}`}>
                   <Marker
                     latitude={firstPos.latitude}
                     longitude={firstPos.longitude}
@@ -1251,17 +1119,16 @@ export default function LocationTab({
                   </Marker>
                 </React.Fragment>
               )
-            })}
+            })()}
 
           {mode === 'trajet' &&
-            selectedDeviceId &&
-            visibleRouteEntry &&
-            visibleRouteEntry.positions.map((pos, index) => {
+            hasRoute &&
+            routeStats.positions.map((pos, index) => {
               const isFirst = index === 0
-              const isLast = index === visibleRouteEntry.positions.length - 1
+              const isLast = index === routeStats.positions.length - 1
               if (isFirst || isLast) return null
               const isFocused = focusedIndex === index
-              const progress = index / (visibleRouteEntry.positions.length - 1)
+              const progress = index / (routeStats.positions.length - 1)
               const opacity = 0.3 + progress * 0.7
               return (
                 <Marker
@@ -1300,7 +1167,7 @@ export default function LocationTab({
             })}
 
           {mode === 'trajet' &&
-            selectedDeviceId &&
+            hasRoute &&
             selectedStopEvents.map((stop, idx) => (
               <Marker
                 key={stop.startTime || `stop-${idx}`}
@@ -1330,18 +1197,18 @@ export default function LocationTab({
             ))}
 
           {mode === 'live' &&
-            liveDevices.map(device => {
-              const isOnline = device.online
-              const isSelected = device.deviceId === selectedDeviceId
+            liveActors.map(actor => {
+              const isOnline = actor.online
+              const isSelected = actor.key === selectedActorKey
               return (
                 <Marker
-                  key={device.deviceId}
-                  latitude={Number(device.latitude)}
-                  longitude={Number(device.longitude)}
+                  key={actor.key}
+                  latitude={Number(actor.latitude)}
+                  longitude={Number(actor.longitude)}
                   anchor="center"
                   onClick={evt => {
                     evt.originalEvent.stopPropagation()
-                    setSelectedDeviceId(device.deviceId)
+                    setSelectedActorKey(actor.key)
                   }}
                 >
                   <button
@@ -1349,7 +1216,7 @@ export default function LocationTab({
                     className="relative cursor-pointer focus:outline-none"
                     onClick={evt => {
                       evt.stopPropagation()
-                      setSelectedDeviceId(device.deviceId)
+                      setSelectedActorKey(actor.key)
                     }}
                   >
                     {isOnline && (
@@ -1368,12 +1235,12 @@ export default function LocationTab({
               )
             })}
 
-          {mode === 'live' && selectedDevice && (
+          {mode === 'live' && selectedLiveActor && (
             <Popup
-              latitude={Number(selectedDevice.latitude)}
-              longitude={Number(selectedDevice.longitude)}
+              latitude={Number(selectedLiveActor.latitude)}
+              longitude={Number(selectedLiveActor.longitude)}
               anchor="top"
-              onClose={() => setSelectedDeviceId(null)}
+              onClose={() => setSelectedActorKey(null)}
               closeButton
               maxWidth="260px"
             >
@@ -1381,25 +1248,20 @@ export default function LocationTab({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate leading-tight">
-                      {getCommercialName(selectedDevice) || 'Non assigné'}
+                      {selectedLiveActor.name || 'Non assigné'}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
-                      {selectedDevice.deviceName || selectedDevice.deviceId}
+                      {getActorRoleLabel(selectedLiveActor)}
                     </p>
-                    {selectedDevice.model && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {selectedDevice.model}
-                      </p>
-                    )}
                   </div>
                   <Badge
                     className={`shrink-0 text-[10px] px-1.5 py-0.5 ${
-                      selectedDevice.online
+                      selectedLiveActor.online
                         ? 'bg-chart-2/15 text-chart-2 border-chart-2/30'
                         : 'bg-destructive/15 text-destructive border-destructive/30'
                     }`}
                   >
-                    {selectedDevice.online ? 'En ligne' : 'Hors ligne'}
+                    {selectedLiveActor.online ? 'En ligne' : 'Hors ligne'}
                   </Badge>
                 </div>
 
@@ -1411,33 +1273,23 @@ export default function LocationTab({
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
-                            width: `${clampBattery(selectedDevice.batteryLevel)}%`,
-                            backgroundColor: isBatteryKnown(selectedDevice.batteryLevel)
-                              ? getBatteryHexColor(selectedDevice.batteryLevel)
+                            width: `${clampBattery(selectedLiveActor.batteryLevel)}%`,
+                            backgroundColor: isBatteryKnown(selectedLiveActor.batteryLevel)
+                              ? getBatteryHexColor(selectedLiveActor.batteryLevel)
                               : 'transparent',
                           }}
                         />
                       </div>
                       <span className="text-[11px] font-medium tabular-nums">
-                        {formatBattery(selectedDevice.batteryLevel)}
+                        {formatBattery(selectedLiveActor.batteryLevel)}
                       </span>
                     </div>
                   </div>
 
-                  {selectedDevice.networkType && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-muted-foreground">Réseau</span>
-                      <div className="flex items-center gap-1">
-                        <Wifi className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-[11px]">{selectedDevice.networkType}</span>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-muted-foreground">Dernière vue</span>
                     <span className="text-[11px] font-medium">
-                      {formatRelativeTime(selectedDevice.lastSeen)}
+                      {formatRelativeTime(selectedLiveActor.lastSeen)}
                     </span>
                   </div>
                 </div>
@@ -1455,11 +1307,7 @@ export default function LocationTab({
               maxWidth="200px"
             >
               <div className="p-3 space-y-2 min-w-[160px]">
-                <p className="text-xs font-semibold">
-                  {visibleRouteEntry?.label ||
-                    (selectedDevice ? getCommercialName(selectedDevice) : null) ||
-                    'Non assigné'}
-                </p>
+                <p className="text-xs font-semibold">{selectedActor?.name || 'Non assigné'}</p>
                 <div className="flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="text-xs font-semibold">
@@ -1519,43 +1367,6 @@ export default function LocationTab({
                 </div>
               </Popup>
             )}
-
-          {mode === 'trajet' && !selectedDeviceId && routeEntries.length > 0 && (
-            <div className="absolute bottom-8 left-3 z-10">
-              <div className="rounded-xl bg-background/90 backdrop-blur-sm border border-border/50 shadow-lg px-1.5 py-1.5 flex flex-col gap-0.5 max-h-[240px] overflow-y-auto">
-                {routeEntries.map(entry => (
-                  <button
-                    key={entry.safeId}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDeviceId(entry.deviceId)
-                      const positions = routePositionsByDevice?.get(entry.deviceId) || []
-                      if (positions.length && mapRef.current) {
-                        const bounds = new mapboxgl.LngLatBounds()
-                        for (const p of positions) bounds.extend([p.longitude, p.latitude])
-                        try {
-                          mapRef.current.fitBounds(bounds, {
-                            padding: 60,
-                            maxZoom: 16,
-                            duration: 800,
-                          })
-                        } catch (e) {
-                          void e
-                        }
-                      }
-                    }}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors cursor-pointer text-left"
-                  >
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-[11px] font-medium text-foreground">{entry.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </MapboxMap>
       </div>
     </div>

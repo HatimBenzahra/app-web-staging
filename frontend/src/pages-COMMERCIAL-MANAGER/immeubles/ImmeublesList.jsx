@@ -21,6 +21,12 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useCommercialTheme } from '@/hooks/ui/use-commercial-theme'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { UI_TIMING } from '@/constants/ui/timing'
+import {
+  effectiveTypeHabitat,
+  getHabitatMeta,
+  buildingDoorCount,
+  TypeHabitat,
+} from '@/constants/domain/habitat'
 
 const ITEMS_PER_PAGE = 8
 
@@ -105,7 +111,9 @@ export default function ImmeublesList() {
       // Add the current user ID as commercialId or managerId based on role
       const dataWithUser = {
         ...immeubleData,
-        ...(isManager ? { managerId: parseInt(currentUserId) } : { commercialId: parseInt(currentUserId) }),
+        ...(isManager
+          ? { managerId: parseInt(currentUserId) }
+          : { commercialId: parseInt(currentUserId) }),
       }
 
       // Call the GraphQL mutation to create the immeuble
@@ -154,7 +162,7 @@ export default function ImmeublesList() {
             <CardContent className="p-2 sm:p-2.5 md:p-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5">
                 <div className="flex-1 min-w-0">
-                  <p className={`text-[10px] sm:text-xs ${base.text.muted} mb-0.5`}>Immeubles</p>
+                  <p className={`text-[10px] sm:text-xs ${base.text.muted} mb-0.5`}>Bâtiments</p>
                   <p className={`text-base sm:text-lg md:text-xl font-bold ${base.text.primary}`}>
                     {filteredImmeubles.length}
                   </p>
@@ -174,10 +182,7 @@ export default function ImmeublesList() {
                 <div className="flex-1 min-w-0">
                   <p className={`text-[10px] sm:text-xs ${base.text.muted} mb-0.5`}>Total portes</p>
                   <p className={`text-base sm:text-lg md:text-xl font-bold ${base.text.primary}`}>
-                    {filteredImmeubles.reduce(
-                      (total, i) => total + i.nbEtages * i.nbPortesParEtage,
-                      0
-                    )}
+                    {filteredImmeubles.reduce((total, i) => total + buildingDoorCount(i), 0)}
                   </p>
                 </div>
                 <div className="p-1 sm:p-1.5 md:p-2 rounded-lg border border-gray-200 bg-gray-50 flex-shrink-0">
@@ -213,12 +218,12 @@ export default function ImmeublesList() {
                 <Building2 className={`h-12 w-12 ${base.icon.default}`} />
               </div>
               <h3 className={`text-lg font-medium ${base.text.primary} mb-2`}>
-                {searchQuery ? 'Aucun résultat' : 'Aucun immeuble'}
+                {searchQuery ? 'Aucun résultat' : 'Aucun bâtiment'}
               </h3>
               <p className={`${base.text.muted} mb-4`}>
                 {searchQuery
-                  ? 'Aucun immeuble ne correspond à votre recherche'
-                  : "Vous n'avez pas encore d'immeubles prospectés"}
+                  ? 'Aucun bâtiment ne correspond à votre recherche'
+                  : "Vous n'avez pas encore de bâtiments prospectés"}
               </p>
               {!searchQuery && (
                 <Button
@@ -227,118 +232,183 @@ export default function ImmeublesList() {
                   className={getButtonClasses('primary')}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Ajouter votre premier immeuble
+                  Ajouter votre premier bâtiment
                 </Button>
               )}
             </div>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-3">
-            {paginatedImmeubles.map(immeuble => (
-              <Card
-                key={immeuble.id}
-                className={`${components.card.base} ${components.card.hover}`}
-              >
-                <CardContent className="p-3 sm:p-3.5 md:p-4">
-                  <div className="space-y-2.5 sm:space-y-3">
-                    {/* Address header */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-2 flex-1">
-                        <div
-                          className={`p-1.5 rounded-lg border ${base.border.default} ${base.bg.muted} flex-shrink-0`}
-                        >
-                          <MapPin className={`h-3.5 w-3.5 ${base.icon.default}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3
-                            className={`font-semibold text-sm sm:text-base leading-tight mb-0.5 ${base.text.primary}`}
-                            title={immeuble.adresse}
+            {paginatedImmeubles.map(immeuble => {
+              const type = effectiveTypeHabitat(immeuble)
+              const meta = getHabitatMeta(type)
+              const TypeIcon = meta.Icon
+              const doorCount = buildingDoorCount(immeuble)
+              return (
+                <Card
+                  key={immeuble.id}
+                  className={`${components.card.base} ${components.card.hover}`}
+                >
+                  <CardContent className="p-3 sm:p-3.5 md:p-4">
+                    <div className="space-y-2.5 sm:space-y-3">
+                      {/* Address header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start space-x-2 flex-1 min-w-0">
+                          <div
+                            className={`p-1.5 rounded-lg border ${base.border.default} ${base.bg.muted} flex-shrink-0`}
                           >
-                            {immeuble.adresse}
-                          </h3>
-                          <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>
-                            {new Date(immeuble.createdAt).toLocaleDateString('fr-FR')}
-                          </p>
+                            <MapPin className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3
+                              className={`font-semibold text-sm sm:text-base leading-tight mb-0.5 ${base.text.primary}`}
+                              title={immeuble.adresse}
+                            >
+                              {immeuble.adresse}
+                            </h3>
+                            <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>
+                              {new Date(immeuble.createdAt).toLocaleDateString('fr-FR')}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Building info grid */}
-                    <div className={`grid grid-cols-2 gap-3 pt-2 border-t ${base.border.default}`}>
-                      <div className="space-y-0.5">
-                        <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Étages</p>
-                        <div className="flex items-center space-x-1.5">
-                          <Building2 className={`h-3.5 w-3.5 ${base.icon.default}`} />
-                          <span className={`font-semibold text-sm ${base.text.primary}`}>
-                            {immeuble.nbEtages}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Portes/étage</p>
-                        <div className="flex items-center space-x-1.5">
-                          <Key className={`h-3.5 w-3.5 ${base.icon.default}`} />
-                          <span className={`font-semibold text-sm ${base.text.primary}`}>
-                            {immeuble.nbPortesParEtage}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Badges row */}
-                    <div className={`flex flex-wrap gap-1.5 pt-2 border-t ${base.border.default}`}>
-                      <Badge
-                        variant={immeuble.ascenseurPresent ? 'default' : 'secondary'}
-                        className={components.badge.default}
-                      >
-                        <ArrowUp className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
-                        <span className="text-[10px] sm:text-xs">
-                          {immeuble.ascenseurPresent ? 'Ascenseur' : 'Sans ascenseur'}
-                        </span>
-                      </Badge>
-
-                      {immeuble.digitalCode && (
-                        <Badge variant="outline" className={components.badge.outline}>
-                          <Key className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
-                          <span className="text-[10px] sm:text-xs">
-                            Code: {immeuble.digitalCode}
-                          </span>
+                        <Badge className={`${meta.badgeClasses} gap-1 flex-shrink-0`}>
+                          <TypeIcon className="h-3 w-3" />
+                          <span className="text-[10px] sm:text-xs">{meta.label}</span>
                         </Badge>
-                      )}
-                    </div>
-
-                    {/* Total doors */}
-                    <div
-                      className={`p-2 sm:p-2.5 rounded-lg border ${base.border.default} ${base.bg.muted}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs sm:text-sm ${base.text.muted}`}>
-                          Total des portes
-                        </span>
-                        <span className={`text-base sm:text-lg font-bold ${base.text.primary}`}>
-                          {immeuble.nbEtages * immeuble.nbPortesParEtage}
-                        </span>
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <Button
-                      variant="ghost"
-                      onClick={e => {
-                        e.stopPropagation()
-                        navigate(`/portes/${immeuble.id}`)
-                      }}
-                      className={`w-full ${getButtonClasses('primary')}`}
-                      size="sm"
-                    >
-                      <DoorOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
-                      Gérer les portes
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      {/* Building info grid (adapté au type) */}
+                      <div
+                        className={`grid grid-cols-2 gap-3 pt-2 border-t ${base.border.default}`}
+                      >
+                        {type === TypeHabitat.MAISON ? (
+                          <>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Type</p>
+                              <div className="flex items-center space-x-1.5">
+                                <TypeIcon className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  Foyer unique
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Portes</p>
+                              <div className="flex items-center space-x-1.5">
+                                <Key className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  1
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        ) : type === TypeHabitat.PAVILLON ? (
+                          <>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Maisons</p>
+                              <div className="flex items-center space-x-1.5">
+                                <TypeIcon className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  {immeuble.nbMaisonsPrevu ?? 0}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>
+                                Portes/maison
+                              </p>
+                              <div className="flex items-center space-x-1.5">
+                                <Key className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  1
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>Étages</p>
+                              <div className="flex items-center space-x-1.5">
+                                <Building2 className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  {immeuble.nbEtages}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className={`text-[10px] sm:text-xs ${base.text.muted}`}>
+                                Portes/étage
+                              </p>
+                              <div className="flex items-center space-x-1.5">
+                                <Key className={`h-3.5 w-3.5 ${base.icon.default}`} />
+                                <span className={`font-semibold text-sm ${base.text.primary}`}>
+                                  {immeuble.nbPortesParEtage}
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Badges row */}
+                      <div
+                        className={`flex flex-wrap gap-1.5 pt-2 border-t ${base.border.default}`}
+                      >
+                        {type === TypeHabitat.IMMEUBLE && (
+                          <Badge
+                            variant={immeuble.ascenseurPresent ? 'default' : 'secondary'}
+                            className={components.badge.default}
+                          >
+                            <ArrowUp className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
+                            <span className="text-[10px] sm:text-xs">
+                              {immeuble.ascenseurPresent ? 'Ascenseur' : 'Sans ascenseur'}
+                            </span>
+                          </Badge>
+                        )}
+
+                        {immeuble.digitalCode && (
+                          <Badge variant="outline" className={components.badge.outline}>
+                            <Key className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
+                            <span className="text-[10px] sm:text-xs">
+                              Code: {immeuble.digitalCode}
+                            </span>
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Total doors */}
+                      <div
+                        className={`p-2 sm:p-2.5 rounded-lg border ${base.border.default} ${base.bg.muted}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs sm:text-sm ${base.text.muted}`}>
+                            Total des portes
+                          </span>
+                          <span className={`text-base sm:text-lg font-bold ${base.text.primary}`}>
+                            {doorCount}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <Button
+                        variant="ghost"
+                        onClick={e => {
+                          e.stopPropagation()
+                          navigate(`/portes/${immeuble.id}`)
+                        }}
+                        className={`w-full ${getButtonClasses('primary')}`}
+                        size="sm"
+                      >
+                        <DoorOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
+                        Gérer les portes
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
 
@@ -347,7 +417,7 @@ export default function ImmeublesList() {
           <div className="mt-6 mb-20 sm:mb-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className={`text-sm ${base.text.muted}`}>
               Affichage de {startIndex + 1} à {Math.min(endIndex, sortedImmeubles.length)} sur{' '}
-              {sortedImmeubles.length} immeuble{sortedImmeubles.length > 1 ? 's' : ''}
+              {sortedImmeubles.length} bâtiment{sortedImmeubles.length > 1 ? 's' : ''}
             </div>
 
             <div className="flex items-center gap-2">

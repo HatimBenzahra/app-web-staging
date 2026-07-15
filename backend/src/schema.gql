@@ -2,6 +2,290 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AcquiscanAddress {
+  addrNomCommune: String
+  addrNomVoie: String
+  addrNumero: String
+  anneeFt: String
+  codeInsee: String
+  coordinates: AcquiscanCoordinate
+  eligFo: String
+  fermetureComAddr: String
+  fermetureComZone: String
+  fermetureTechnique: String
+  hasCoordinates: Boolean!
+  imbCode: String
+  immeubleId: String!
+  nbrLogements: String
+  sites4g: Int
+  sites5g: Int
+  sitesTotal: Int
+}
+
+input AcquiscanAddressSearchInput {
+  limit: Int
+  query: String!
+}
+
+type AcquiscanAddressSuggestion {
+  city: String
+  codeInsee: String
+  id: String!
+  label: String!
+  latitude: Float!
+  longitude: Float!
+  postcode: String
+  score: Float
+}
+
+input AcquiscanAddressesInput {
+  annee: String
+  commune: String
+  coverage4g: String
+  coverage5g: String
+  dept: String!
+  enrichCoordinates: Boolean
+  fiber: String
+  limit: Int
+  offset: Int
+  search: String
+  segment: String
+}
+
+type AcquiscanAddressesPage {
+  enrichedCount: Int!
+  importStatus: AcquiscanImportStatus!
+  rows: [AcquiscanAddress!]!
+  total: Int!
+}
+
+input AcquiscanBoundsInput {
+  east: Float!
+  north: Float!
+  south: Float!
+  west: Float!
+}
+
+input AcquiscanCommuneOpportunitiesInput {
+  dept: String!
+}
+
+type AcquiscanCommuneOpportunitiesPage {
+  rows: [AcquiscanCommuneOpportunity!]!
+  summary: AcquiscanOpportunitySummary!
+}
+
+type AcquiscanCommuneOpportunity {
+  codeDept: String!
+  codeInsee: String!
+  nomCommune: String
+  summary: AcquiscanOpportunitySummary!
+}
+
+type AcquiscanCoordinate {
+  imbX: Float
+  imbY: Float
+  latitude: Float
+  longitude: Float
+  matchKey: String
+  source: String
+}
+
+type AcquiscanCopperBuildingOpportunity {
+  addrNomCommune: String
+  addrNomVoie: String
+  addrNumero: String
+  anneeFt: String
+  codeInsee: String
+  coordinates: AcquiscanCoordinate
+  eligFo: String
+  fermetureComAddr: String
+  fermetureComZone: String
+  fermetureTechnique: String
+  hasCoordinates: Boolean!
+  imbCode: String
+  immeubleId: String!
+  nbrLogements: String
+  opportunityLabel: String!
+  opportunityScore: Int!
+  sites4g: Int
+  sites5g: Int
+  sitesTotal: Int
+}
+
+input AcquiscanCopperBuildingsInput {
+  annee: String
+  commune: String
+  coverage4g: String
+  coverage5g: String
+  dept: String!
+  fiber: String
+  limit: Int
+  offset: Int
+  search: String
+  segment: String
+}
+
+type AcquiscanCopperBuildingsPage {
+  limit: Int!
+  offset: Int!
+  rows: [AcquiscanCopperBuildingOpportunity!]!
+  total: Int!
+}
+
+type AcquiscanDepartmentCoverage {
+  dept: String!
+  importedAt: DateTime
+  importedCount: Int!
+}
+
+type AcquiscanDepartmentOpportunitiesPage {
+  rows: [AcquiscanDepartmentOpportunity!]!
+  summary: AcquiscanOpportunitySummary!
+}
+
+type AcquiscanDepartmentOpportunity {
+  codeDept: String!
+  summary: AcquiscanOpportunitySummary!
+}
+
+type AcquiscanImportStatus {
+  dept: String!
+  importedAt: DateTime
+  importedCount: Float!
+  isImported: Boolean!
+}
+
+type AcquiscanMapCluster {
+  count: Int!
+  id: String!
+  latitude: Float!
+  longitude: Float!
+}
+
+input AcquiscanMapInput {
+  annee: String
+  bounds: AcquiscanBoundsInput!
+  cluster: Boolean
+  commune: String
+  coverage4g: String
+  coverage5g: String
+  dept: String
+  fiber: String
+  limit: Int
+  search: String
+  segment: String
+  zoom: Float!
+}
+
+type AcquiscanMapPoint {
+  addrNomCommune: String
+  addrNomVoie: String
+  addrNumero: String
+  anneeFt: String
+  codeInsee: String
+  dept: String!
+  eligFo: String
+  fermetureComAddr: String
+  fermetureComZone: String
+  fermetureTechnique: String
+  id: String!
+  imbCode: String
+  immeubleId: String!
+  latitude: Float!
+  longitude: Float!
+  nbrLogements: String
+  sites4g: Int
+  sites5g: Int
+  sitesTotal: Int
+}
+
+type AcquiscanMapResult {
+  clustered: Boolean!
+  clusters: [AcquiscanMapCluster!]!
+  coverage: [AcquiscanDepartmentCoverage!]!
+  points: [AcquiscanMapPoint!]!
+  returnedCount: Int!
+  tooManyResults: Boolean!
+  totalInBounds: Int!
+}
+
+type AcquiscanOpportunitySummary {
+  closestShutdownYear: Int
+  copperBuildings: Int!
+  copperShutdown: Int!
+  copperShutdownRate: Float!
+  fiberBuildings: Int!
+  fiberRate: Float!
+  opportunityScore: Int!
+  sites4g: Int!
+  sites5g: Int!
+  sitesTotal: Int!
+  totalBuildings: Int!
+}
+
+input AcquiscanTerritoryGeoJsonInput {
+  dept: String
+  deptName: String
+  level: String!
+}
+
+input AcquiscanZonePreviewInput {
+  annee: String
+  commune: String
+  coverage4g: String
+  coverage5g: String
+  dept: String
+  fiber: String
+  latitude: Float!
+  limit: Int
+  longitude: Float!
+  radiusMeters: Float!
+  segment: String
+}
+
+type AcquiscanZonePreviewResult {
+  summary: AcquiscanZonePreviewSummary!
+  targets: [AcquiscanZoneTargetPreview!]!
+  tooManyResults: Boolean!
+  totalInCircle: Int!
+}
+
+type AcquiscanZonePreviewSummary {
+  averageOpportunityScore: Int!
+  copperClosureTargets: Int!
+  fiberTargets: Int!
+  noFiberTargets: Int!
+  strong4gTargets: Int!
+  strong5gTargets: Int!
+  totalLogements: Int!
+  totalTargets: Int!
+}
+
+type AcquiscanZoneTargetPreview {
+  addrNomCommune: String
+  addrNomVoie: String
+  addrNumero: String
+  anneeFt: String
+  codeInsee: String
+  dept: String!
+  distanceMeters: Float!
+  eligFo: String
+  fermetureComAddr: String
+  fermetureComZone: String
+  fermetureTechnique: String
+  id: String!
+  imbCode: String
+  immeubleId: String!
+  latitude: Float!
+  longitude: Float!
+  nbrLogements: String
+  opportunityScore: Int!
+  sites4g: Int
+  sites5g: Int
+  sitesTotal: Int
+}
+
 type ActiveRoom {
   createdAt: DateTime!
   numParticipants: Int!
@@ -10,6 +294,7 @@ type ActiveRoom {
 }
 
 input AssignZoneInput {
+  cascade: Boolean
   userId: Int!
   userType: UserType!
   zoneId: Int!
@@ -41,6 +326,17 @@ type AwardBadgesResult {
   skipped: Int!
   success: Boolean!
   total: Int!
+}
+
+input BackfillRecordingsInput {
+  maxObjects: Int = 5000
+}
+
+type BackfillRecordingsResult {
+  indexed: Int!
+  scannedObjects: Int!
+  scannedRooms: Int!
+  skipped: Int!
 }
 
 """Catégorie de badge gamification"""
@@ -126,12 +422,19 @@ input ConfirmRecordingUploadInput {
   s3Key: String!
 }
 
+"""Statuts de contrat inclus dans le classement ou le détail"""
+enum ContractRankingStatus {
+  RETRACTE
+  SIGNE
+  VALIDE
+}
+
 type ContratValideType {
   commercialId: Int
   commercialWinleadPlusId: String!
   createdAt: DateTime!
   dateSignature: DateTime
-  dateValidation: DateTime!
+  dateValidation: DateTime
   externalContratId: Int!
   externalProspectId: Int!
   id: Int!
@@ -149,7 +452,26 @@ type ContratValideType {
   periodQuarter: String!
   periodWeek: String!
   periodYear: String!
+  statutContrat: String
   syncedAt: DateTime!
+}
+
+input CreateAcquiscanZoneInput {
+  annee: String
+  commune: String
+  coverage4g: String
+  coverage5g: String
+  dept: String
+  directeurId: Int
+  fiber: String
+  latitude: Float!
+  limit: Int
+  longitude: Float!
+  managerId: Int
+  nom: String!
+  radiusMeters: Float!
+  segment: String
+  selectedImmeubleIds: [String!]
 }
 
 input CreateBadgeDefinitionInput {
@@ -191,7 +513,10 @@ input CreateImmeubleInput {
   longitude: Float
   managerId: Int
   nbEtages: Int!
+  nbMaisonsPrevu: Int
   nbPortesParEtage: Int!
+  quartierId: Int
+  typeHabitat: TypeHabitat = IMMEUBLE
   zoneId: Int
 }
 
@@ -218,6 +543,24 @@ input CreatePorteInput {
   statut: StatutPorte! = NON_VISITE
 }
 
+input CreateQuartierInput {
+  commercialId: Int
+  managerId: Int
+  nom: String
+  points: [CreateQuartierPointInput!]!
+  zoneId: Int
+}
+
+input CreateQuartierPointInput {
+  adresse: String!
+  latitude: Float!
+  longitude: Float!
+  nbEtages: Int
+  nbMaisonsPrevu: Int
+  nbPortesParEtage: Int
+  typeHabitat: TypeHabitat!
+}
+
 input CreateStatisticInput {
   absents: Int!
   argumentes: Int!
@@ -238,9 +581,10 @@ input CreateZoneInput {
   directeurId: Int
   managerId: Int
   nom: String!
-  rayon: Float!
-  xOrigin: Float!
-  yOrigin: Float!
+  polygon: JSON
+  rayon: Float
+  xOrigin: Float
+  yOrigin: Float
 }
 
 input CreerUtilisateurInput {
@@ -254,14 +598,6 @@ input CreerUtilisateurInput {
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
-
-type DeviceMapping {
-  commercialName: String!
-  createdAt: DateTime!
-  deviceId: String!
-  id: Int!
-  updatedAt: DateTime!
-}
 
 type Directeur {
   adresse: String
@@ -315,32 +651,16 @@ type GlobalSearchResult {
   totalCount: Int!
 }
 
-type GpsHistoryResponse {
-  positions: [GpsPosition!]!
-  total: Int!
-}
-
 type GpsPosition {
   accuracy: Float
   batteryLevel: Int
-  createdAt: DateTime!
-  deviceId: String!
-  deviceName: String
   id: Int!
   isOnline: Boolean!
   latitude: Float!
   longitude: Float!
   recordedAt: DateTime!
-}
-
-input GpsPositionInput {
-  accuracy: Float
-  batteryLevel: Int
-  deviceId: String!
-  deviceName: String
-  isOnline: Boolean
-  latitude: Float!
-  longitude: Float!
+  userId: Int
+  userType: UserType
 }
 
 type HistoriqueZone {
@@ -370,10 +690,22 @@ type Immeuble {
   longitude: Float
   managerId: Int
   nbEtages: Int!
+  nbMaisonsPrevu: Int
   nbPortesParEtage: Int!
   portes: [Porte!]
+  quartierId: Int
+  typeHabitat: TypeHabitat!
   updatedAt: DateTime!
   zoneId: Int
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+input ListRecentRecordingsInput {
+  limit: Int = 60
 }
 
 type LiveKitConnectionDetails {
@@ -464,26 +796,34 @@ enum MonitoringStatus {
 }
 
 type Mutation {
+  addEtageEmpty(immeubleId: Int!): Immeuble!
   addEtageToImmeuble(id: Int!): Immeuble!
   addPorteToEtage(etage: Int!, immeubleId: Int!): Immeuble!
+  addPorteToEtageCapped(etage: Int!, immeubleId: Int!): Immeuble!
   assignZoneToCommercial(commercialId: Int!, zoneId: Int!): Boolean!
   assignZoneToDirecteur(directeurId: Int!, zoneId: Int!): Boolean!
   assignZoneToManager(managerId: Int!, zoneId: Int!): Boolean!
   assignZoneToUser(input: AssignZoneInput!): ZoneEnCours!
   awardBadge(input: AwardBadgeInput!): AwardBadgesResult!
+  backfillRecordingsIndex(input: BackfillRecordingsInput!): BackfillRecordingsResult!
   batchAwardBadges(input: BatchAwardBadgesInput!): AwardBadgesResult!
   batchUpdateOffreBadgeProductKey(input: BatchUpdateOffreBadgeProductKeyInput!): MappingResult!
   batchUpdateOffrePoints(input: BatchUpdateOffrePointsInput!): MappingResult!
   computeRanking(input: ComputeRankingInput!): MappingResult!
   confirmMapping(input: ConfirmMappingInput!): MappingResult!
   confirmRecordingUpload(input: ConfirmRecordingUploadInput!): RecordingItem!
+  createAcquiscanZone(input: CreateAcquiscanZoneInput!): Zone!
   createBadgeDefinition(input: CreateBadgeDefinitionInput!): BadgeDefinitionType!
   createCommercial(createCommercialInput: CreateCommercialInput!): Commercial!
   createDirecteur(createDirecteurInput: CreateDirecteurInput!): Directeur!
   createImmeuble(createImmeubleInput: CreateImmeubleInput!): Immeuble!
+  createImmeubleEmpty(createImmeubleInput: CreateImmeubleInput!): Immeuble!
+  createMaisonFromImmeubleInput(createImmeubleInput: CreateImmeubleInput!): Immeuble!
   createManager(createManagerInput: CreateManagerInput!): Manager!
   createPorte(createPorteInput: CreatePorteInput!): Porte!
+  createPorteCapped(createPorteInput: CreatePorteInput!): Porte!
   createPortesForImmeuble(immeubleId: Int!, nbEtages: Int!, nbPortesParEtage: Int!): Boolean!
+  createQuartier(createQuartierInput: CreateQuartierInput!): Quartier!
   createStatistic(createStatisticInput: CreateStatisticInput!): Statistic!
   createZone(createZoneInput: CreateZoneInput!): Zone!
   creerUtilisateurProWin(input: CreerUtilisateurInput!): ReponseCreationUtilisateur!
@@ -500,7 +840,6 @@ type Mutation {
   recalculateAllStats: String!
   refreshToken(refreshToken: String!): AuthResponse!
   removeCommercial(id: Int!): Commercial!
-  removeDeviceMapping(deviceId: String!): DeviceMapping!
   removeDirecteur(id: Int!): Directeur!
   removeEtageFromImmeuble(id: Int!): Immeuble!
   removeImmeuble(id: Int!): Immeuble!
@@ -508,13 +847,15 @@ type Mutation {
   removeMapping(input: RemoveMappingInput!): MappingResult!
   removePorte(id: Int!): Porte!
   removePorteFromEtage(etage: Int!, immeubleId: Int!): Immeuble!
+  removeRecordingSegmentsToday(commercialId: Int, limit: Int! = 20, segmentIds: [Int!], statut: String): Int!
   removeStatistic(id: Int!): Statistic!
+  removeTerrainLieu(id: Int!): Immeuble!
   removeZone(id: Int!): Zone!
+  reportMyPositions(input: [ReportPositionInput!]!): Int!
   requestRecordingUpload(input: RequestRecordingUploadInput!): RecordingUploadDetails!
+  resetS3Diagnostics: S3DiagnosticsSnapshot!
   revokeBadge(id: Int!): MappingResult!
-  saveGpsPositions(input: SaveGpsPositionsInput!): SaveGpsPositionsResponse!
   seedBadges: SeedBadgesResult!
-  setDeviceCommercial(input: SetDeviceCommercialInput!): DeviceMapping!
   startMonitoring(input: StartMonitoringInput!): LiveKitConnectionDetails!
   startRecording(input: StartRecordingInput!): RecordingResult!
   stopMonitoring(input: StopMonitoringInput!): Boolean!
@@ -569,6 +910,22 @@ type OffreDistributionEntry {
   offreId: Int!
 }
 
+type OwnerActivityStatistic {
+  absents: Int!
+  argumentes: Int!
+  contratsSignes: Int!
+  lastActivityAt: DateTime
+  nbPortesProspectes: Int!
+  points: Int!
+  refus: Int!
+  rendezVousPris: Int!
+  repassages: Int!
+  tauxConversion: Float!
+  userId: Int!
+  userName: String!
+  userType: String!
+}
+
 type PaginatedRecordingsResult {
   items: [RecordingItem!]!
   totalCount: Int!
@@ -578,6 +935,7 @@ type Porte {
   commentaire: String
   createdAt: DateTime!
   derniereVisite: DateTime
+  duree: Int
   etage: Int!
   id: Int!
   immeubleId: Int!
@@ -611,7 +969,28 @@ type PorteStatistics {
   totalPortes: Int!
 }
 
+type Quartier {
+  commercialId: Int
+  createdAt: DateTime!
+  id: Int!
+  immeubles: [Immeuble!]
+  latitude: Float
+  longitude: Float
+  managerId: Int
+  nom: String!
+  updatedAt: DateTime!
+  zoneId: Int
+}
+
 type Query {
+  acquiscanAddressSuggestions(input: AcquiscanAddressSearchInput!): [AcquiscanAddressSuggestion!]!
+  acquiscanAddresses(input: AcquiscanAddressesInput!): AcquiscanAddressesPage!
+  acquiscanCommuneOpportunities(input: AcquiscanCommuneOpportunitiesInput!): AcquiscanCommuneOpportunitiesPage!
+  acquiscanCopperBuildings(input: AcquiscanCopperBuildingsInput!): AcquiscanCopperBuildingsPage!
+  acquiscanDepartmentOpportunities: AcquiscanDepartmentOpportunitiesPage!
+  acquiscanMapAddresses(input: AcquiscanMapInput!): AcquiscanMapResult!
+  acquiscanTerritoryGeoJson(input: AcquiscanTerritoryGeoJsonInput!): String!
+  acquiscanZonePreview(input: AcquiscanZonePreviewInput!): AcquiscanZonePreviewResult!
   allCurrentAssignments: [ZoneEnCours!]!
   allZoneHistory: [HistoriqueZone!]!
   badgeDefinition(id: Int!): BadgeDefinitionType
@@ -621,10 +1000,9 @@ type Query {
   commercialRankings(commercialId: Int!): [RankSnapshotType!]!
   commercialTeamRanking(commercialId: Int!): TeamRanking!
   commercials: [Commercial!]!
-  contratsByCommercial(commercialId: Int!): [ContratValideType!]!
-  contratsByManager(managerId: Int!): [ContratValideType!]!
+  contratsByCommercial(commercialId: Int!, contractStatuses: [ContractRankingStatus!] = [VALIDE]): [ContratValideType!]!
+  contratsByManager(contractStatuses: [ContractRankingStatus!] = [VALIDE], managerId: Int!): [ContratValideType!]!
   currentUserAssignment(userId: Int!, userType: UserType!): ZoneEnCours
-  deviceMappings: [DeviceMapping!]!
   directeur(id: Int!): Directeur!
   directeurs: [Directeur!]!
   egressState(egressId: String!): EgressState!
@@ -637,14 +1015,13 @@ type Query {
   getRecordingSpeechScores(keys: [String!]!): [SpeechScoreDto!]!
   getStreamingUrl(key: String!): String!
   globalSearch(limit: Int! = 5, query: String!): GlobalSearchResult!
-  gpsAllPositions(deviceId: String, from: String!, limit: Int, to: String!): GpsHistoryResponse!
-  gpsDailyRoute(date: String!, deviceId: String!): GpsHistoryResponse!
-  gpsDevices: [GpsPosition!]!
-  gpsHistory(deviceId: String!, from: String, limit: Int, to: String): GpsHistoryResponse!
-  gpsLatestPositions: [GpsPosition!]!
+  gpsDailyRouteByActor(date: String!, userId: Int!, userType: UserType!): [GpsPosition!]!
+  gpsLatestActorPositions: [GpsPosition!]!
+  gpsRouteByActor(from: String!, to: String!, userId: Int!, userType: UserType!): [GpsPosition!]!
   immeuble(id: Int!): Immeuble!
   immeubles: [Immeuble!]!
   listAllRecordings(roomNames: [String!]!): PaginatedRecordingsResult!
+  listRecentRecordings(input: ListRecentRecordingsInput!): PaginatedRecordingsResult!
   listRecordings(roomName: String!): [RecordingItem!]!
   manager(id: Int!): Manager!
   managerBadges(managerId: Int!): [CommercialBadgeType!]!
@@ -661,24 +1038,34 @@ type Query {
   portesByImmeuble(etage: Int, immeubleId: Int!, skip: Int, take: Int): [Porte!]!
   portesModifiedToday(immeubleId: Int): [Porte!]!
   portesRdvToday: [Porte!]!
-  ranking(includeContratFinie: Boolean! = false, period: RankPeriod!, periodKey: String!): [RankSnapshotType!]!
+  quartiers: [Quartier!]!
+  ranking(contractStatuses: [ContractRankingStatus!] = [VALIDE], includeContratFinie: Boolean! = false, period: RankPeriod!, periodKey: String!): [RankSnapshotType!]!
+  recordingSegmentsByCommercial(commercialId: Int!): [RecordingSegmentDto!]!
   recordingSegmentsByImmeuble(immeubleId: Int!): [RecordingSegmentDto!]!
   recordingSegmentsByKey(s3Key: String!): [RecordingSegmentDto!]!
+  recordingSegmentsByManager(managerId: Int!): [RecordingSegmentDto!]!
   recordingSegmentsByPorte(porteId: Int!): [RecordingSegmentDto!]!
   recordingSegmentsToday(limit: Int! = 20, statut: String): [RecordingSegmentDto!]!
+  s3Diagnostics: S3DiagnosticsSnapshot!
   statistic(id: Int!): Statistic!
   statistics(commercialId: Int): [Statistic!]!
+  statsActivityByOwner(endDate: DateTime, ownerId: Int, ownerType: String, scopeType: String, startDate: DateTime): [OwnerActivityStatistic!]!
+  statsTimeline(endDate: DateTime, ownerId: Int, ownerType: String, scopeType: String, startDate: DateTime): [TimelinePoint!]!
   statsTimelineByCommercial(commercialId: Int!, endDate: DateTime, startDate: DateTime): [TimelinePoint!]!
   statusHistoriqueByImmeuble(immeubleId: Int!): [StatusHistorique!]!
   statusHistoriqueByPorte(porteId: Int!): [StatusHistorique!]!
+  teamLastStatusActivities: [TeamLastStatusActivity!]!
+  teamRanking(period: RankPeriod!, periodKey: String!): [RankSnapshotType!]!
   userZoneHistory(userId: Int!, userType: UserType!): [HistoriqueZone!]!
   validateStatsCoherence: String!
   winleadPlusUsers: [WinleadPlusUser!]!
   zone(id: Int!): Zone!
   zoneCurrentAssignments(zoneId: Int!): [ZoneEnCours!]!
   zoneHistory(zoneId: Int!): [HistoriqueZone!]!
+  zoneProspections(zoneId: Int!): [ZoneProspection!]!
   zoneStatistics: [ZoneStatistic!]!
   zones: [Zone!]!
+  zonesForUser(userId: Int!, userType: UserType!): [Zone!]!
 }
 
 """Période de classement (jour, semaine, mois, trimestre, année)"""
@@ -710,6 +1097,7 @@ type RankSnapshotType {
 }
 
 type RecordingItem {
+  hasConversation: Boolean
   key: String!
   lastModified: DateTime
   size: Float
@@ -725,6 +1113,7 @@ type RecordingResult {
 }
 
 type RecordingSegmentDto {
+  commercialId: Int
   commercialNom: String
   createdAt: DateTime!
   durationSec: Float!
@@ -732,9 +1121,11 @@ type RecordingSegmentDto {
   id: Int!
   immeubleAdresse: String
   immeubleId: Int
+  managerId: Int
   porteEtage: Int
   porteId: Int!
   porteNumero: String
+  s3KeyOriginal: String
   s3KeySegment: String
   speechScore: Int
   startTime: Float!
@@ -773,6 +1164,14 @@ type ReponseSupprimerUtilisateur {
   success: Boolean!
 }
 
+input ReportPositionInput {
+  accuracy: Float
+  batteryLevel: Int
+  latitude: Float!
+  longitude: Float!
+  recordedAt: DateTime
+}
+
 input RequestRecordingUploadInput {
   duration: Float
   fileSize: Float
@@ -789,13 +1188,24 @@ enum RoleUtilisateur {
   MANAGER
 }
 
-input SaveGpsPositionsInput {
-  positions: [GpsPositionInput!]!
+type S3DiagnosticOperation {
+  command: String!
+  failed: Int!
+  lastAt: DateTime
+  lastDurationMs: Int
+  operation: String!
+  source: String!
+  succeeded: Int!
+  total: Int!
 }
 
-type SaveGpsPositionsResponse {
-  saved: Int!
-  success: Boolean!
+type S3DiagnosticsSnapshot {
+  failed: Int!
+  operations: [S3DiagnosticOperation!]!
+  startedAt: DateTime
+  succeeded: Int!
+  total: Int!
+  updatedAt: DateTime
 }
 
 type SearchResultGroup {
@@ -817,11 +1227,6 @@ type SeedBadgesResult {
   skipped: Int!
   success: Boolean!
   total: Int!
-}
-
-input SetDeviceCommercialInput {
-  commercialName: String!
-  deviceId: String!
 }
 
 type SpeechScoreDto {
@@ -919,6 +1324,18 @@ type SyncOffresResult {
   updated: Int!
 }
 
+type TeamLastStatusActivity {
+  changedAt: DateTime!
+  immeubleAdresse: String
+  immeubleId: Int
+  porteId: Int!
+  porteNumero: String!
+  statut: String!
+  userId: Int!
+  userName: String!
+  userType: String!
+}
+
 type TeamRanking {
   managerEmail: String
   managerNom: String
@@ -938,6 +1355,14 @@ type TimelinePoint {
   portesProspectees: Int!
   rdvPris: Int!
   refus: Int!
+  repassages: Int!
+}
+
+"""Type de lieu terrain prospecte"""
+enum TypeHabitat {
+  IMMEUBLE
+  MAISON
+  PAVILLON
 }
 
 input UpdateBadgeDefinitionInput {
@@ -982,7 +1407,10 @@ input UpdateImmeubleInput {
   longitude: Float
   managerId: Int
   nbEtages: Int
+  nbMaisonsPrevu: Int
   nbPortesParEtage: Int
+  quartierId: Int
+  typeHabitat: TypeHabitat
   zoneId: Int
 }
 
@@ -1009,6 +1437,7 @@ input UpdateOffrePointsInput {
 input UpdatePorteInput {
   commentaire: String
   derniereVisite: DateTime
+  duree: Int
   etage: Int
   id: Int!
   nbContrats: Int
@@ -1042,6 +1471,7 @@ input UpdateZoneInput {
   id: Int!
   managerId: Int
   nom: String
+  polygon: JSON
   rayon: Float
   xOrigin: Float
   yOrigin: Float
@@ -1079,12 +1509,17 @@ type WinleadPlusUser {
 }
 
 type Zone {
+  assignedAt: DateTime
   createdAt: DateTime!
+  createdById: Int
+  createdByName: String
+  createdByType: UserType
   directeurId: Int
   id: Int!
   immeubles: [Immeuble!]
   managerId: Int
   nom: String!
+  polygon: JSON
   rayon: Float!
   updatedAt: DateTime!
   xOrigin: Float!
@@ -1098,6 +1533,20 @@ type ZoneEnCours {
   userType: UserType!
   zone: Zone
   zoneId: Int!
+}
+
+type ZoneProspection {
+  commercialId: Int
+  commercialNom: String
+  date: DateTime!
+  dureeSec: Int
+  immeubleAdresse: String!
+  immeubleId: Int!
+  managerId: Int
+  managerNom: String
+  porteId: Int!
+  porteNumero: String!
+  statut: String!
 }
 
 type ZoneStatistic {

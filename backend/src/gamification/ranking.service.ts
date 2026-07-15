@@ -52,8 +52,8 @@ export class RankingService {
   /**
    * Calcule le classement de tous les commerciaux ET managers actifs pour une période.
    *
-   * Points = somme des prix (prixBase) des contrats validés sur la période.
-   * Contrat à 10€ = 10 points de plus pour le commercial/manager.
+   * Points = somme des Offre.points (score configurable) des contrats validés sur la période.
+   * Chaque offre rapporte son score paramétré (onglet Offres de la console admin).
    *
    * Le calcul est idempotent: upsert par (commercialId/managerId, period, periodKey).
    */
@@ -263,6 +263,64 @@ export class RankingService {
     });
   }
 
+  /**
+   * Manager de référence pour le périmètre "équipe", dérivé de l'utilisateur courant :
+   * - manager  → son propre id
+   * - commercial → le managerId de sa fiche
+   * - autres (admin/directeur) → null (pas d'équipe propre)
+   */
+  async resolveTeamManagerId(
+    userId: number,
+    role: string,
+  ): Promise<number | null> {
+    if (role === 'manager') return userId;
+    if (role === 'commercial') {
+      const commercial = await this.prisma.commercial.findUnique({
+        where: { id: userId },
+        select: { managerId: true },
+      });
+      return commercial?.managerId ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Classement d'une équipe (commerciaux d'un même manager) sur une période,
+   * re-classé 1..N sur les points (ex aequo au même rang).
+   * Ne renvoie que les commerciaux ayant un snapshot pour la période.
+   */
+  async getTeamRanking(
+    managerId: number,
+    period: RankPeriod,
+    periodKey: string,
+  ) {
+    const commercials = await this.prisma.commercial.findMany({
+      where: { managerId },
+      select: { id: true },
+    });
+    const ids = commercials.map((c) => c.id);
+    if (ids.length === 0) return [];
+
+    const snapshots = await this.prisma.rankSnapshot.findMany({
+      where: { period, periodKey, commercialId: { in: ids } },
+      include: {
+        commercial: { select: { id: true, nom: true, prenom: true } },
+      },
+      orderBy: [{ points: 'desc' }, { contratsSignes: 'desc' }],
+    });
+
+    // Re-classement 1..N à l'échelle de l'équipe.
+    let currentRank = 0;
+    let lastPoints: number | null = null;
+    return snapshots.map((s, i) => {
+      if (lastPoints === null || s.points !== lastPoints) {
+        currentRank = i + 1;
+        lastPoints = s.points;
+      }
+      return { ...s, rank: currentRank };
+    });
+  }
+
   /** Récupérer le classement d'un manager spécifique sur toutes les périodes */
   async getManagerRankings(managerId: number) {
     return this.prisma.rankSnapshot.findMany({
@@ -278,8 +336,8 @@ export class RankingService {
   /**
    * Calcule le score d'un commercial ou manager pour une période.
    *
-   * Points = somme des Offre.prixBase des contrats validés sur la période.
-   * Contrat à 10€ → 10 points. Contrat sans prix → 0 points.
+   * Points = somme des Offre.points (score configurable) des contrats validés sur la période.
+   * Offre sans score → 0 point.
    * ContratsSignes = nombre de contrats validés sur la période.
    */
   private async computeScore(
@@ -295,14 +353,12 @@ export class RankingService {
       },
       include: {
         offre: {
-          select: { prixBase: true },
+          select: { points: true },
         },
       },
     });
 
-    const points = Math.round(
-      contrats.reduce((sum, c) => sum + (c.offre?.prixBase ?? 0), 0),
-    );
+    const points = contrats.reduce((sum, c) => sum + (c.offre?.points ?? 0), 0);
 
     return { points, contratsSignes: contrats.length };
   }
@@ -332,14 +388,14 @@ export class RankingService {
         select: { id: true, nom: true, prenom: true, winleadPlusId: true },
       }),
       this.prisma.offre.findMany({
-        select: { externalId: true, prixBase: true },
+        select: { externalId: true, points: true },
       }),
       this.winleadPlusApi.getProspects(token),
     ]);
 
     const periodField = this.getPeriodField(period);
     const allowedStatuses = this.mapContractStatuses(contractStatuses);
-    const offrePointsMap = new Map(offres.map((offre) => [offre.externalId, offre.prixBase ?? 0]));
+    const offrePointsMap = new Map(offres.map((offre) => [offre.externalId, offre.points ?? 0]));
     const scores = new Map<string, ScoreEntry>();
 
     for (const commercial of commercials) {
@@ -387,8 +443,10 @@ export class RankingService {
 
       for (const souscription of prospect.Souscription || []) {
         const offreExternalId = souscription.offreId ?? souscription.offre?.id;
+        // Score configurable de l'offre (Offre.points). Pas d'équivalent "live"
+        // côté WinLead+ → 0 si l'offre n'est pas mappée localement.
         const contractPoints = offreExternalId
-          ? Math.round(offrePointsMap.get(offreExternalId) ?? souscription.offre?.prix_base ?? souscription.offre?.prixBase ?? 0)
+          ? offrePointsMap.get(offreExternalId) ?? 0
           : 0;
 
         for (const contrat of souscription.contrats || []) {

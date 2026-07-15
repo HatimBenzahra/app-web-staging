@@ -14,14 +14,17 @@ export class PorteResolver {
 
   @Mutation(() => Porte)
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  createPorte(@Args('createPorteInput') createPorteInput: CreatePorteInput) {
-    return this.porteService.create(createPorteInput);
+  createPorte(
+    @Args('createPorteInput') createPorteInput: CreatePorteInput,
+    @CurrentUser() user: any,
+  ) {
+    return this.porteService.create(createPorteInput, user.id, user.role);
   }
 
   @Query(() => [Porte], { name: 'portes' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  findAll() {
-    return this.porteService.findAll();
+  findAll(@CurrentUser() user: any) {
+    return this.porteService.findAll(user.id, user.role);
   }
 
   @Query(() => Porte, { name: 'porte' })
@@ -46,8 +49,9 @@ export class PorteResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   getStatistics(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
+    @CurrentUser() user: any,
   ) {
-    return this.porteService.getStatistiquesPortes(immeubleId);
+    return this.porteService.getStatistiquesPortes(immeubleId, user.id, user.role);
   }
 
   @Mutation(() => Porte)
@@ -67,8 +71,11 @@ export class PorteResolver {
 
   @Mutation(() => Porte)
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  createPorteCapped(@Args('createPorteInput') createPorteInput: CreatePorteInput) {
-    return this.porteService.createCapped(createPorteInput);
+  createPorteCapped(
+    @Args('createPorteInput') createPorteInput: CreatePorteInput,
+    @CurrentUser() user: any,
+  ) {
+    return this.porteService.createCapped(createPorteInput, user.id, user.role);
   }
 
   @Mutation(() => Boolean)
@@ -115,15 +122,17 @@ export class PorteResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   getStatusHistoriqueByPorte(
     @Args('porteId', { type: () => Int }) porteId: number,
+    @CurrentUser() user: any,
   ) {
-    return this.porteService.getStatusHistoriqueByPorte(porteId);
+    return this.porteService.getStatusHistoriqueByPorte(porteId, user.id, user.role);
   }
 
   @Query(() => [StatusHistorique], { name: 'statusHistoriqueByImmeuble' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
   getStatusHistoriqueByImmeuble(
     @Args('immeubleId', { type: () => Int }) immeubleId: number,
+    @CurrentUser() user: any,
   ) {
-    return this.porteService.getStatusHistoriqueByImmeuble(immeubleId);
+    return this.porteService.getStatusHistoriqueByImmeuble(immeubleId, user.id, user.role);
   }
 }

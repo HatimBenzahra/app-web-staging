@@ -74,6 +74,7 @@ export default function AssignationsEnCours() {
 
       return {
         ...item,
+        id: item.zone?.id || item.zoneId, // Utiliser l'ID de la zone pour la navigation (et non l'ID de l'assignation)
         userName,
         zoneName: item.zone?.nom || 'N/A',
         daysSince,

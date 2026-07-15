@@ -22,7 +22,7 @@ import {
   Pause,
   Play,
 } from 'lucide-react'
-import useDeviceCommercialNames from '../useDeviceCommercialNames'
+import { useDeviceCommercialNames } from '../useDeviceCommercialNames'
 
 const formatRelativeTime = value => {
   if (!value) return 'Inconnu'
@@ -143,7 +143,7 @@ export default function LogsTab({
   onRefresh,
   lastUpdatedAt,
 }) {
-  const { getCommercialName, getDeviceLabel } = useDeviceCommercialNames()
+  const { getCommercialName } = useDeviceCommercialNames()
   const rows = useMemo(() => logs?.logs || [], [logs])
   const total = logs?.total || 0
   const [expandedRows, setExpandedRows] = useState(new Set())
@@ -265,7 +265,7 @@ export default function LogsTab({
                 <SelectItem value="all">Toutes les tablettes</SelectItem>
                 {(devices || []).map(device => (
                   <SelectItem key={device.deviceId} value={device.deviceId}>
-                    {getDeviceLabel(device)}
+                    {device.deviceName || device.deviceId}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -398,11 +398,8 @@ export default function LogsTab({
                 const severityStyle = getSeverityStyle(severity)
                 const isExpanded = expandedRows.has(rowKey)
                 const hasExtra = (log.message?.length || 0) > 160 || Boolean(log.data)
-                const commercial = getCommercialName({
-                  serialNumber: log.deviceId,
-                  deviceId: log.deviceId,
-                })
-                const deviceLabel = commercial || log.deviceName || log.deviceId || '-'
+                const deviceLabel =
+                  getCommercialName(log.deviceId) || log.deviceName || log.deviceId || '-'
 
                 return (
                   <div

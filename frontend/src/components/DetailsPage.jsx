@@ -143,8 +143,16 @@ function ProspectionChartsSection({ charts = [] }) {
       funnel: [
         { label: 'Portes prospectées', value: portesProspectees, percent: couverture },
         { label: 'Contacts qualifiés', value: opportunites, percent: contact },
-        { label: 'Rendez-vous', value: rdv, percent: portesProspectees > 0 ? Math.round((rdv / portesProspectees) * 100) : 0 },
-        { label: 'Contrats', value: contrats, percent: portesProspectees > 0 ? Math.round((contrats / portesProspectees) * 100) : 0 },
+        {
+          label: 'Rendez-vous',
+          value: rdv,
+          percent: portesProspectees > 0 ? Math.round((rdv / portesProspectees) * 100) : 0,
+        },
+        {
+          label: 'Contrats',
+          value: contrats,
+          percent: portesProspectees > 0 ? Math.round((contrats / portesProspectees) * 100) : 0,
+        },
       ],
     }
   }, [portes])
@@ -415,7 +423,9 @@ function InlineDoorDetails({ door }) {
           <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Audios</p>
             <p className="mt-1 text-xs font-medium">
-              {segmentsLoading ? 'Chargement...' : `${segments.length} segment${segments.length > 1 ? 's' : ''}`}
+              {segmentsLoading
+                ? 'Chargement...'
+                : `${segments.length} segment${segments.length > 1 ? 's' : ''}`}
             </p>
           </div>
         </div>
@@ -490,9 +500,7 @@ function DoorsTableContent({
   const itemsPerPage = 20
 
   const availableFloors = useMemo(() => {
-    const floors = data
-      .map(item => Number(item.floor))
-      .filter(floor => Number.isFinite(floor))
+    const floors = data.map(item => Number(item.floor)).filter(floor => Number.isFinite(floor))
     return Array.from(new Set(floors)).sort((a, b) => a - b)
   }, [data])
 
@@ -508,8 +516,8 @@ function DoorsTableContent({
       if (!normalizedSearch) return true
 
       const searchableValues = [item[searchKey], item.number, item.etage, item.comment]
-      return searchableValues.some(value =>
-        value != null && String(value).toLowerCase().includes(normalizedSearch)
+      return searchableValues.some(
+        value => value != null && String(value).toLowerCase().includes(normalizedSearch)
       )
     })
   }, [data, floorFilter, searchKey, searchTerm])
@@ -585,7 +593,7 @@ function DoorsTableContent({
     }))
   }
 
-  const toggleRow = (rowId) => {
+  const toggleRow = rowId => {
     setExpandedRows(prev => {
       const newSet = new Set(prev)
       if (newSet.has(rowId)) {
@@ -658,7 +666,10 @@ function DoorsTableContent({
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {customStatusFilter.map(filter => {
                 const isActive = statusFilter === filter.value
-                const count = filter.value === 'all' ? baseFilteredData.length : (statusCounts.get(filter.value) || 0)
+                const count =
+                  filter.value === 'all'
+                    ? baseFilteredData.length
+                    : statusCounts.get(filter.value) || 0
 
                 return (
                   <Button
@@ -694,15 +705,16 @@ function DoorsTableContent({
                 {columns.map((column, index) => (
                   <TableHead
                     key={index}
-                      className={`${column.className || ''} ${column.sortable ? 'cursor-pointer hover:bg-muted' : ''}`}
-                      onClick={() => column.sortable && handleSort(column.sortKey || column.accessor)}
-                    >
-                      <div className="flex items-center">
-                        {column.header}
-                        {column.sortable && sortConfig.key === (column.sortKey || column.accessor) && (
+                    className={`${column.className || ''} ${column.sortable ? 'cursor-pointer hover:bg-muted' : ''}`}
+                    onClick={() => column.sortable && handleSort(column.sortKey || column.accessor)}
+                  >
+                    <div className="flex items-center">
+                      {column.header}
+                      {column.sortable &&
+                        sortConfig.key === (column.sortKey || column.accessor) && (
                           <span className="ml-1">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                         )}
-                      </div>
+                    </div>
                   </TableHead>
                 ))}
               </TableRow>
@@ -722,16 +734,15 @@ function DoorsTableContent({
 
                   // Vérifier si c'est une ligne 'Immeuble' avec des portes imbriquées (via nestedDataKey)
                   // OU fallback sur le comportement par défaut (PorteHistoriqueTimeline)
-                  const hasNestedData = nestedDataKey && row[nestedDataKey] && row[nestedDataKey].length > 0;
-                  const isDoorRow = !hasNestedData && Boolean(row.porteId || row.number || row.numero)
+                  const hasNestedData =
+                    nestedDataKey && row[nestedDataKey] && row[nestedDataKey].length > 0
+                  const isDoorRow =
+                    !hasNestedData && Boolean(row.porteId || row.number || row.numero)
 
                   return (
                     <React.Fragment key={rowKey}>
                       <TableRow
-                        className={cn(
-                          'hover:bg-muted/50',
-                          isDoorRow && 'cursor-pointer'
-                        )}
+                        className={cn('hover:bg-muted/50', isDoorRow && 'cursor-pointer')}
                         onClick={() => {
                           if (isDoorRow) toggleRow(rowKey)
                         }}
@@ -773,7 +784,10 @@ function DoorsTableContent({
                                     { value: 'absent', label: 'Absents' },
                                     { value: 'argumente', label: 'Argumentés' },
                                     { value: 'refus', label: 'Refus' },
-                                    { value: 'necessite_repassage', label: 'Repassages nécessaires' },
+                                    {
+                                      value: 'necessite_repassage',
+                                      label: 'Repassages nécessaires',
+                                    },
                                     { value: 'non_visite', label: 'Non visités' },
                                   ]} // Filtres par défaut pour les portes
                                   searchPlaceholder="Rechercher porte..."
@@ -782,7 +796,10 @@ function DoorsTableContent({
                               ) : isDoorRow ? (
                                 <InlineDoorDetails door={row} />
                               ) : (
-                                <PorteHistoriqueTimeline porteId={porteId} porteNumero={row.number} />
+                                <PorteHistoriqueTimeline
+                                  porteId={porteId}
+                                  porteNumero={row.number}
+                                />
                               )}
                             </div>
                           </TableCell>
@@ -871,6 +888,8 @@ function DoorsTableContent({
  * @param {Array} props.additionalSections - Sections supplémentaires personnalisées
  * @param {Array} props.assignedZones - Zones assignées à afficher (optionnel)
  * @param {string} props.status - Status de l'entité (actif, inactif, etc.)
+ * @param {ReactNode} props.headerBadge - Badge personnalisé rendu dans le header (prioritaire sur status)
+ * @param {string} props.headerAccent - Classes de bordure d'accent pour le header (optionnel)
  * @param {ReactNode} props.statsFilter - Composant de filtre à afficher au-dessus des statistiques (optionnel)
  */
 export default function DetailsPage({
@@ -882,6 +901,8 @@ export default function DetailsPage({
   additionalSections = [],
   assignedZones = null,
   status,
+  headerBadge = null,
+  headerAccent = '',
   statsFilter = null,
 }) {
   const navigate = useNavigate()
@@ -1091,7 +1112,9 @@ export default function DetailsPage({
   return (
     <div className="mb-50 space-y-8">
       {/* Header avec bouton retour */}
-      <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+      <div
+        className={cn('rounded-2xl border border-border/60 bg-card p-5 shadow-sm', headerAccent)}
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <Button
             variant="outline"
@@ -1104,7 +1127,7 @@ export default function DetailsPage({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
-              {status && getStatusBadge(status)}
+              {headerBadge ? headerBadge : status && getStatusBadge(status)}
             </div>
             {subtitle && (
               <p className="mt-1 text-sm text-muted-foreground sm:text-base">{subtitle}</p>
@@ -1242,173 +1265,173 @@ export default function DetailsPage({
           ) : (
             <Card className="border-border/60 bg-card">
               <CardContent className="pt-6">
-              {section.type === 'grid' && (
-                <div className="grid gap-6 md:grid-cols-2">
-                  {section.items.map((item, itemIndex) => (
-                    <div
-                      key={itemIndex}
-                      className="rounded-xl border border-border/60 bg-muted/30 p-4"
-                    >
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {item.label}
-                      </p>
-                      <p className="text-base font-semibold mt-1.5">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {section.type === 'list' && (
-                <div className="divide-y">
-                  {section.items.map((item, itemIndex) => (
-                    <div
-                      key={itemIndex}
-                      className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
-                    >
-                      <span className="text-sm font-medium">{item.label}</span>
-                      <span className="text-sm font-semibold">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {section.type === 'custom' && section.render && section.render(data)}
-              {section.type === 'custom' && section.component === 'DoorsTable' && (
-                <DoorsTableContent
-                  data={section.data.doors}
-                  columns={section.data.columns}
-                  customStatusFilter={section.data.customFilters}
-                  searchPlaceholder="Rechercher par numéro de porte..."
-                  searchKey="number"
-                />
-              )}
-              {section.type === 'custom' && section.component === 'ImmeublesTable' && (
-                <DoorsTableContent
-                  data={section.data.immeubles}
-                  columns={section.data.columns}
-                  customStatusFilter={section.data.customFilters}
-                  searchPlaceholder="Rechercher par adresse..."
-                  searchKey="address"
-                  nestedTableColumns={section.data.nestedColumns}
-                  nestedDataKey="doors"
-                  showFilters={section.data.showFilters !== false}
-                />
-              )}
-              {section.type === 'custom' && section.component === 'FloorDetails' && (
-                <div className="space-y-4">
-                  {section.data.map((floor, floorIndex) => (
-                    <div
-                      key={floorIndex}
-                      className="rounded-xl border border-border/60 bg-muted/20 p-4"
-                    >
-                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <h3 className="text-base font-semibold tracking-tight">
-                          Étage {floor.floor}
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline" className="bg-background">
-                            {floor.doors.filter(d => d.status === 'contrat_signe').length} signés
-                          </Badge>
-                          <Badge variant="outline" className="bg-background">
-                            {floor.doors.filter(d => d.status === 'rdv_pris').length} RDV
-                          </Badge>
-                          <Badge variant="outline" className="bg-background">
-                            {floor.doors.filter(d => d.status === 'absent').length} absents
-                          </Badge>
-                          <Badge variant="outline" className="bg-background">
-                            {floor.doors.filter(d => d.status === 'argumente').length} argumentés
-                          </Badge>
-                          <Badge variant="outline" className="bg-background">
-                            {floor.doors.filter(d => d.status === 'refus').length} refus
-                          </Badge>
-                        </div>
+                {section.type === 'grid' && (
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {section.items.map((item, itemIndex) => (
+                      <div
+                        key={itemIndex}
+                        className="rounded-xl border border-border/60 bg-muted/30 p-4"
+                      >
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="text-base font-semibold mt-1.5">{item.value}</p>
                       </div>
+                    ))}
+                  </div>
+                )}
+                {section.type === 'list' && (
+                  <div className="divide-y">
+                    {section.items.map((item, itemIndex) => (
+                      <div
+                        key={itemIndex}
+                        className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                      >
+                        <span className="text-sm font-medium">{item.label}</span>
+                        <span className="text-sm font-semibold">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {section.type === 'custom' && section.render && section.render(data)}
+                {section.type === 'custom' && section.component === 'DoorsTable' && (
+                  <DoorsTableContent
+                    data={section.data.doors}
+                    columns={section.data.columns}
+                    customStatusFilter={section.data.customFilters}
+                    searchPlaceholder="Rechercher par numéro de porte..."
+                    searchKey="number"
+                  />
+                )}
+                {section.type === 'custom' && section.component === 'ImmeublesTable' && (
+                  <DoorsTableContent
+                    data={section.data.immeubles}
+                    columns={section.data.columns}
+                    customStatusFilter={section.data.customFilters}
+                    searchPlaceholder="Rechercher par adresse..."
+                    searchKey="address"
+                    nestedTableColumns={section.data.nestedColumns}
+                    nestedDataKey="doors"
+                    showFilters={section.data.showFilters !== false}
+                  />
+                )}
+                {section.type === 'custom' && section.component === 'FloorDetails' && (
+                  <div className="space-y-4">
+                    {section.data.map((floor, floorIndex) => (
+                      <div
+                        key={floorIndex}
+                        className="rounded-xl border border-border/60 bg-muted/20 p-4"
+                      >
+                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="text-base font-semibold tracking-tight">
+                            Étage {floor.floor}
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline" className="bg-background">
+                              {floor.doors.filter(d => d.status === 'contrat_signe').length} signés
+                            </Badge>
+                            <Badge variant="outline" className="bg-background">
+                              {floor.doors.filter(d => d.status === 'rdv_pris').length} RDV
+                            </Badge>
+                            <Badge variant="outline" className="bg-background">
+                              {floor.doors.filter(d => d.status === 'absent').length} absents
+                            </Badge>
+                            <Badge variant="outline" className="bg-background">
+                              {floor.doors.filter(d => d.status === 'argumente').length} argumentés
+                            </Badge>
+                            <Badge variant="outline" className="bg-background">
+                              {floor.doors.filter(d => d.status === 'refus').length} refus
+                            </Badge>
+                          </div>
+                        </div>
 
-                      <div className="border-t border-border/60 pt-4">
-                        <h4 className="mb-3 text-sm font-medium text-muted-foreground">
-                          Statut des portes
-                        </h4>
-                        <div className="grid gap-3">
-                          {floor.doors.map((door, doorIndex) => {
-                            const getStatusColor = status => {
-                              switch (status) {
-                                case 'contrat_signe':
-                                  return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                case 'rdv_pris':
-                                  return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                                case 'absent':
-                                  return 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'
-                                case 'argumente':
-                                  return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                case 'refus':
-                                  return 'border-destructive/20 bg-destructive/10 text-destructive'
-                                default:
-                                  return 'border-border/60 bg-background text-foreground'
+                        <div className="border-t border-border/60 pt-4">
+                          <h4 className="mb-3 text-sm font-medium text-muted-foreground">
+                            Statut des portes
+                          </h4>
+                          <div className="grid gap-3">
+                            {floor.doors.map((door, doorIndex) => {
+                              const getStatusColor = status => {
+                                switch (status) {
+                                  case 'contrat_signe':
+                                    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                  case 'rdv_pris':
+                                    return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                                  case 'absent':
+                                    return 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'
+                                  case 'argumente':
+                                    return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                  case 'refus':
+                                    return 'border-destructive/20 bg-destructive/10 text-destructive'
+                                  default:
+                                    return 'border-border/60 bg-background text-foreground'
+                                }
                               }
-                            }
 
-                            const getStatusLabel = status => {
-                              switch (status) {
-                                case 'contrat_signe':
-                                  return 'Contrat signé'
-                                case 'rdv_pris':
-                                  return 'RDV programmé'
-                                case 'absent':
-                                  return 'Absent'
-                                case 'argumente':
-                                  return 'Argumenté'
-                                case 'refus':
-                                  return 'Refus'
-                                case 'non_visite':
-                                  return 'Non visité'
-                                default:
-                                  return status
+                              const getStatusLabel = status => {
+                                switch (status) {
+                                  case 'contrat_signe':
+                                    return 'Contrat signé'
+                                  case 'rdv_pris':
+                                    return 'RDV programmé'
+                                  case 'absent':
+                                    return 'Absent'
+                                  case 'argumente':
+                                    return 'Argumenté'
+                                  case 'refus':
+                                    return 'Refus'
+                                  case 'non_visite':
+                                    return 'Non visité'
+                                  default:
+                                    return status
+                                }
                               }
-                            }
 
-                            return (
-                              <div
-                                key={doorIndex}
-                                className={`rounded-xl border p-3 ${getStatusColor(door.status)}`}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">Porte {door.number}</span>
-                                      <span className="rounded-full border border-current/15 bg-background/70 px-2 py-0.5 text-xs">
-                                        {getStatusLabel(door.status)}
-                                      </span>
+                              return (
+                                <div
+                                  key={doorIndex}
+                                  className={`rounded-xl border p-3 ${getStatusColor(door.status)}`}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-medium">Porte {door.number}</span>
+                                        <span className="rounded-full border border-current/15 bg-background/70 px-2 py-0.5 text-xs">
+                                          {getStatusLabel(door.status)}
+                                        </span>
+                                      </div>
+
+                                      {door.rdvDate && (
+                                        <div className="text-sm mt-2">
+                                          <span className="font-medium">RDV:</span> {door.rdvDate} à{' '}
+                                          {door.rdvTime}
+                                        </div>
+                                      )}
+
+                                      {door.lastVisit && (
+                                        <div className="text-sm mt-1">
+                                          <span className="font-medium">Dernière visite:</span>{' '}
+                                          {door.lastVisit}
+                                        </div>
+                                      )}
+
+                                      {door.comment && (
+                                        <div className="mt-2 rounded-lg bg-background/70 p-2 text-sm">
+                                          <span className="font-medium">Commentaire:</span>{' '}
+                                          {door.comment}
+                                        </div>
+                                      )}
                                     </div>
-
-                                    {door.rdvDate && (
-                                      <div className="text-sm mt-2">
-                                        <span className="font-medium">RDV:</span> {door.rdvDate} à{' '}
-                                        {door.rdvTime}
-                                      </div>
-                                    )}
-
-                                    {door.lastVisit && (
-                                      <div className="text-sm mt-1">
-                                        <span className="font-medium">Dernière visite:</span>{' '}
-                                        {door.lastVisit}
-                                      </div>
-                                    )}
-
-                                    {door.comment && (
-                                      <div className="mt-2 rounded-lg bg-background/70 p-2 text-sm">
-                                        <span className="font-medium">Commentaire:</span>{' '}
-                                        {door.comment}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
-                              </div>
-                            )
-                          })}
+                              )
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

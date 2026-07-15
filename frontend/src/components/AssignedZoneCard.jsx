@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import MapboxMap, { Marker, Source, Layer, NavigationControl, useControl } from 'react-map-gl/mapbox'
+import MapboxMap, {
+  Marker,
+  Source,
+  Layer,
+  NavigationControl,
+  useControl,
+} from 'react-map-gl/mapbox'
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css'
@@ -12,6 +18,8 @@ import { MapPin, Calendar, Maximize2, X, Lock, Unlock, Building2 } from 'lucide-
 import { MapSkeleton } from '@/components/LoadingSkeletons'
 import { mapboxCache } from '@/services/core'
 import { logError } from '@/services/core'
+import { zoneToGeoJSON, polygonAreaKm2 } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
+import { buildingDoorCount, habitatBreakdown } from '@/constants/domain/habitat'
 
 // Set Mapbox access token
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
@@ -49,53 +57,6 @@ function getZoneColor(zoneId) {
     '#f97316', // Dark Orange
   ]
   return colors[zoneId % colors.length]
-}
-
-function createGeoJSONCircle(center, radiusInMeters, points = 64) {
-  const coords = { latitude: center[1], longitude: center[0] }
-  const km = radiusInMeters / 1000
-  const ret = []
-  const distanceX = km / (111.32 * Math.cos((coords.latitude * Math.PI) / 180))
-  const distanceY = km / 110.574
-  let theta, x, y
-  for (let i = 0; i < points; i++) {
-    theta = (i / points) * (2 * Math.PI)
-    x = distanceX * Math.cos(theta)
-    y = distanceY * Math.sin(theta)
-    ret.push([coords.longitude + x, coords.latitude + y])
-  }
-  ret.push(ret[0])
-  return {
-    type: 'Feature',
-    geometry: { type: 'Polygon', coordinates: [ret] },
-    properties: {},
-  }
-}
-
-function getImmeubleMarkerProps(immeuble) {
-  const totalPortes = (immeuble.portes || []).length
-  const prospectees = (immeuble.portes || []).filter(p => p.statut !== 'NON_VISITE').length
-  const couverture = totalPortes > 0 ? Math.round((prospectees / totalPortes) * 100) : 0
-  const contrats = (immeuble.portes || [])
-    .filter(p => p.statut === 'CONTRAT_SIGNE')
-    .reduce((sum, p) => sum + (p.nbContrats || 1), 0)
-
-  let colorClass, progressColor
-  if (couverture === 0) {
-    colorClass = 'bg-gray-500 hover:bg-gray-600'
-    progressColor = '#6b7280'
-  } else if (couverture < 50) {
-    colorClass = 'bg-amber-500 hover:bg-amber-600'
-    progressColor = '#f59e0b'
-  } else if (couverture < 100) {
-    colorClass = 'bg-blue-600 hover:bg-blue-700'
-    progressColor = '#2563eb'
-  } else {
-    colorClass = 'bg-emerald-500 hover:bg-emerald-600'
-    progressColor = '#10b981'
-  }
-
-  return { totalPortes, couverture, contrats, colorClass, progressColor }
 }
 
 const fetchLocationName = async (longitude, latitude) => {
@@ -191,9 +152,18 @@ export default function AssignedZoneCard({
     return zone?.id ? getZoneColor(zone.id) : '#3388ff'
   }, [zone?.id])
 
-  const circleGeoJSON = useMemo(() => {
-    if (!zone?.xOrigin || !zone?.yOrigin || !zone?.rayon) return null
-    return createGeoJSONCircle([zone.xOrigin, zone.yOrigin], zone.rayon)
+  // Géométrie de la zone (modèle mixte : polygone récent ou cercle hérité)
+  const zoneGeoJSON = useMemo(() => zoneToGeoJSON(zone), [zone])
+
+  // Superficie affichée : vraie aire du polygone, sinon aire du disque (cercle hérité)
+  const surfaceKm2 = useMemo(() => {
+    if (Array.isArray(zone?.polygon) && zone.polygon.length > 0) {
+      return polygonAreaKm2(zone.polygon)
+    }
+    if (zone?.rayon != null) {
+      return Math.PI * Math.pow(zone.rayon / 1000, 2)
+    }
+    return 0
   }, [zone])
 
   // Filtrer les immeubles qui ont des coordonnées valides
@@ -391,12 +361,17 @@ export default function AssignedZoneCard({
             const totalPortes = portes.length
             const prospectees = portes.filter(p => p.statut !== 'NON_VISITE').length
             const couverture = totalPortes > 0 ? Math.round((prospectees / totalPortes) * 100) : 0
-            const contrats = portes.filter(p => p.statut === 'CONTRAT_SIGNE').reduce((s, p) => s + (p.nbContrats || 1), 0)
+            const contrats = portes
+              .filter(p => p.statut === 'CONTRAT_SIGNE')
+              .reduce((s, p) => s + (p.nbContrats || 1), 0)
             const markerBg =
-              couverture === 0 ? 'bg-gray-500' :
-              couverture < 50 ? 'bg-amber-500' :
-              couverture < 100 ? 'bg-blue-600' :
-              'bg-emerald-500'
+              couverture === 0
+                ? 'bg-gray-500'
+                : couverture < 50
+                  ? 'bg-amber-500'
+                  : couverture < 100
+                    ? 'bg-blue-600'
+                    : 'bg-emerald-500'
 
             return (
               <Marker
@@ -419,25 +394,34 @@ export default function AssignedZoneCard({
                     }
                   }}
                 >
-                  <div className={`${markerBg} text-white p-2 rounded-lg shadow-lg border-2 border-white hover:scale-110 transition-all duration-200 active:scale-95`}>
+                  <div
+                    className={`${markerBg} text-white p-2 rounded-lg shadow-lg border-2 border-white hover:scale-110 transition-all duration-200 active:scale-95`}
+                  >
                     <Building2 className="h-4 w-4" />
                   </div>
 
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2.5 bg-gray-900 text-white text-xs rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 space-y-1">
                     <div className="font-semibold text-[13px]">{immeuble.adresse}</div>
                     <div className="text-gray-300">
-                      {immeuble.nbEtages} ét. × {immeuble.nbPortesParEtage} = {totalPortes > 0 ? totalPortes : immeuble.nbEtages * immeuble.nbPortesParEtage} portes
+                      {immeuble.nbEtages} ét. × {immeuble.nbPortesParEtage} ={' '}
+                      {totalPortes > 0 ? totalPortes : buildingDoorCount(immeuble)}{' '}
+                      portes
                     </div>
                     {totalPortes > 0 && (
                       <div className="flex items-center gap-2 pt-0.5">
                         <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${markerBg}`} style={{ width: `${couverture}%` }} />
+                          <div
+                            className={`h-full rounded-full ${markerBg}`}
+                            style={{ width: `${couverture}%` }}
+                          />
                         </div>
                         <span className="text-[11px] tabular-nums">{couverture}%</span>
                       </div>
                     )}
                     {contrats > 0 && (
-                      <div className="text-emerald-400">{contrats} contrat{contrats > 1 ? 's' : ''}</div>
+                      <div className="text-emerald-400">
+                        {contrats} contrat{contrats > 1 ? 's' : ''}
+                      </div>
                     )}
                     {immeuble.commercial && (
                       <div className="text-gray-300">
@@ -451,9 +435,9 @@ export default function AssignedZoneCard({
             )
           })}
 
-          {/* Cercle de la zone - seulement si on a une zone */}
-          {circleGeoJSON && !showAllImmeubles && (
-            <Source id="zone-circle" type="geojson" data={circleGeoJSON}>
+          {/* Géométrie de la zone (polygone ou cercle) - seulement si on a une zone */}
+          {zoneGeoJSON && !showAllImmeubles && (
+            <Source id="zone-circle" type="geojson" data={zoneGeoJSON}>
               <Layer
                 id="zone-fill"
                 type="fill"
@@ -534,10 +518,18 @@ export default function AssignedZoneCard({
                     <div className="flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-muted-foreground" />
                       <p className="text-sm text-muted-foreground uppercase tracking-wide font-medium">
-                        Total Immeubles
+                        Total Bâtiments
                       </p>
                     </div>
                     <p className="text-2xl font-bold">{allImmeubles.length}</p>
+                    {(() => {
+                      const b = habitatBreakdown(allImmeubles)
+                      return (
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {b.IMMEUBLE} immeubles · {b.MAISON} maisons · {b.PAVILLON} pavillons
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   <div className="flex flex-col space-y-2">
@@ -564,10 +556,7 @@ export default function AssignedZoneCard({
                       Total Portes
                     </p>
                     <p className="text-2xl font-bold">
-                      {allImmeubles.reduce(
-                        (sum, imm) => sum + (imm.nbEtages || 0) * (imm.nbPortesParEtage || 0),
-                        0
-                      )}
+                      {allImmeubles.reduce((sum, imm) => sum + buildingDoorCount(imm), 0)}
                     </p>
                   </div>
                 </div>
@@ -611,9 +600,7 @@ export default function AssignedZoneCard({
                       <p className="text-sm text-muted-foreground uppercase tracking-wide font-medium">
                         Surface totale
                       </p>
-                      <p className="text-xl font-bold">
-                        {(Math.PI * Math.pow(zone.rayon / 1000, 2)).toFixed(1)} km²
-                      </p>
+                      <p className="text-xl font-bold">{surfaceKm2.toFixed(1)} km²</p>
                     </div>
                   </div>
 
@@ -696,13 +683,11 @@ export default function AssignedZoneCard({
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">
                         Surface
                       </p>
-                      <p className="font-semibold">
-                        {(Math.PI * Math.pow(zone.rayon / 1000, 2)).toFixed(1)} km²
-                      </p>
+                      <p className="font-semibold">{surfaceKm2.toFixed(1)} km²</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">
-                        Immeubles
+                        Bâtiments
                       </p>
                       <p className="font-semibold text-lg">{immeublesWithCoordinates.length}</p>
                     </div>
@@ -760,11 +745,11 @@ export default function AssignedZoneCard({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-2xl font-bold">
-                {showAllImmeubles ? 'Carte des Immeubles' : zone.nom}
+                {showAllImmeubles ? 'Carte des Bâtiments' : zone.nom}
               </h2>
               <p className="text-muted-foreground">
                 {showAllImmeubles
-                  ? `${immeublesWithCoordinates.length} immeubles géolocalisés`
+                  ? `${immeublesWithCoordinates.length} bâtiments géolocalisés`
                   : locationName}
               </p>
             </div>
@@ -780,7 +765,7 @@ export default function AssignedZoneCard({
               <>
                 <div>
                   <p className="text-muted-foreground uppercase tracking-wide text-xs font-medium mb-1">
-                    Total Immeubles
+                    Total Bâtiments
                   </p>
                   <p className="font-semibold text-lg">{allImmeubles.length}</p>
                 </div>
@@ -803,10 +788,7 @@ export default function AssignedZoneCard({
                     Total Portes
                   </p>
                   <p className="font-semibold text-lg">
-                    {allImmeubles.reduce(
-                      (sum, imm) => sum + (imm.nbEtages || 0) * (imm.nbPortesParEtage || 0),
-                      0
-                    )}
+                    {allImmeubles.reduce((sum, imm) => sum + buildingDoorCount(imm), 0)}
                   </p>
                 </div>
               </>
@@ -826,7 +808,7 @@ export default function AssignedZoneCard({
                 </div>
                 <div>
                   <p className="text-muted-foreground uppercase tracking-wide text-xs font-medium mb-1">
-                    Immeubles
+                    Bâtiments
                   </p>
                   <p className="font-semibold text-lg">{immeublesWithCoordinates.length}</p>
                 </div>

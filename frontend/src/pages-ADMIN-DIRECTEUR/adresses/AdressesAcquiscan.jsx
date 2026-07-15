@@ -398,9 +398,18 @@ const FILTER_DOC_SECTIONS = [
       'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
     labelTone: 'text-amber-700 dark:text-amber-200',
     items: [
-      ['Toutes étapes', 'Affiche toutes les adresses, sans tenir compte du niveau de fermeture cuivre.'],
-      ['Migration urgente', 'Adresse liée à une fermeture technique: c’est le signal le plus prioritaire.'],
-      ['Priorité adresse', 'La fermeture commerciale est signalée directement au niveau de l’adresse.'],
+      [
+        'Toutes étapes',
+        'Affiche toutes les adresses, sans tenir compte du niveau de fermeture cuivre.',
+      ],
+      [
+        'Migration urgente',
+        'Adresse liée à une fermeture technique: c’est le signal le plus prioritaire.',
+      ],
+      [
+        'Priorité adresse',
+        'La fermeture commerciale est signalée directement au niveau de l’adresse.',
+      ],
       ['Zone à préparer', 'La fermeture commerciale est signalée au niveau de la zone.'],
       ['Cuivre maintenu', 'Aucun signal de fermeture cuivre n’est remonté pour l’adresse.'],
     ],
@@ -416,7 +425,10 @@ const FILTER_DOC_SECTIONS = [
     items: [
       ['Toutes éligibilités', 'Affiche les adresses avec ou sans fibre disponible.'],
       ['Fibre disponible', 'Adresse déjà éligible fibre selon les données Acquiscan.'],
-      ['Migration à qualifier', 'Adresse sans fibre disponible: cible potentielle pour qualification commerciale.'],
+      [
+        'Migration à qualifier',
+        'Adresse sans fibre disponible: cible potentielle pour qualification commerciale.',
+      ],
     ],
   },
   {
@@ -524,7 +536,8 @@ export default function AdressesAcquiscan() {
       entries.push({ key: 'coverage5g', label: FILTER_LABELS.coverage5g[filters.coverage5g] })
     return entries
   }, [filters])
-  const searchIsOpen = searchExpanded || Boolean(selectedSuggestion) || addressQuery.trim().length > 0
+  const searchIsOpen =
+    searchExpanded || Boolean(selectedSuggestion) || addressQuery.trim().length > 0
 
   const toggleSection = key => {
     setOpenSections(current => ({ ...current, [key]: !current[key] }))
@@ -1440,15 +1453,17 @@ export default function AdressesAcquiscan() {
               Comprendre les filtres Acquiscan
             </DialogTitle>
             <DialogDescription className="text-sm leading-relaxed">
-              Les filtres servent à réduire les adresses affichées selon les signaux cuivre,
-              fibre, calendrier et couverture mobile.
+              Les filtres servent à réduire les adresses affichées selon les signaux cuivre, fibre,
+              calendrier et couverture mobile.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             {FILTER_DOC_SECTIONS.map(section => (
               <div key={section.title} className={`rounded-lg border p-3 ${section.tone}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${section.iconTone}`}>
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${section.iconTone}`}
+                  >
                     {React.createElement(section.icon, { className: 'h-4 w-4' })}
                   </span>
                   <p className="text-sm font-semibold tracking-tight">{section.title}</p>
@@ -1562,7 +1577,8 @@ function FilterField({ label, children }) {
 }
 
 function ToolbarSelect({ field, value, active, onChange }) {
-  const selectedLabel = field.options.find(([optionValue]) => optionValue === value)?.[1] || field.label
+  const selectedLabel =
+    field.options.find(([optionValue]) => optionValue === value)?.[1] || field.label
   const width = Math.min(Math.max(selectedLabel.length * 7.2 + 48, 116), 196)
 
   return (

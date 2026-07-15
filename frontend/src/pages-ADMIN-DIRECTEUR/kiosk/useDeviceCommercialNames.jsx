@@ -1,34 +1,42 @@
 import { useMemo } from 'react'
-import { useDeviceMappings } from '@/hooks/metier/api/gps-tracking'
+import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 
-export default function useDeviceCommercialNames() {
-  const { data: mappings, isLoading } = useDeviceMappings()
+/**
+ * Source of truth: the commercial/operator name is the value the tablet reports
+ * in its heartbeat (`device.commercialName`), i.e. the ProWin operator assigned
+ * via SET_OPERATOR. This is pure MDM asset labeling (which tablet belongs to
+ * whom) — it is NOT derived from any GraphQL mapping model or commercial↔device
+ * name-matching.
+ */
+export function useDeviceCommercialNames() {
+  const devicesQuery = useKioskDevices()
 
-  const lookup = useMemo(() => {
+  const nameMap = useMemo(() => {
     const map = new Map()
-    if (mappings) {
-      for (const m of mappings) {
-        map.set(m.deviceId, m.commercialName)
-      }
+    for (const device of devicesQuery.data || []) {
+      const commercialName = device?.commercialName || null
+      if (!commercialName) continue
+      if (device.deviceId) map.set(device.deviceId, commercialName)
+      if (device.serialNumber) map.set(device.serialNumber, commercialName)
     }
     return map
-  }, [mappings])
+  }, [devicesQuery.data])
 
   const getCommercialName = deviceOrId => {
     if (!deviceOrId) return null
-    if (typeof deviceOrId === 'string') return lookup.get(deviceOrId) || null
-    return lookup.get(deviceOrId.serialNumber)
-      || lookup.get(deviceOrId.deviceId)
-      || null
+    if (typeof deviceOrId === 'string') {
+      return nameMap.get(deviceOrId) || null
+    }
+    return deviceOrId.commercialName || null
   }
 
   const getDeviceLabel = device => {
     if (!device) return ''
-    const commercial = getCommercialName(device)
-    const name = device.deviceName || device.deviceId || ''
-    if (commercial) return `${commercial} — ${name}`
-    return name
+    const commercialName = device.commercialName || null
+    return commercialName ? `${commercialName} — ${device.deviceName}` : device.deviceName
   }
 
-  return { getCommercialName, getDeviceLabel, mappings: mappings || [], isLoading }
+  return { getCommercialName, getDeviceLabel }
 }
+
+export default useDeviceCommercialNames

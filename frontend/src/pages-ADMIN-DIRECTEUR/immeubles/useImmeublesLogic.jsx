@@ -12,7 +12,8 @@ import {
 } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { Badge } from '@/components/ui/badge'
-import { getStatusColor, getStatusLabel } from '@/constants/domain/porte-status'
+import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
+import { habitatBreakdown } from '@/constants/domain/habitat'
 
 function calculnbcontrats(immeuble) {
   return (immeuble.portes || [])
@@ -123,6 +124,13 @@ export function useImmeublesLogic() {
         ),
       },
       {
+        header: 'Type',
+        accessor: 'typeHabitat',
+        sortable: true,
+        className: 'hidden lg:table-cell',
+        cell: row => <BuildingTypeBadge immeuble={row} className="text-[10px]" />,
+      },
+      {
         header: 'Commercial',
         accessor: 'commercial_name',
         sortable: true,
@@ -146,8 +154,12 @@ export function useImmeublesLogic() {
         sortable: true,
         className: 'hidden md:table-cell text-center',
         cell: row => (
-          <span className={`tabular-nums text-[13px] font-medium ${row.contrats_signes > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-            {row.contrats_signes > 0 && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 align-middle" />}
+          <span
+            className={`tabular-nums text-[13px] font-medium ${row.contrats_signes > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}
+          >
+            {row.contrats_signes > 0 && (
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 align-middle" />
+            )}
             {row.contrats_signes}
           </span>
         ),
@@ -190,7 +202,9 @@ export function useImmeublesLogic() {
                 style={{ width: `${row.couverture}%` }}
               />
             </div>
-            <span className="tabular-nums text-[12px] text-muted-foreground w-9 text-right">{row.couverture}%</span>
+            <span className="tabular-nums text-[12px] text-muted-foreground w-9 text-right">
+              {row.couverture}%
+            </span>
           </div>
         ),
       },
@@ -310,8 +324,19 @@ export function useImmeublesLogic() {
 
     const totalRdv = mappedData.reduce((acc, curr) => acc + curr.rdvCount, 0)
     const totalNonVisites = mappedData.reduce((acc, curr) => acc + curr.nonVisiteCount, 0)
+    const typeBreakdown = habitatBreakdown(sortedImmeubles)
 
-    return { data: mappedData, stats: { totalImmeubles, totalContrats, avgCouverture, totalRdv, totalNonVisites } }
+    return {
+      data: mappedData,
+      stats: {
+        totalImmeubles,
+        totalContrats,
+        avgCouverture,
+        totalRdv,
+        totalNonVisites,
+        typeBreakdown,
+      },
+    }
   }, [filteredImmeubles, commercials, managers, effectiveSortBy])
 
   const stats = tableData?.stats || {
@@ -320,6 +345,7 @@ export function useImmeublesLogic() {
     avgCouverture: 0,
     totalRdv: 0,
     totalNonVisites: 0,
+    typeBreakdown: { total: 0, IMMEUBLE: 0, MAISON: 0, PAVILLON: 0 },
   }
   const finalTableData = tableData?.data || []
 

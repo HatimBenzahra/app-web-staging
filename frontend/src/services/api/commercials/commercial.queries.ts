@@ -80,8 +80,10 @@ export const GET_COMMERCIAL_FULL = `
       immeubles {
         id
         adresse
+        typeHabitat
         nbEtages
         nbPortesParEtage
+        nbMaisonsPrevu
         ascenseurPresent
         digitalCode
         commercialId

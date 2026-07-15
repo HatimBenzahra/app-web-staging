@@ -148,20 +148,6 @@ const getCategoryBadgeClass = category => {
   }
 }
 
-const getCategoryAccent = category => {
-  switch (category) {
-    case 'PROGRESSION':
-      return 'border-t-emerald-500'
-    case 'PRODUIT':
-      return 'border-t-sky-500'
-    case 'PERFORMANCE':
-      return 'border-t-amber-500'
-    case 'TROPHEE':
-      return 'border-t-yellow-500'
-    default:
-      return 'border-t-transparent'
-  }
-}
 
 const STAT_CARD_STYLES = [
   {
@@ -812,7 +798,7 @@ function DetailModal({
                           return (
                             <div
                               key={badge.id}
-                              className={`group rounded-lg border border-border/70 hover:border-border p-3 transition-colors ${getCategoryAccent(def?.category)} border-t-2`}
+                              className="group rounded-lg border border-border/70 hover:border-border p-3 transition-colors"
                             >
                               <div className="flex items-start gap-2.5">
                                 <div
@@ -1384,7 +1370,7 @@ function BadgesTab({
           {displayedBadges.map(badge => (
             <Card
               key={badge.id}
-              className={`hover:shadow-md transition-all duration-200 border-border/80 border-t-2 ${getCategoryAccent(badge.category)}`}
+              className="hover:shadow-md transition-all duration-200 border-border/80"
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">

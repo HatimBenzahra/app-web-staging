@@ -21,19 +21,32 @@ export class KioskApiError extends Error {
     return 'unknown'
   }
 
-  get isNetworkError() { return this.type === 'network' }
-  get isAuthError() { return this.type === 'auth' }
-  get isServerError() { return this.type === 'server' }
-  get isConfigError() { return this.type === 'config' }
+  get isNetworkError() {
+    return this.type === 'network'
+  }
+  get isAuthError() {
+    return this.type === 'auth'
+  }
+  get isServerError() {
+    return this.type === 'server'
+  }
+  get isConfigError() {
+    return this.type === 'config'
+  }
 }
 
 export function classifyKioskError(error: unknown): KioskApiError {
   if (error instanceof KioskApiError) return error
 
   const msg = error instanceof Error ? error.message.toLowerCase() : ''
-  const isNetworkError = error instanceof TypeError && (
-    msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('load') || msg.includes('cors') || msg.includes('timeout')
-  )
+  const isNetworkError =
+    error instanceof TypeError &&
+    (msg.includes('fetch') ||
+      msg.includes('network') ||
+      msg.includes('failed') ||
+      msg.includes('load') ||
+      msg.includes('cors') ||
+      msg.includes('timeout'))
 
   if (isNetworkError) {
     return new KioskApiError(
@@ -43,7 +56,10 @@ export function classifyKioskError(error: unknown): KioskApiError {
     )
   }
 
-  if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NetworkError')) {
+  if (
+    error instanceof DOMException &&
+    (error.name === 'AbortError' || error.name === 'NetworkError')
+  ) {
     return new KioskApiError('La requête a expiré ou le réseau est indisponible.', 0, 'network')
   }
 
@@ -60,9 +76,7 @@ class KioskApiClient {
 
   constructor(baseUrl: string, username: string, password: string) {
     this.baseUrl = (baseUrl || '').replace(/\/+$/, '')
-    this.authHeader = username && password
-      ? `Basic ${btoa(`${username}:${password}`)}`
-      : ''
+    this.authHeader = username && password ? `Basic ${btoa(`${username}:${password}`)}` : ''
   }
 
   get isConfigured(): boolean {
@@ -100,9 +114,10 @@ class KioskApiClient {
       } catch {
         body = await response.text().catch(() => null)
       }
-      const message = typeof body === 'object' && body && 'error' in body
-        ? String((body as Record<string, unknown>).error)
-        : `HTTP ${response.status}: ${response.statusText}`
+      const message =
+        typeof body === 'object' && body && 'error' in body
+          ? String((body as Record<string, unknown>).error)
+          : `HTTP ${response.status}: ${response.statusText}`
       throw new KioskApiError(message, response.status, undefined, body)
     }
     return response.json() as Promise<T>
@@ -188,15 +203,3 @@ export const kioskClient = new KioskApiClient(
   import.meta.env.VITE_KIOSK_API_USER || '',
   import.meta.env.VITE_KIOSK_API_PASS || ''
 )
-
-// Kiosk secondaire optionnel (ex: staging) : utilisé uniquement pour agréger les
-// tablettes/positions dans la Localisation (une tablette installée par erreur sur
-// un autre kiosk reste visible). null si VITE_KIOSK_API_URL_2 non défini.
-const SECONDARY_KIOSK_URL = import.meta.env.VITE_KIOSK_API_URL_2 || ''
-export const secondaryKioskClient = SECONDARY_KIOSK_URL
-  ? new KioskApiClient(
-      SECONDARY_KIOSK_URL,
-      import.meta.env.VITE_KIOSK_API_USER_2 || import.meta.env.VITE_KIOSK_API_USER || '',
-      import.meta.env.VITE_KIOSK_API_PASS_2 || import.meta.env.VITE_KIOSK_API_PASS || ''
-    )
-  : null

@@ -4,12 +4,233 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
-import { CreateImmeubleInput, UpdateImmeubleInput } from './immeuble.dto';
+import { parseRing, pointInZone, polygonAreaM2 } from '../zone/zone.geometry';
+import {
+  CreateImmeubleInput,
+  CreateQuartierInput,
+  ImmeubleProgressFilter,
+  ImmeublesPageInput,
+  MobileMapPlace,
+  TypeHabitat,
+  UpdateImmeubleInput,
+} from './immeuble.dto';
 
 @Injectable()
 export class ImmeubleService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Vérifie qu'un manager possède bien un commercial (commercial.managerId === managerId).
+   * Lève une ForbiddenException sinon.
+   */
+  private async assertManagerOwnsCommercial(
+    managerId: number,
+    commercialId: number,
+  ) {
+    const commercial = await this.prisma.commercial.findUnique({
+      where: { id: commercialId },
+      select: { managerId: true },
+    });
+
+    if (!commercial || commercial.managerId !== managerId) {
+      throw new ForbiddenException('Access denied');
+    }
+  }
+
+  /**
+   * Vérifie qu'un directeur a bien la cible (commercial ou manager) dans son périmètre.
+   */
+  private async assertDirecteurOwnsTarget(
+    directeurId: number,
+    target: { commercialId?: number | null; managerId?: number | null },
+  ) {
+    if (target.commercialId) {
+      const commercial = await this.prisma.commercial.findUnique({
+        where: { id: target.commercialId },
+        select: { directeurId: true },
+      });
+      if (!commercial || commercial.directeurId !== directeurId) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+
+    if (target.managerId) {
+      const manager = await this.prisma.manager.findUnique({
+        where: { id: target.managerId },
+        select: { directeurId: true },
+      });
+      if (!manager || manager.directeurId !== directeurId) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+  }
+
+  /**
+   * Dérive/valide l'identité du propriétaire (commercialId/managerId) à partir du
+   * token (@CurrentUser), au lieu de faire confiance aveuglément au client.
+   * - commercial : forcé sur lui-même (commercialId = son id), pas de managerId arbitraire.
+   * - manager : pour lui (managerId = son id) ou pour un commercial de SON équipe (validé).
+   * - directeur/admin : valide que la cible est dans son périmètre.
+   * Renvoie l'ownership normalisé à utiliser à la création.
+   */
+  private async resolveCreationOwnership(
+    data: Pick<CreateImmeubleInput, 'commercialId' | 'managerId'>,
+    userId: number,
+    userRole: string,
+  ): Promise<{ commercialId?: number; managerId?: number }> {
+    switch (userRole) {
+      case 'commercial':
+        // Toujours attribué au commercial connecté ; on ignore tout managerId du client.
+        return { commercialId: userId, managerId: undefined };
+
+      case 'manager':
+        if (data.commercialId) {
+          // Le manager agit pour un commercial : il doit posséder ce commercial.
+          await this.assertManagerOwnsCommercial(userId, data.commercialId);
+          return { commercialId: data.commercialId, managerId: undefined };
+        }
+        // Sinon l'immeuble est attribué au manager lui-même.
+        return { commercialId: undefined, managerId: userId };
+
+      case 'directeur':
+        await this.assertDirecteurOwnsTarget(userId, data);
+        return {
+          commercialId: data.commercialId ?? undefined,
+          managerId: data.managerId ?? undefined,
+        };
+
+      case 'admin':
+        return {
+          commercialId: data.commercialId ?? undefined,
+          managerId: data.managerId ?? undefined,
+        };
+
+      default:
+        throw new ForbiddenException('Access denied');
+    }
+  }
+
+  /**
+   * Résout géométriquement la zone contenant le point (lat/lng) de l'immeuble,
+   * une seule fois à la création. Périmètre des zones candidates :
+   * - commercial (data.commercialId) : zones de SON manager (`managerId`) +
+   *   celles de SON directeur (`directeurId`) auquel il est directement rattaché ;
+   * - manager (data.managerId) : SES zones (`managerId`).
+   * Seules les zones AVEC géométrie (polygon non null OU rayon > 0) sont retenues,
+   * en une seule requête. Si plusieurs zones contiennent le point → la plus petite
+   * aire (`polygonAreaM2`, ou π·rayon² pour un cercle). Retourne l'id ou undefined.
+   */
+  private async resolveZoneIdByGeometry(
+    data: Pick<
+      CreateImmeubleInput,
+      'commercialId' | 'managerId' | 'latitude' | 'longitude'
+    >,
+  ): Promise<number | undefined> {
+    const { latitude, longitude } = data;
+    if (
+      latitude == null ||
+      longitude == null ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      return undefined;
+    }
+
+    // Déterminer le périmètre (managers / directeurs) dont dépendent les zones.
+    const managerIds = new Set<number>();
+    const directeurIds = new Set<number>();
+
+    if (data.commercialId) {
+      const commercial = await this.prisma.commercial.findUnique({
+        where: { id: data.commercialId },
+        select: { managerId: true, directeurId: true },
+      });
+      if (commercial?.managerId != null) managerIds.add(commercial.managerId);
+      if (commercial?.directeurId != null)
+        directeurIds.add(commercial.directeurId);
+    }
+
+    if (data.managerId != null) {
+      managerIds.add(data.managerId);
+    }
+
+    const orConditions: {
+      managerId?: { in: number[] };
+      directeurId?: { in: number[] };
+    }[] = [];
+    if (managerIds.size > 0)
+      orConditions.push({ managerId: { in: [...managerIds] } });
+    if (directeurIds.size > 0)
+      orConditions.push({ directeurId: { in: [...directeurIds] } });
+    if (orConditions.length === 0) {
+      return undefined;
+    }
+
+    // Une seule requête : zones du périmètre avec une géométrie exploitable.
+    const candidates = await this.prisma.zone.findMany({
+      where: {
+        OR: orConditions,
+        // polygon non null OU rayon > 0 (le disque hérité).
+        NOT: { polygon: { equals: Prisma.DbNull }, rayon: { lte: 0 } },
+      },
+      select: {
+        id: true,
+        polygon: true,
+        xOrigin: true,
+        yOrigin: true,
+        rayon: true,
+      },
+    });
+
+    let best: { id: number; area: number } | undefined;
+    for (const zone of candidates) {
+      if (!pointInZone(longitude, latitude, zone)) {
+        continue;
+      }
+      const area = this.zoneAreaM2(zone);
+      if (!best || area < best.area) {
+        best = { id: zone.id, area };
+      }
+    }
+
+    return best?.id;
+  }
+
+  /**
+   * Aire (m²) d'une zone : polygone via `polygonAreaM2`, sinon disque π·rayon².
+   * Sert uniquement à départager plusieurs zones contenant le même point (la plus petite gagne).
+   */
+  private zoneAreaM2(zone: { polygon: unknown; rayon: number }): number {
+    if (zone.polygon != null) {
+      try {
+        return polygonAreaM2(parseRing(zone.polygon));
+      } catch {
+        // polygon invalide → repli sur le disque.
+      }
+    }
+    return Math.PI * zone.rayon * zone.rayon;
+  }
+
+  private async resolveZoneId(
+    data: Pick<
+      CreateImmeubleInput,
+      'zoneId' | 'commercialId' | 'managerId' | 'latitude' | 'longitude'
+    >,
+  ) {
+    // a. zoneId explicite fourni → comportement inchangé.
+    if (data.zoneId) {
+      return data.zoneId;
+    }
+
+    // b. Appartenance PUREMENT géométrique, calculée une fois à la création :
+    //    le bâtiment est rattaché à la zone (du périmètre du créateur) qui
+    //    contient sa position. S'il n'est dans aucune zone → aucune zone
+    //    (zoneId = null). Pas de fallback sur la zone active du créateur : la
+    //    membership reflète la réalité géographique du tracé.
+    return this.resolveZoneIdByGeometry(data);
+  }
 
   private async ensureImmeubleAccess(
     immeubleId: number,
@@ -68,41 +289,15 @@ export class ImmeubleService {
     return immeuble;
   }
 
-  async create(data: CreateImmeubleInput) {
+  async create(data: CreateImmeubleInput, userId: number, userRole: string) {
+    // Dériver/valider le propriétaire depuis le token (anti-IDOR)
+    const ownership = await this.resolveCreationOwnership(
+      data,
+      userId,
+      userRole,
+    );
     // Si un commercialId ou managerId est fourni, récupérer sa zone assignée
-    let zoneId = data.zoneId; // Utiliser la zone fournie explicitement
-
-    if (!zoneId && data.commercialId) {
-      // Chercher la zone assignée au commercial via ZoneEnCours
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.commercialId,
-            userType: 'COMMERCIAL',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
-
-    if (!zoneId && data.managerId) {
-      // Chercher la zone assignée au manager via ZoneEnCours (nouveau système)
-      const zoneEnCours = await this.prisma.zoneEnCours.findUnique({
-        where: {
-          userId_userType: {
-            userId: data.managerId,
-            userType: 'MANAGER',
-          },
-        },
-      });
-
-      if (zoneEnCours) {
-        zoneId = zoneEnCours.zoneId;
-      }
-    }
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
 
     // Créer l'immeuble avec la zone automatiquement assignée
     const immeuble = await this.prisma.immeuble.create({
@@ -110,13 +305,16 @@ export class ImmeubleService {
         adresse: data.adresse,
         latitude: data.latitude,
         longitude: data.longitude,
+        typeHabitat: data.typeHabitat ?? TypeHabitat.IMMEUBLE,
         nbEtages: data.nbEtages,
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,
         digitalCode: data.digitalCode,
-        commercialId: data.commercialId,
-        managerId: data.managerId,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
         zoneId, // Assigner automatiquement la zone du commercial ou manager
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: data.nbMaisonsPrevu,
       },
     });
 
@@ -144,14 +342,95 @@ export class ImmeubleService {
     return immeuble;
   }
 
+  async createMaison(
+    data: CreateImmeubleInput,
+    userId: number,
+    userRole: string,
+  ) {
+    const ownership = await this.resolveCreationOwnership(
+      data,
+      userId,
+      userRole,
+    );
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
+
+    const immeuble = await this.prisma.immeuble.create({
+      data: {
+        adresse: data.adresse,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        typeHabitat: TypeHabitat.MAISON,
+        nbEtages: 1,
+        nbPortesParEtage: 1,
+        ascenseurPresent: false,
+        digitalCode: data.digitalCode,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
+        zoneId,
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: 1,
+      },
+    });
+
+    await this.prisma.porte.create({
+      data: {
+        numero: '1',
+        nomPersonnalise: 'Maison',
+        etage: 1,
+        immeubleId: immeuble.id,
+        statut: 'NON_VISITE',
+        nbRepassages: 0,
+      },
+    });
+
+    return immeuble;
+  }
+
+  /**
+   * Construit le `where` Prisma de périmètre selon le rôle (visibilité des immeubles).
+   * Source unique de vérité partagée par `findAll` et la pagination Lieux.
+   * Renvoie `null` pour un rôle inconnu (aucun immeuble visible).
+   */
+  private buildRoleWhere(
+    userId: number,
+    userRole: string,
+  ): Prisma.ImmeubleWhereInput | null {
+    switch (userRole) {
+      case 'admin':
+        return {};
+
+      case 'directeur':
+        // Immeubles des commerciaux du directeur
+        return { commercial: { directeurId: userId } };
+
+      case 'manager':
+        // Immeubles des commerciaux du manager ET ses propres immeubles
+        return {
+          OR: [{ commercial: { managerId: userId } }, { managerId: userId }],
+        };
+
+      case 'commercial':
+        // Immeubles du commercial
+        return { commercialId: userId };
+
+      default:
+        return null;
+    }
+  }
+
   async findAll(userId?: number, userRole?: string) {
     // Vérifier que les paramètres sont définis (userId peut être 0 pour les admins)
     if (userId === undefined || !userRole) {
       throw new ForbiddenException('UNAUTHORIZED');
     }
 
-    // Filtrage selon le rôle
-    const immeubleInclude = {
+    const roleWhere = this.buildRoleWhere(userId, userRole);
+    if (roleWhere === null) {
+      return [];
+    }
+
+    return this.prisma.immeuble.findMany({
+      where: roleWhere,
       include: {
         portes: {
           select: {
@@ -160,48 +439,427 @@ export class ImmeubleService {
           },
         },
       },
+    });
+  }
+
+  async findMobileManagerMapPlaces(
+    userId: number,
+    includeTeam: boolean,
+  ): Promise<MobileMapPlace[]> {
+    const rows = await this.prisma.immeuble.findMany({
+      where: {
+        latitude: { not: null },
+        longitude: { not: null },
+        ...(includeTeam
+          ? {
+              OR: [
+                { managerId: userId },
+                { commercial: { managerId: userId } },
+              ],
+            }
+          : { managerId: userId }),
+      },
+      select: {
+        id: true,
+        adresse: true,
+        latitude: true,
+        longitude: true,
+        typeHabitat: true,
+        nbEtages: true,
+        nbPortesParEtage: true,
+        nbMaisonsPrevu: true,
+        commercialId: true,
+        managerId: true,
+        zoneId: true,
+        quartierId: true,
+        updatedAt: true,
+        commercial: {
+          select: {
+            id: true,
+            nom: true,
+            prenom: true,
+            managerId: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return rows.map((immeuble) => {
+      const isTeam =
+        immeuble.commercialId != null &&
+        immeuble.commercial?.managerId === userId;
+      const creatorName = isTeam
+        ? [immeuble.commercial?.prenom, immeuble.commercial?.nom]
+            .filter(Boolean)
+            .join(' ')
+        : undefined;
+
+      return {
+        id: immeuble.id,
+        adresse: immeuble.adresse,
+        latitude: immeuble.latitude!,
+        longitude: immeuble.longitude!,
+        typeHabitat: immeuble.typeHabitat as TypeHabitat,
+        nbEtages: immeuble.nbEtages,
+        nbPortesParEtage: immeuble.nbPortesParEtage,
+        nbMaisonsPrevu: immeuble.nbMaisonsPrevu ?? undefined,
+        commercialId: immeuble.commercialId ?? undefined,
+        managerId: immeuble.managerId ?? undefined,
+        zoneId: immeuble.zoneId ?? undefined,
+        quartierId: immeuble.quartierId ?? undefined,
+        ownership: isTeam ? 'TEAM' : 'MINE',
+        creatorName,
+        updatedAt: immeuble.updatedAt,
+      };
+    });
+  }
+
+  /**
+   * Portée « MES propres immeubles » pour l'onglet Lieux (mobile). Ce n'est PAS
+   * le périmètre d'équipe (`buildRoleWhere`) : un manager ne voit QUE ses propres
+   * lieux ici — les lieux de ses commerciaux se consultent uniquement sur la
+   * carte. `i` = alias de la table "Immeuble". Renvoie `null` pour un rôle inconnu.
+   */
+  private ownScopeSql(userId: number, userRole: string): Prisma.Sql | null {
+    switch (userRole) {
+      case 'admin':
+        return Prisma.sql`TRUE`;
+      case 'commercial':
+        return Prisma.sql`i."commercialId" = ${userId}`;
+      case 'manager':
+        // Uniquement ses propres immeubles (managerId), pas ceux de l'équipe.
+        return Prisma.sql`i."managerId" = ${userId}`;
+      case 'directeur':
+        return Prisma.sql`EXISTS (SELECT 1 FROM "Commercial" c WHERE c.id = i."commercialId" AND c."directeurId" = ${userId})`;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Sous-requête calculant, pour chaque immeuble filtré par `whereSql`, sa
+   * progression (`total`, `prospectees`, `percent`) — réplique EXACTE de
+   * `getImmeubleProgress` + `effectiveTypeHabitat` côté mobile
+   * (`components/immeubles/lieu-progress.ts` / `lieu-terms.ts`).
+   */
+  private scoredImmeublesSql(whereSql: Prisma.Sql): Prisma.Sql {
+    return Prisma.sql`
+      SELECT
+        s2.id, s2."createdAt", s2."quartierId", s2.total, s2.prospectees,
+        (CASE WHEN s2.total = 0 THEN 0 ELSE ROUND(100.0 * s2.prospectees / s2.total) END) AS percent
+      FROM (
+        SELECT
+          s1.id, s1."createdAt", s1."quartierId", s1.prospectees,
+          (CASE
+             WHEN s1.eff_type = 'MAISON'   THEN GREATEST(1, s1.real_portes)
+             WHEN s1.eff_type = 'PAVILLON' THEN COALESCE(s1.nb_maisons, s1.nb_etages, s1.real_portes)
+             ELSE (CASE WHEN s1.nb_etages * s1.nb_portes > 0 THEN s1.nb_etages * s1.nb_portes ELSE s1.real_portes END)
+           END) AS total
+        FROM (
+          SELECT
+            i.id, i."createdAt", i."quartierId",
+            (CASE WHEN i."typeHabitat"::text = 'PAVILLON' AND i."nbPortesParEtage" > 1 THEN 'IMMEUBLE' ELSE i."typeHabitat"::text END) AS eff_type,
+            i."nbEtages" AS nb_etages, i."nbPortesParEtage" AS nb_portes, i."nbMaisonsPrevu" AS nb_maisons,
+            pc.real_portes, pc.prospectees
+          FROM "Immeuble" i
+          LEFT JOIN LATERAL (
+            SELECT
+              COUNT(*)::int AS real_portes,
+              COUNT(*) FILTER (WHERE p.statut::text <> 'NON_VISITE')::int AS prospectees
+            FROM "Porte" p WHERE p."immeubleId" = i.id
+          ) pc ON TRUE
+          WHERE ${whereSql}
+        ) s1
+      ) s2
+    `;
+  }
+
+  private progressPredicateSql(progress?: ImmeubleProgressFilter): Prisma.Sql {
+    switch (progress) {
+      case ImmeubleProgressFilter.INCOMPLETE:
+        return Prisma.sql`percent < 100`;
+      case ImmeubleProgressFilter.LOW:
+        return Prisma.sql`percent < 35`;
+      case ImmeubleProgressFilter.MID:
+        return Prisma.sql`percent >= 35 AND percent < 70`;
+      case ImmeubleProgressFilter.HIGH:
+        return Prisma.sql`percent >= 70 AND percent < 100`;
+      case ImmeubleProgressFilter.COMPLETE:
+        return Prisma.sql`percent = 100`;
+      case ImmeubleProgressFilter.ALL:
+      default:
+        return Prisma.sql`TRUE`;
+    }
+  }
+
+  /**
+   * Pagination keyset (curseur) des LIEUX AUTONOMES (quartierId NULL) pour
+   * l'onglet Lieux mobile. Filtres 100% serveur (recherche/type/progression),
+   * tri stable `(createdAt DESC, id DESC)`. N'affecte aucune query existante.
+   */
+  async findStandalonePaginated(
+    input: ImmeublesPageInput,
+    userId?: number,
+    userRole?: string,
+  ): Promise<{
+    items: unknown[];
+    nextCursor?: string;
+    hasMore: boolean;
+    totalCount: number;
+    summary: { coveragePercent: number; standaloneCount: number };
+  }> {
+    if (userId === undefined || !userRole) {
+      throw new ForbiddenException('UNAUTHORIZED');
+    }
+
+    const ownCond = this.ownScopeSql(userId, userRole);
+    if (ownCond === null) {
+      return {
+        items: [],
+        hasMore: false,
+        totalCount: 0,
+        summary: { coveragePercent: 0, standaloneCount: 0 },
+      };
+    }
+
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+
+    // Curseur : "createdAtISO__id"
+    let cursorDate: Date | undefined;
+    let cursorId: number | undefined;
+    if (input.cursor) {
+      const sep = input.cursor.lastIndexOf('__');
+      const iso = sep >= 0 ? input.cursor.slice(0, sep) : '';
+      const idPart = sep >= 0 ? input.cursor.slice(sep + 2) : '';
+      const parsedDate = new Date(iso);
+      const parsedId = Number(idPart);
+      if (Number.isNaN(parsedDate.getTime()) || !Number.isInteger(parsedId)) {
+        throw new BadRequestException('Curseur de pagination invalide.');
+      }
+      cursorDate = parsedDate;
+      cursorId = parsedId;
+    }
+
+    // WHERE de la liste filtrée : mes lieux + autonomes + recherche + type.
+    const filterConds: Prisma.Sql[] = [
+      ownCond,
+      Prisma.sql`i."quartierId" IS NULL`,
+    ];
+    if (input.search && input.search.trim()) {
+      filterConds.push(
+        Prisma.sql`i.adresse ILIKE ${`%${input.search.trim()}%`}`,
+      );
+    }
+    if (input.typeHabitat) {
+      // Filtre sur le type EFFECTIF (même règle que scoredImmeublesSql / le
+      // mobile `effectiveTypeHabitat`) : un pavillon legacy (nbPortesParEtage>1)
+      // est traité comme IMMEUBLE, pour rester cohérent avec l'affichage.
+      filterConds.push(
+        Prisma.sql`(CASE WHEN i."typeHabitat"::text = 'PAVILLON' AND i."nbPortesParEtage" > 1 THEN 'IMMEUBLE' ELSE i."typeHabitat"::text END) = ${input.typeHabitat}`,
+      );
+    }
+    // Filtre plage de dates sur createdAt (bornes optionnelles ; createdTo
+    // attendu en fin de journée côté client → borne inclusive).
+    if (input.createdFrom) {
+      filterConds.push(Prisma.sql`i."createdAt" >= ${input.createdFrom}`);
+    }
+    if (input.createdTo) {
+      filterConds.push(Prisma.sql`i."createdAt" <= ${input.createdTo}`);
+    }
+    const filteredWhere = Prisma.join(filterConds, ' AND ');
+    const scoredFiltered = this.scoredImmeublesSql(filteredWhere);
+    const progressPredicate = this.progressPredicateSql(input.progress);
+    const keysetPredicate =
+      cursorDate && cursorId !== undefined
+        ? Prisma.sql`AND ("createdAt", id) < (${cursorDate}, ${cursorId})`
+        : Prisma.empty;
+
+    // Page d'ids (limit + 1 pour détecter hasMore).
+    const pageRows = await this.prisma.$queryRaw<
+      { id: number; createdAt: Date }[]
+    >(Prisma.sql`
+      SELECT id, "createdAt"
+      FROM (${scoredFiltered}) scored
+      WHERE ${progressPredicate} ${keysetPredicate}
+      ORDER BY "createdAt" DESC, id DESC
+      LIMIT ${limit + 1}
+    `);
+
+    const hasMore = pageRows.length > limit;
+    const pageSlice = hasMore ? pageRows.slice(0, limit) : pageRows;
+    const pageIds = pageSlice.map((r) => r.id);
+
+    // Total du set filtré courant.
+    const countRows = await this.prisma.$queryRaw<
+      { count: number }[]
+    >(Prisma.sql`
+      SELECT COUNT(*)::int AS count FROM (${scoredFiltered}) scored WHERE ${progressPredicate}
+    `);
+    const totalCount = countRows[0]?.count ?? 0;
+
+    // Résumé header : couverture globale de MES immeubles (y.c. membres de
+    // quartier) + nombre de mes lieux autonomes NON filtrés.
+    const scoredOwn = this.scoredImmeublesSql(ownCond);
+    const summaryRows = await this.prisma.$queryRaw<
+      {
+        total_total: number;
+        total_prospectees: number;
+        standalone_count: number;
+      }[]
+    >(Prisma.sql`
+      SELECT
+        COALESCE(SUM(total), 0)::int AS total_total,
+        COALESCE(SUM(prospectees), 0)::int AS total_prospectees,
+        COUNT(*) FILTER (WHERE "quartierId" IS NULL)::int AS standalone_count
+      FROM (${scoredOwn}) scored
+    `);
+    const sum = summaryRows[0];
+    const coveragePercent =
+      !sum || sum.total_total === 0
+        ? 0
+        : Math.round((100 * sum.total_prospectees) / sum.total_total);
+    const standaloneCount = sum?.standalone_count ?? 0;
+
+    // Hydratation (avec portes) puis ré-ordonnancement selon la page.
+    const rows =
+      pageIds.length === 0
+        ? []
+        : await this.prisma.immeuble.findMany({
+            where: { id: { in: pageIds } },
+            include: {
+              portes: { select: { id: true, statut: true, etage: true } },
+            },
+          });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const items = pageIds
+      .map((id) => byId.get(id))
+      .filter((r): r is (typeof rows)[number] => !!r);
+
+    const last = pageSlice[pageSlice.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? `${last.createdAt.toISOString()}__${last.id}`
+        : undefined;
+
+    return {
+      items,
+      nextCursor,
+      hasMore,
+      totalCount,
+      summary: { coveragePercent, standaloneCount },
+    };
+  }
+
+  async findQuartiers(userId?: number, userRole?: string) {
+    if (userId === undefined || !userRole) {
+      throw new ForbiddenException('UNAUTHORIZED');
+    }
+
+    const include = {
+      include: {
+        immeubles: { include: { portes: true } },
+      },
     };
 
     switch (userRole) {
       case 'admin':
-        return this.prisma.immeuble.findMany(immeubleInclude);
+        return this.prisma.quartier.findMany(include);
 
       case 'directeur':
-        // Immeubles des commerciaux du directeur
-        return this.prisma.immeuble.findMany({
+        return this.prisma.quartier.findMany({
           where: {
-            commercial: {
-              directeurId: userId,
-            },
+            OR: [
+              { commercial: { directeurId: userId } },
+              { manager: { directeurId: userId } },
+              { zone: { directeurId: userId } },
+            ],
           },
-          ...immeubleInclude,
+          ...include,
         });
 
       case 'manager':
-        // Immeubles des commerciaux du manager ET ses propres immeubles
-        return this.prisma.immeuble.findMany({
+        return this.prisma.quartier.findMany({
           where: {
             OR: [
-              {
-                commercial: {
-                  managerId: userId,
-                },
-              },
-              {
-                managerId: userId,
-              },
+              { managerId: userId },
+              { commercial: { managerId: userId } },
+              { zone: { managerId: userId } },
             ],
           },
-          ...immeubleInclude,
+          ...include,
         });
 
       case 'commercial':
-        // Immeubles du commercial
-        return this.prisma.immeuble.findMany({
-          where: {
-            commercialId: userId,
+        return this.prisma.quartier.findMany({
+          where: { commercialId: userId },
+          ...include,
+        });
+
+      default:
+        return [];
+    }
+  }
+
+  async findMobileMapQuartiers(userId?: number, userRole?: string) {
+    if (userId === undefined || !userRole) {
+      throw new ForbiddenException('UNAUTHORIZED');
+    }
+
+    const include = {
+      include: {
+        immeubles: {
+          select: {
+            id: true,
+            adresse: true,
+            latitude: true,
+            longitude: true,
+            typeHabitat: true,
+            nbEtages: true,
+            nbPortesParEtage: true,
+            nbMaisonsPrevu: true,
+            commercialId: true,
+            managerId: true,
+            zoneId: true,
+            quartierId: true,
+            updatedAt: true,
           },
-          ...immeubleInclude,
+        },
+      },
+    };
+
+    switch (userRole) {
+      case 'admin':
+        return this.prisma.quartier.findMany(include);
+
+      case 'directeur':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { commercial: { directeurId: userId } },
+              { manager: { directeurId: userId } },
+              { zone: { directeurId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'manager':
+        return this.prisma.quartier.findMany({
+          where: {
+            OR: [
+              { managerId: userId },
+              { commercial: { managerId: userId } },
+              { zone: { managerId: userId } },
+            ],
+          },
+          ...include,
+        });
+
+      case 'commercial':
+        return this.prisma.quartier.findMany({
+          where: { commercialId: userId },
+          ...include,
         });
 
       default:
@@ -233,14 +891,54 @@ export class ImmeubleService {
     });
   }
 
-  async update(
-    data: UpdateImmeubleInput,
-    userId: number,
-    userRole: string,
-  ) {
+  async findMobileDetail(id: number, userId: number, userRole: string) {
+    await this.ensureImmeubleAccess(id, userId, userRole);
+
+    return this.prisma.immeuble.findUnique({
+      where: { id },
+      include: {
+        portes: {
+          select: {
+            id: true,
+            numero: true,
+            nomPersonnalise: true,
+            etage: true,
+            immeubleId: true,
+            statut: true,
+            nbRepassages: true,
+            nbContrats: true,
+            rdvDate: true,
+            rdvTime: true,
+            commentaire: true,
+            derniereVisite: true,
+            duree: true,
+            updatedAt: true,
+          },
+          orderBy: [{ etage: 'asc' }, { numero: 'asc' }],
+        },
+      },
+    });
+  }
+
+  async update(data: UpdateImmeubleInput, userId: number, userRole: string) {
     const { id, ...updateData } = data;
 
     await this.ensureImmeubleAccess(id, userId, userRole);
+
+    // Anti mass-assignment (IDOR) : un commercial/manager ne peut PAS réassigner
+    // l'immeuble vers un tiers. On retire ces champs d'ownership du payload.
+    if (userRole === 'commercial' || userRole === 'manager') {
+      delete (updateData as Record<string, unknown>).commercialId;
+      delete (updateData as Record<string, unknown>).managerId;
+      delete (updateData as Record<string, unknown>).zoneId;
+    } else if (userRole === 'directeur') {
+      // Le directeur ne peut réassigner que dans son périmètre : valide la cible.
+      await this.assertDirecteurOwnsTarget(userId, {
+        commercialId: updateData.commercialId,
+        managerId: updateData.managerId,
+      });
+    }
+    // admin : aucune restriction de réassignation.
 
     return this.prisma.immeuble.update({
       where: { id },
@@ -256,6 +954,42 @@ export class ImmeubleService {
     });
   }
 
+  async removeTerrainLieu(id: number, userId: number, userRole: string) {
+    await this.ensureImmeubleAccess(id, userId, userRole);
+
+    const visitedPortes = await this.prisma.porte.count({
+      where: {
+        immeubleId: id,
+        statut: { not: 'NON_VISITE' },
+      },
+    });
+
+    if (visitedPortes > 0) {
+      throw new BadRequestException(
+        'Ce lieu contient deja des portes prospectees et ne peut pas etre supprime depuis la carte.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const immeuble = await tx.immeuble.findUnique({
+        where: { id },
+      });
+
+      if (!immeuble) {
+        throw new NotFoundException('Immeuble not found');
+      }
+
+      await tx.porte.deleteMany({
+        where: { immeubleId: id },
+      });
+
+      await tx.immeuble.delete({
+        where: { id },
+      });
+
+      return immeuble;
+    });
+  }
 
   async addPorteToEtage(
     immeubleId: number,
@@ -364,12 +1098,7 @@ export class ImmeubleService {
     return immeuble;
   }
 
-
-  async addEtage(
-    immeubleId: number,
-    userId: number,
-    userRole: string,
-  ) {
+  async addEtage(immeubleId: number, userId: number, userRole: string) {
     const immeuble = await this.ensureImmeubleAccess(
       immeubleId,
       userId,
@@ -408,38 +1137,131 @@ export class ImmeubleService {
     return updatedImmeuble;
   }
 
-  async createEmpty(data: CreateImmeubleInput) {
-    let zoneId = data.zoneId;
-    if (!zoneId && data.commercialId) {
-      const zec = await this.prisma.zoneEnCours.findUnique({
-        where: { userId_userType: { userId: data.commercialId, userType: 'COMMERCIAL' } },
-      });
-      if (zec) zoneId = zec.zoneId;
-    }
-    if (!zoneId && data.managerId) {
-      const zec = await this.prisma.zoneEnCours.findUnique({
-        where: { userId_userType: { userId: data.managerId, userType: 'MANAGER' } },
-      });
-      if (zec) zoneId = zec.zoneId;
-    }
+  async createEmpty(
+    data: CreateImmeubleInput,
+    userId: number,
+    userRole: string,
+  ) {
+    const ownership = await this.resolveCreationOwnership(
+      data,
+      userId,
+      userRole,
+    );
+    const zoneId = await this.resolveZoneId({ ...data, ...ownership });
     return this.prisma.immeuble.create({
       data: {
         adresse: data.adresse,
         latitude: data.latitude,
         longitude: data.longitude,
+        typeHabitat: data.typeHabitat ?? TypeHabitat.IMMEUBLE,
         nbEtages: data.nbEtages,
         nbPortesParEtage: data.nbPortesParEtage,
         ascenseurPresent: data.ascenseurPresent,
         digitalCode: data.digitalCode,
-        commercialId: data.commercialId,
-        managerId: data.managerId,
+        commercialId: ownership.commercialId,
+        managerId: ownership.managerId,
         zoneId,
+        quartierId: data.quartierId,
+        nbMaisonsPrevu: data.nbMaisonsPrevu,
       },
     });
   }
 
+  async createQuartier(
+    data: CreateQuartierInput,
+    userId: number,
+    userRole: string,
+  ) {
+    if (!data.points || data.points.length === 0) {
+      throw new BadRequestException(
+        'Un quartier doit contenir au moins un point.',
+      );
+    }
+
+    const ownership = await this.resolveCreationOwnership(
+      data,
+      userId,
+      userRole,
+    );
+    const latitude =
+      data.points.reduce((sum, point) => sum + point.latitude, 0) /
+      data.points.length;
+    const longitude =
+      data.points.reduce((sum, point) => sum + point.longitude, 0) /
+      data.points.length;
+    // Résolution géométrique sur le centroïde du quartier (à la création).
+    const zoneId = await this.resolveZoneId({
+      ...data,
+      ...ownership,
+      latitude,
+      longitude,
+    });
+    const nom =
+      data.nom?.trim() || `Quartier ${new Date().toLocaleDateString('fr-FR')}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const quartier = await tx.quartier.create({
+        data: {
+          nom,
+          latitude,
+          longitude,
+          commercialId: ownership.commercialId,
+          managerId: ownership.managerId,
+          zoneId,
+        },
+      });
+
+      for (const point of data.points) {
+        const isMaison = point.typeHabitat === TypeHabitat.MAISON;
+        const isPavillon = point.typeHabitat === TypeHabitat.PAVILLON;
+        const immeuble = await tx.immeuble.create({
+          data: {
+            adresse: point.adresse,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            typeHabitat: point.typeHabitat,
+            nbEtages: isMaison ? 1 : (point.nbEtages ?? 1),
+            nbPortesParEtage: isMaison ? 1 : (point.nbPortesParEtage ?? 1),
+            nbMaisonsPrevu: isMaison
+              ? 1
+              : isPavillon
+                ? (point.nbMaisonsPrevu ?? 2)
+                : null,
+            ascenseurPresent: false,
+            commercialId: ownership.commercialId,
+            managerId: ownership.managerId,
+            zoneId,
+            quartierId: quartier.id,
+          },
+        });
+
+        if (isMaison) {
+          await tx.porte.create({
+            data: {
+              numero: '1',
+              nomPersonnalise: 'Maison',
+              etage: 1,
+              immeubleId: immeuble.id,
+              statut: 'NON_VISITE',
+              nbRepassages: 0,
+            },
+          });
+        }
+      }
+
+      return tx.quartier.findUnique({
+        where: { id: quartier.id },
+        include: { immeubles: true },
+      });
+    });
+  }
+
   async addEtageEmpty(immeubleId: number, userId: number, userRole: string) {
-    const immeuble = await this.ensureImmeubleAccess(immeubleId, userId, userRole);
+    const immeuble = await this.ensureImmeubleAccess(
+      immeubleId,
+      userId,
+      userRole,
+    );
     const nouvelEtage = immeuble.nbEtages + 1;
     return this.prisma.immeuble.update({
       where: { id: immeubleId },
@@ -453,9 +1275,15 @@ export class ImmeubleService {
     userId: number,
     userRole: string,
   ) {
-    const immeuble = await this.ensureImmeubleAccess(immeubleId, userId, userRole);
+    const immeuble = await this.ensureImmeubleAccess(
+      immeubleId,
+      userId,
+      userRole,
+    );
     if (etage < 1 || etage > immeuble.nbEtages) {
-      throw new BadRequestException(`Étage ${etage} invalide (1 à ${immeuble.nbEtages}).`);
+      throw new BadRequestException(
+        `Étage ${etage} invalide (1 à ${immeuble.nbEtages}).`,
+      );
     }
     const portesEtage = await this.prisma.porte.findMany({
       where: { immeubleId, etage },
@@ -485,11 +1313,7 @@ export class ImmeubleService {
     return immeuble;
   }
 
-  async removeEtage(
-    immeubleId: number,
-    userId: number,
-    userRole: string,
-  ) {
+  async removeEtage(immeubleId: number, userId: number, userRole: string) {
     const immeuble = await this.ensureImmeubleAccess(
       immeubleId,
       userId,

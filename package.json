@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "deploy:staging": "bash ../deploy/deploy-staging.sh app-web",
-    "deploy:prod": "bash ../deploy/deploy-prod.sh app-web"
+    "deploy:staging": "bash ../deploy web staging",
+    "deploy:prod": "bash ../deploy web prod"
   },
   "dependencies": {
     "http-proxy-middleware": "^3.0.5"

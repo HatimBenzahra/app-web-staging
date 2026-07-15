@@ -43,6 +43,7 @@
 /**
  * @typedef {BaseEntity & Object} Zone
  * @property {string} nom
+ * @property {number[][]|null} [polygon] Anneau fermé [[lng,lat],...] (zones polygone) ; null pour les zones cercle héritées
  * @property {number} rayon
  * @property {number} xOrigin
  * @property {number} yOrigin
@@ -51,10 +52,16 @@
  */
 
 /**
+ * @typedef {'IMMEUBLE'|'MAISON'|'PAVILLON'} TypeHabitat
+ */
+
+/**
  * @typedef {BaseEntity & Object} Immeuble
  * @property {string} adresse
+ * @property {TypeHabitat} [typeHabitat]
  * @property {number} nbEtages
  * @property {number} nbPortesParEtage
+ * @property {number|null} [nbMaisonsPrevu]
  * @property {boolean} ascenseurPresent
  * @property {string|null} digitalCode
  * @property {number} commercialId
@@ -128,9 +135,10 @@
 /**
  * @typedef {Object} CreateZoneInput
  * @property {string} nom
- * @property {number} rayon
- * @property {number} xOrigin
- * @property {number} yOrigin
+ * @property {number[][]} [polygon] Anneau fermé [[lng,lat],...]. Le backend dérive xOrigin/yOrigin/rayon.
+ * @property {number} [rayon]
+ * @property {number} [xOrigin]
+ * @property {number} [yOrigin]
  * @property {number} [directeurId]
  * @property {number} [managerId]
  */
@@ -219,6 +227,7 @@
  * @typedef {Object} UpdateZoneInput
  * @property {number} id
  * @property {string} [nom]
+ * @property {number[][]} [polygon] Anneau fermé [[lng,lat],...]. Le backend dérive xOrigin/yOrigin/rayon.
  * @property {number} [rayon]
  * @property {number} [xOrigin]
  * @property {number} [yOrigin]
