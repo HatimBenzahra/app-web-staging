@@ -1,6 +1,9 @@
 import {
   createGeoJSONCircle,
   getAssignedUserIdsFromZone,
+  hasSelfIntersection,
+  isPolygonTooSmall,
+  overlapsExistingZones,
   parseAssignedUserId,
   parseAssignedUserIds,
   polygonAreaKm2,
@@ -48,7 +51,13 @@ describe('polygonAreaKm2', () => {
   it('returns 0 for invalid or degenerate rings', () => {
     expect(polygonAreaKm2(null)).toBe(0)
     expect(polygonAreaKm2([])).toBe(0)
-    expect(polygonAreaKm2([[2, 48], [2.1, 48], [2, 48]])).toBe(0)
+    expect(
+      polygonAreaKm2([
+        [2, 48],
+        [2.1, 48],
+        [2, 48],
+      ])
+    ).toBe(0)
   })
 
   it('matches the area of a generated circle (~π·r²)', () => {
@@ -68,6 +77,122 @@ describe('polygonAreaKm2', () => {
     const reversed = [...ring].reverse()
     expect(polygonAreaKm2(ring)).toBeGreaterThan(0)
     expect(polygonAreaKm2(reversed)).toBeCloseTo(polygonAreaKm2(ring), 6)
+  })
+})
+
+describe('isPolygonTooSmall', () => {
+  it('treats invalid or degenerate rings as too small', () => {
+    expect(isPolygonTooSmall(null)).toBe(true)
+    expect(isPolygonTooSmall([])).toBe(true)
+    expect(
+      isPolygonTooSmall([
+        [2, 48],
+        [2.1, 48],
+        [2, 48],
+      ])
+    ).toBe(true)
+  })
+
+  it('flags a tiny ring below the default threshold', () => {
+    // ~11m x 11m carré -> ~0.00012 km², sous le seuil 0.0005 km²
+    const tiny = [
+      [2.0, 48.0],
+      [2.0001, 48.0],
+      [2.0001, 48.0001],
+      [2.0, 48.0001],
+      [2.0, 48.0],
+    ]
+    expect(isPolygonTooSmall(tiny)).toBe(true)
+  })
+
+  it('accepts a ring above the threshold', () => {
+    const ring = createGeoJSONCircle([2.3522, 48.8566], 1000).geometry.coordinates[0]
+    expect(isPolygonTooSmall(ring)).toBe(false)
+  })
+})
+
+describe('hasSelfIntersection', () => {
+  it('returns false for a simple (non self-intersecting) ring', () => {
+    const ring = [
+      [2.0, 48.0],
+      [2.1, 48.0],
+      [2.1, 48.1],
+      [2.0, 48.1],
+      [2.0, 48.0],
+    ]
+    expect(hasSelfIntersection(ring)).toBe(false)
+  })
+
+  it('detects a bow-tie self-intersecting ring', () => {
+    const bowtie = [
+      [2.0, 48.0],
+      [2.1, 48.1],
+      [2.1, 48.0],
+      [2.0, 48.1],
+      [2.0, 48.0],
+    ]
+    expect(hasSelfIntersection(bowtie)).toBe(true)
+  })
+
+  it('is safe on invalid input', () => {
+    expect(hasSelfIntersection(null)).toBe(false)
+    expect(hasSelfIntersection([[2, 48]])).toBe(false)
+  })
+})
+
+describe('overlapsExistingZones', () => {
+  const zoneA = {
+    id: 1,
+    polygon: [
+      [2.0, 48.0],
+      [2.1, 48.0],
+      [2.1, 48.1],
+      [2.0, 48.1],
+      [2.0, 48.0],
+    ],
+  }
+  const zoneFar = {
+    id: 2,
+    polygon: [
+      [5.0, 45.0],
+      [5.1, 45.0],
+      [5.1, 45.1],
+      [5.0, 45.1],
+      [5.0, 45.0],
+    ],
+  }
+
+  it('returns zones the ring overlaps', () => {
+    const ring = [
+      [2.05, 48.05],
+      [2.15, 48.05],
+      [2.15, 48.15],
+      [2.05, 48.15],
+      [2.05, 48.05],
+    ]
+    const result = overlapsExistingZones(ring, [zoneA, zoneFar])
+    expect(result.map(z => z.id)).toEqual([1])
+  })
+
+  it('returns empty when there is no overlap', () => {
+    const ring = [
+      [10.0, 40.0],
+      [10.1, 40.0],
+      [10.1, 40.1],
+      [10.0, 40.1],
+      [10.0, 40.0],
+    ]
+    expect(overlapsExistingZones(ring, [zoneA, zoneFar])).toEqual([])
+  })
+
+  it('excludes the zone being edited via excludeId', () => {
+    const ring = zoneA.polygon
+    expect(overlapsExistingZones(ring, [zoneA], 1)).toEqual([])
+  })
+
+  it('is safe on invalid input', () => {
+    expect(overlapsExistingZones(null, [zoneA])).toEqual([])
+    expect(overlapsExistingZones(zoneA.polygon, null)).toEqual([])
   })
 })
 

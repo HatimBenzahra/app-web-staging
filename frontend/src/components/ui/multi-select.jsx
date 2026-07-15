@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { X, Check, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -30,11 +31,33 @@ export function MultiSelect({
 }) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
+  // Position calculée du menu (rendu en portal pour échapper aux conteneurs scrollables)
+  const [menuStyle, setMenuStyle] = React.useState(null)
   const dropdownRef = React.useRef(null)
   const buttonRef = React.useRef(null)
 
-  // Fermer le dropdown si on clique en dehors
+  // Positionne le menu sous (ou au-dessus si pas de place) le bouton déclencheur
+  const updatePosition = React.useCallback(() => {
+    if (!buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const menuMaxHeight = 320 // cohérent avec max-h-80
+    const openUp = spaceBelow < menuMaxHeight && rect.top > spaceBelow
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + 8, maxHeight: rect.top - 16 }
+        : { top: rect.bottom + 8, maxHeight: spaceBelow - 16 }),
+    })
+  }, [])
+
+  // Fermer le dropdown si on clique en dehors ; repositionner au scroll/resize
   React.useEffect(() => {
+    if (!open) return
+    updatePosition()
+
     const handleClickOutside = event => {
       if (
         dropdownRef.current &&
@@ -45,12 +68,16 @@ export function MultiSelect({
         setOpen(false)
       }
     }
-
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside)
+    // capture=true pour suivre le scroll de n'importe quel conteneur parent
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
     }
-  }, [open])
+  }, [open, updatePosition])
 
   const handleSelect = value => {
     const newSelected = selected.includes(value)
@@ -123,66 +150,72 @@ export function MultiSelect({
         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
       </button>
 
-      {open && (
-        <div
-          ref={dropdownRef}
-          className="absolute z-[150] mt-2 w-full max-h-80 overflow-hidden rounded-md border bg-popover shadow-md animate-in fade-in-0 zoom-in-95"
-        >
-          <div className="p-2 border-b">
-            <Input
-              type="text"
-              placeholder="Rechercher..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="h-9"
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto p-1">
-            {filteredOptions.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
-            ) : (
-              Object.entries(groupedOptions).map(([group, groupOptions]) => (
-                <div key={group}>
-                  {group !== 'default' && (
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                      {group}
-                    </div>
-                  )}
-                  {groupOptions.map(option => {
-                    const isSelected = selected.includes(option.value)
-                    const isDisabled = getOptionDisabled ? getOptionDisabled(option) : option.disabled
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => !isDisabled && handleSelect(option.value)}
-                        disabled={isDisabled}
-                        className={cn(
-                          'relative flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors',
-                          isSelected && 'bg-accent/50',
-                          isDisabled && 'opacity-40 cursor-not-allowed hover:bg-transparent'
-                        )}
-                      >
-                        <div
+      {open &&
+        menuStyle &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={menuStyle}
+            className="z-[200] flex flex-col overflow-hidden rounded-md border bg-popover shadow-md animate-in fade-in-0 zoom-in-95"
+          >
+            <div className="p-2 border-b shrink-0">
+              <Input
+                type="text"
+                placeholder="Rechercher..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-1">
+              {filteredOptions.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
+              ) : (
+                Object.entries(groupedOptions).map(([group, groupOptions]) => (
+                  <div key={group}>
+                    {group !== 'default' && (
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        {group}
+                      </div>
+                    )}
+                    {groupOptions.map(option => {
+                      const isSelected = selected.includes(option.value)
+                      const isDisabled = getOptionDisabled
+                        ? getOptionDisabled(option)
+                        : option.disabled
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => !isDisabled && handleSelect(option.value)}
+                          disabled={isDisabled}
                           className={cn(
-                            'flex h-4 w-4 items-center justify-center rounded-sm border border-primary',
-                            isSelected
-                              ? 'bg-primary text-primary-foreground'
-                              : 'opacity-50 [&_svg]:invisible'
+                            'relative flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors',
+                            isSelected && 'bg-accent/50',
+                            isDisabled && 'opacity-40 cursor-not-allowed hover:bg-transparent'
                           )}
                         >
-                          <Check className="h-3 w-3" />
-                        </div>
-                        <span className="flex-1 text-left">{option.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+                          <div
+                            className={cn(
+                              'flex h-4 w-4 items-center justify-center rounded-sm border border-primary',
+                              isSelected
+                                ? 'bg-primary text-primary-foreground'
+                                : 'opacity-50 [&_svg]:invisible'
+                            )}
+                          >
+                            <Check className="h-3 w-3" />
+                          </div>
+                          <span className="flex-1 text-left">{option.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

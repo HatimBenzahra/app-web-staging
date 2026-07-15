@@ -1,4 +1,7 @@
 import { mapboxCache } from '@/services/core'
+import kinks from '@turf/kinks'
+import booleanIntersects from '@turf/boolean-intersects'
+import { polygon as turfPolygon } from '@turf/helpers'
 
 /**
  * Génère un Feature<Polygon> GeoJSON approximant un cercle géodésique.
@@ -141,9 +144,7 @@ export const parseAssignedUserId = assignedUserId => {
  */
 export const parseAssignedUserIds = assignedUserIds => {
   if (!Array.isArray(assignedUserIds)) return []
-  return assignedUserIds
-    .map(parseAssignedUserId)
-    .filter(assignment => assignment !== null)
+  return assignedUserIds.map(parseAssignedUserId).filter(assignment => assignment !== null)
 }
 
 /**
@@ -222,6 +223,65 @@ export const removeRedundantAssignments = (assignments, directeurs, managers, co
   })
 }
 
+/** Superficie minimale par défaut d'une zone valide (km²) ≈ 500 m². */
+export const MIN_ZONE_AREA_KM2 = 0.0005
+
+/**
+ * Indique si un anneau polygonal fermé est plus petit que le seuil minimal.
+ * Un anneau invalide/dégénéré (moins de 4 sommets) est considéré trop petit.
+ * @param {number[][]} ring - Anneau fermé [[lng,lat], ...]
+ * @param {number} [minKm2=MIN_ZONE_AREA_KM2] - Seuil en km²
+ * @returns {boolean}
+ */
+export const isPolygonTooSmall = (ring, minKm2 = MIN_ZONE_AREA_KM2) => {
+  if (!Array.isArray(ring) || ring.length < 4) return true
+  return polygonAreaKm2(ring) < minKm2
+}
+
+/**
+ * Indique si le contour se croise lui-même (polygone non simple).
+ * S'appuie sur @turf/kinks pour détecter les intersections d'arêtes.
+ * @param {number[][]} ring - Anneau fermé [[lng,lat], ...]
+ * @returns {boolean}
+ */
+export const hasSelfIntersection = ring => {
+  if (!Array.isArray(ring) || ring.length < 4) return false
+  try {
+    return kinks(turfPolygon([ring])).features.length > 0
+  } catch {
+    // Anneau non fermé ou géométrie invalide : on ne bloque pas sur ce critère
+    return false
+  }
+}
+
+/**
+ * Retourne les zones existantes que le contour tracé chevauche.
+ * Réutilise `zoneToGeoJSON` (modèle mixte polygone/cercle) et @turf/boolean-intersects.
+ * @param {number[][]} ring - Anneau fermé [[lng,lat], ...] du tracé courant
+ * @param {Array} existingZones - Zones existantes (polygone ou cercle hérité)
+ * @param {number|null} [excludeId=null] - Id de zone à ignorer (édition de soi-même)
+ * @returns {Array} Sous-ensemble de `existingZones` en chevauchement
+ */
+export const overlapsExistingZones = (ring, existingZones, excludeId = null) => {
+  if (!Array.isArray(ring) || ring.length < 4 || !Array.isArray(existingZones)) return []
+  let current
+  try {
+    current = turfPolygon([ring])
+  } catch {
+    return []
+  }
+  return existingZones.filter(zone => {
+    if (!zone || zone.id === excludeId) return false
+    const other = zoneToGeoJSON(zone)
+    if (!other) return false
+    try {
+      return booleanIntersects(current, other)
+    } catch {
+      return false
+    }
+  })
+}
+
 /**
  * Détermine tous les utilisateurs assignés à une zone (format: ["role-id", ...])
  */
@@ -241,9 +301,7 @@ export const getAssignedUserIdsFromZone = (zone, allAssignments) => {
   }
 
   // 3. Chercher toutes les assignations via ZoneEnCours
-  const zoneAssignments = allAssignments?.filter(
-    assignment => assignment.zoneId === zone.id
-  ) || []
+  const zoneAssignments = allAssignments?.filter(assignment => assignment.zoneId === zone.id) || []
 
   zoneAssignments.forEach(assignment => {
     if (assignment.userType === 'COMMERCIAL') {
@@ -256,5 +314,5 @@ export const getAssignedUserIdsFromZone = (zone, allAssignments) => {
   })
 
   // Deduplicate
-  return [...new Set(assignedUsers)];
+  return [...new Set(assignedUsers)]
 }
