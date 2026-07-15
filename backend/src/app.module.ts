@@ -21,6 +21,7 @@ import { GamificationModule } from './gamification/gamification.module';
 import { SearchModule } from './search/search.module';
 import { GpsTrackingModule } from './gps-tracking/gps-tracking.module';
 import { AcquiscanModule } from './acquiscan/acquiscan.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AcquiscanModule } from './acquiscan/acquiscan.module';
     SearchModule,
     GpsTrackingModule,
     AcquiscanModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

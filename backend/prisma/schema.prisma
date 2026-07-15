@@ -628,3 +628,39 @@ enum SegmentStatus {
   COMPLETED
   FAILED
 }
+
+// Token de push Expo d'un appareil, rattaché à un acteur polymorphe
+// (userId/userType), même pattern que ZoneEnCours/GpsPosition (pas de table User
+// unique). Un même token n'appartient qu'à un seul compte à la fois (unique).
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique // ExponentPushToken[...]
+  userId    Int
+  userType  UserType
+  platform  String? // 'ios' | 'android'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, userType])
+}
+
+enum NotificationType {
+  ZONE_ASSIGNED
+  ZONE_UNASSIGNED
+}
+
+// Notification in-app persistée (centre de notifications). Destinataire
+// polymorphe userId/userType. `data` porte le contexte (zoneId, zoneName, ...).
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  userType  UserType
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, userType, createdAt])
+}
