@@ -15,6 +15,7 @@ import {
   IsBoolean,
   IsNumber,
   IsEnum,
+  IsDate,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -177,6 +178,18 @@ export class ImmeublesPageInput {
   @IsOptional()
   @IsEnum(ImmeubleProgressFilter)
   progress?: ImmeubleProgressFilter;
+
+  // Filtre plage de dates sur la date de création du lieu (onglet Lieux mobile).
+  // Bornes optionnelles ; `createdTo` est attendu en fin de journée (inclusif).
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  @IsDate()
+  createdFrom?: Date;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  @IsDate()
+  createdTo?: Date;
 }
 
 @ObjectType()

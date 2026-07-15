@@ -652,9 +652,20 @@ export class ImmeubleService {
       );
     }
     if (input.typeHabitat) {
+      // Filtre sur le type EFFECTIF (même règle que scoredImmeublesSql / le
+      // mobile `effectiveTypeHabitat`) : un pavillon legacy (nbPortesParEtage>1)
+      // est traité comme IMMEUBLE, pour rester cohérent avec l'affichage.
       filterConds.push(
-        Prisma.sql`i."typeHabitat"::text = ${input.typeHabitat}`,
+        Prisma.sql`(CASE WHEN i."typeHabitat"::text = 'PAVILLON' AND i."nbPortesParEtage" > 1 THEN 'IMMEUBLE' ELSE i."typeHabitat"::text END) = ${input.typeHabitat}`,
       );
+    }
+    // Filtre plage de dates sur createdAt (bornes optionnelles ; createdTo
+    // attendu en fin de journée côté client → borne inclusive).
+    if (input.createdFrom) {
+      filterConds.push(Prisma.sql`i."createdAt" >= ${input.createdFrom}`);
+    }
+    if (input.createdTo) {
+      filterConds.push(Prisma.sql`i."createdAt" <= ${input.createdTo}`);
     }
     const filteredWhere = Prisma.join(filterConds, ' AND ');
     const scoredFiltered = this.scoredImmeublesSql(filteredWhere);
