@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { NotificationType, UserType } from '@prisma/client';
+import { NotificationType, Prisma, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { FcmPushService } from './fcm-push.service';
 
@@ -121,14 +121,49 @@ export class NotificationsService {
       type === NotificationType.ZONE_ASSIGNED
         ? `${zoneName}${targetCount ? ` — ${targetCount} adresse(s) à prospecter` : ''}`
         : `${zoneName} ne vous est plus assignée`;
-    const data = { type, zoneId, zoneName, targetCount };
+    await this.notify({
+      userId,
+      userType,
+      type,
+      title,
+      body,
+      data: { type, zoneId, zoneName, targetCount },
+    });
+  }
 
-    // Persistance (centre de notifications).
+  // ---------------------------------------------------------------------------
+  // Émission générique (réutilisable pour tout type de notification)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Crée une notification in-app (centre de notifications) et l'envoie en push
+   * à tous les appareils du destinataire. **Générique** : n'importe quel `type`
+   * / `title` / `body` / `data`. Le push est best-effort (jamais bloquant, tokens
+   * morts purgés). C'est le point d'entrée à appeler depuis n'importe quel
+   * service métier pour notifier un utilisateur.
+   */
+  async notify(params: {
+    userId: number;
+    userType: UserType;
+    type: NotificationType;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
+    const { userId, userType, type, title, body } = params;
+    const data = params.data ?? {};
+
     await this.prisma.notification.create({
-      data: { userId, userType, type, title, body, data },
+      data: {
+        userId,
+        userType,
+        type,
+        title,
+        body,
+        data: data as Prisma.InputJsonValue,
+      },
     });
 
-    // Push best-effort.
     const tokens = await this.prisma.deviceToken.findMany({
       where: { userId, userType },
       select: { token: true },
