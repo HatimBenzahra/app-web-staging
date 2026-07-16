@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { NotificationsResolver } from './notifications.resolver';
 import { NotificationsListenerService } from './notifications.listener';
-import { ExpoPushService } from './expo-push.service';
+import { FcmPushService } from './fcm-push.service';
 import { PrismaService } from '../prisma.service';
 
 @Module({
@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma.service';
     NotificationsResolver,
     NotificationsService,
     NotificationsListenerService,
-    ExpoPushService,
+    FcmPushService,
     PrismaService,
   ],
   exports: [NotificationsService],

@@ -3,16 +3,15 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { Expo } from 'expo-server-sdk';
 import { NotificationType, UserType } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
-import { ExpoPushService } from './expo-push.service';
+import { FcmPushService } from './fcm-push.service';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly expoPush: ExpoPushService,
+    private readonly fcmPush: FcmPushService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -25,8 +24,8 @@ export class NotificationsService {
     token: string,
     platform?: string,
   ) {
-    if (!Expo.isExpoPushToken(token)) {
-      throw new BadRequestException('Token push Expo invalide');
+    if (typeof token !== 'string' || token.trim().length === 0) {
+      throw new BadRequestException('Token push invalide');
     }
     // Upsert par token : si l'appareil change de compte, on réattribue le token.
     return this.prisma.deviceToken.upsert({
@@ -136,10 +135,10 @@ export class NotificationsService {
     });
     if (tokens.length === 0) return;
 
-    await this.expoPush.send(
+    await this.fcmPush.send(
       tokens.map((t) => t.token),
       { title, body, data },
-      (deadToken) => {
+      (deadToken: string) => {
         void this.unregisterDeviceToken(deadToken);
       },
     );
