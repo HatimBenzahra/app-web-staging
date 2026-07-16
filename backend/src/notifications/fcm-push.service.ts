@@ -87,7 +87,12 @@ export class FcmPushService {
         data,
         android: {
           priority: 'high',
-          notification: { channelId: 'default', sound: 'default' },
+          notification: {
+            channelId: 'default',
+            sound: 'default',
+            icon: 'notification_icon',
+            color: '#F97316',
+          },
         },
       });
 
