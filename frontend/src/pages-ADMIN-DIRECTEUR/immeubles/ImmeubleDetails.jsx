@@ -35,6 +35,7 @@ export default function ImmeubleDetails() {
       personalInfo={personalInfo}
       statsCards={statsCards}
       additionalSections={additionalSections}
+      dense
     />
   )
 }

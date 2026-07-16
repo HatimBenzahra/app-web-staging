@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Award,
   BadgeCheck,
-  AlertTriangle,
   Mail,
   Phone,
   MapPin,
@@ -25,7 +24,6 @@ import {
   Filter,
   ChevronDown,
   ChevronRight,
-  PlayCircle,
   ShieldCheck,
   Star,
   Target,
@@ -66,11 +64,14 @@ import PortesProspectionChart from './charts/PortesProspectionChart'
 import PortesWeeklyChart from './charts/PortesWeeklyChart'
 import PortesStatusChart from './charts/PortesStatusChart'
 import PorteHistoriqueTimeline from '@/pages-ADMIN-DIRECTEUR/immeubles/components/PorteHistoriqueTimeline'
-import AudioPlayer from '@/components/AudioPlayer'
+import RecordingSegmentPlayer from '@/components/RecordingSegmentPlayer'
 import { useRecordingSegmentsByPorte } from '@/hooks/metier/api/portes'
-import { RecordingService } from '@/services/audio'
+import { formatDateTimeFr, formatDateFr } from '@/lib/format-date'
 import { getStatusColor, getStatusLabel } from '@/constants/domain/porte-status'
-import { formatDuration } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
+import {
+  formatDuration,
+  SpeechScoreBar,
+} from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
 import { cn } from '@/lib/utils'
 
 const AssignedZoneCard = lazy(() => import('./AssignedZoneCard'))
@@ -241,150 +242,27 @@ function ProspectionChartsSection({ charts = [] }) {
   )
 }
 
-function InlineRecordingSegment({ segment }) {
-  const [segmentUrl, setSegmentUrl] = useState(null)
-  const [loadingSegment, setLoadingSegment] = useState(false)
-  const [originalUrl, setOriginalUrl] = useState(null)
-  const [loadingOriginal, setLoadingOriginal] = useState(false)
-  const [audioError, setAudioError] = useState(null)
-  const canLoadSegment = Boolean(segment.s3KeySegment)
-  const canLoadOriginal = !canLoadSegment && segment.s3KeyOriginal
-
-  const handleLoadSegment = async () => {
-    if (!segment.s3KeySegment || loadingSegment) return
-
-    setLoadingSegment(true)
-    setAudioError(null)
-    try {
-      const url = await RecordingService.getStreamingUrl(segment.s3KeySegment)
-      setSegmentUrl(url)
-    } catch {
-      setAudioError("Impossible de charger l'audio du segment.")
-    } finally {
-      setLoadingSegment(false)
-    }
-  }
-
-  const handleLoadOriginal = async () => {
-    if (!segment.s3KeyOriginal || loadingOriginal) return
-
-    setLoadingOriginal(true)
-    setAudioError(null)
-    try {
-      const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
-      setOriginalUrl(url)
-    } catch {
-      setAudioError("Impossible de charger l'audio complet.")
-    } finally {
-      setLoadingOriginal(false)
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border/60 bg-background p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Mic className="h-3.5 w-3.5" />
-          <span className="font-mono tabular-nums">
-            {formatDuration(segment.startTime)} → {formatDuration(segment.endTime)}
-          </span>
-          {segment.durationSec != null && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">
-              {formatDuration(segment.durationSec)}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {segment.statut && (
-            <Badge className={`text-[10px] ${getStatusColor(segment.statut)}`}>
-              {getStatusLabel(segment.statut)}
-            </Badge>
-          )}
-          {segment.status && (
-            <Badge variant="outline" className="text-[10px]">
-              {segment.status}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {segmentUrl ? (
-        <AudioPlayer src={segmentUrl} />
-      ) : originalUrl ? (
-        <div className="space-y-2">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-            Segment indisponible. Audio complet chargé, passage autour de{' '}
-            <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
-          </div>
-          <AudioPlayer src={originalUrl} />
-        </div>
-      ) : segment.status === 'PENDING' || segment.status === 'PROCESSING' ? (
-        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Traitement audio en cours...
-        </div>
-      ) : canLoadSegment ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={handleLoadSegment}
-          disabled={loadingSegment}
-          className="h-8 gap-1.5"
-        >
-          {loadingSegment ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <PlayCircle className="h-3.5 w-3.5" />
-          )}
-          Charger l'audio
-        </Button>
-      ) : canLoadOriginal ? (
-        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="flex items-start gap-2 text-[11px] leading-relaxed text-amber-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
-              Le découpage porte n'est pas disponible. Charge l'audio complet et écoute autour de{' '}
-              <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
-            </span>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleLoadOriginal}
-            disabled={loadingOriginal}
-            className="h-8 gap-1.5 bg-background"
-          >
-            {loadingOriginal ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <PlayCircle className="h-3.5 w-3.5" />
-            )}
-            Charger l'audio complet
-          </Button>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Aucun lecteur disponible pour ce segment.
-        </div>
-      )}
-
-      {audioError && <p className="mt-2 text-[11px] text-destructive">{audioError}</p>}
-
-      {segment.transcription && (
-        <p className="mt-2 line-clamp-2 rounded-lg bg-muted/30 px-3 py-2 text-xs italic text-muted-foreground">
-          {segment.transcription}
-        </p>
-      )}
-    </div>
-  )
-}
-
 function InlineDoorDetails({ door }) {
   const porteId = Number(door.porteId || door.id)
   const { data: segments = [], loading: segmentsLoading } = useRecordingSegmentsByPorte(porteId)
   const normalizedStatus = String(door.status || door.statut || '').toUpperCase()
+
+  // 1 enregistrement par porte : on retient le plus long si plusieurs remontent.
+  const primarySegment = useMemo(() => {
+    if (!segments.length) return null
+    return segments.reduce((longest, seg) =>
+      (seg.durationSec || 0) > (longest.durationSec || 0) ? seg : longest
+    )
+  }, [segments])
+
+  const derniereVisite = formatDateTimeFr(door.visitedAt || door.lastVisit)
+  const rdvDateLabel = formatDateFr(door.rdvDate)
+  const rdvLabel = rdvDateLabel
+    ? door.rdvTime
+      ? `${rdvDateLabel} à ${door.rdvTime}`
+      : rdvDateLabel
+    : null
+  const commentaire = door.comment || door.commentaire
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
@@ -412,28 +290,30 @@ function InlineDoorDetails({ door }) {
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Dernière visite
             </p>
-            <p className="mt-1 text-xs font-medium">{door.visitedAt || door.lastVisit || '-'}</p>
+            <p className="mt-1 text-xs font-medium tabular-nums">{derniereVisite || '-'}</p>
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">RDV</p>
-            <p className="mt-1 text-xs font-medium">
-              {door.rdvDate ? `${door.rdvDate}${door.rdvTime ? ` à ${door.rdvTime}` : ''}` : '-'}
-            </p>
+            <p className="mt-1 text-xs font-medium tabular-nums">{rdvLabel || '-'}</p>
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Audios</p>
-            <p className="mt-1 text-xs font-medium">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Enregistrement
+            </p>
+            <p className="mt-1 text-xs font-medium tabular-nums">
               {segmentsLoading
                 ? 'Chargement...'
-                : `${segments.length} segment${segments.length > 1 ? 's' : ''}`}
+                : primarySegment
+                  ? (formatDuration(primarySegment.durationSec) ?? 'Audio dispo')
+                  : 'Aucun'}
             </p>
           </div>
         </div>
 
-        {door.commentaire && (
+        {commentaire && (
           <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Commentaire</p>
-            <p className="mt-1 text-xs text-muted-foreground">{door.commentaire}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{commentaire}</p>
           </div>
         )}
       </div>
@@ -443,12 +323,10 @@ function InlineDoorDetails({ door }) {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Mic className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">Enregistrements</h3>
+              <h3 className="text-sm font-semibold">Enregistrement</h3>
             </div>
-            {!segmentsLoading && (
-              <Badge variant="secondary" className="text-[10px]">
-                {segments.length}
-              </Badge>
+            {!segmentsLoading && primarySegment?.speechScore != null && (
+              <SpeechScoreBar score={primarySegment.speechScore} />
             )}
           </div>
 
@@ -460,7 +338,7 @@ function InlineDoorDetails({ door }) {
           ) : segments.length > 0 ? (
             <div className="space-y-2">
               {segments.map(segment => (
-                <InlineRecordingSegment key={segment.id} segment={segment} />
+                <RecordingSegmentPlayer key={segment.id} segment={segment} />
               ))}
             </div>
           ) : (
@@ -904,6 +782,7 @@ export default function DetailsPage({
   headerBadge = null,
   headerAccent = '',
   statsFilter = null,
+  dense = false,
 }) {
   const navigate = useNavigate()
   const zonePermissions = useEntityPermissions('zones')
@@ -1142,29 +1021,56 @@ export default function DetailsPage({
           className={getSectionClasses('informations-personnelles')}
         >
           <SectionHeader title="Informations personnelles" description="Détails et coordonnées" />
-          <Card className="border-border/60 bg-card">
-            <CardContent className="p-0">
-              <div className="grid divide-y divide-border/60 md:grid-cols-2 md:divide-x md:divide-y-0">
-                {personalInfo.map((info, index) => (
-                  <div key={index} className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
-                    {info.icon && (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
-                        {getIcon(info.icon, info.iconColor || 'text-primary')}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {info.label}
-                      </p>
-                      <div className="mt-1.5 text-sm font-semibold leading-6 text-foreground sm:text-base">
-                        {info.value || <span className="text-muted-foreground">Non renseigné</span>}
-                      </div>
+          {dense ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {personalInfo.map((info, index) => (
+                <div
+                  key={index}
+                  className="flex min-w-0 items-start gap-2.5 rounded-lg border border-border/60 bg-card p-3"
+                >
+                  {info.icon && (
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-primary">
+                      {getIcon(info.icon, info.iconColor || 'text-primary')}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {info.label}
+                    </p>
+                    <div className="mt-0.5 truncate text-sm font-semibold leading-5 text-foreground">
+                      {info.value || <span className="text-muted-foreground">Non renseigné</span>}
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Card className="border-border/60 bg-card">
+              <CardContent className="p-0">
+                <div className="grid divide-y divide-border/60 md:grid-cols-2 md:divide-x md:divide-y-0">
+                  {personalInfo.map((info, index) => (
+                    <div key={index} className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
+                      {info.icon && (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
+                          {getIcon(info.icon, info.iconColor || 'text-primary')}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {info.label}
+                        </p>
+                        <div className="mt-1.5 text-sm font-semibold leading-6 text-foreground sm:text-base">
+                          {info.value || (
+                            <span className="text-muted-foreground">Non renseigné</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -1184,11 +1090,35 @@ export default function DetailsPage({
           )}
 
           {/* Cards normales en grille */}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {statsCards
-              .filter(stat => !stat.fullWidth && !stat.halfWidth)
-              .map((stat, index) => renderStatCard(stat, index))}
-          </div>
+          {dense ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {statsCards
+                .filter(stat => !stat.fullWidth && !stat.halfWidth)
+                .map((stat, index) => (
+                  <div key={index} className="rounded-lg border border-border/60 bg-card p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {stat.title}
+                      </p>
+                      {stat.icon && (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/60 text-primary">
+                          {getIcon(stat.icon, stat.iconColor || 'text-primary', 'h-3.5 w-3.5')}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-1.5 text-2xl font-bold tracking-tight text-foreground">
+                      {stat.value}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {statsCards
+                .filter(stat => !stat.fullWidth && !stat.halfWidth)
+                .map((stat, index) => renderStatCard(stat, index))}
+            </div>
+          )}
 
           {/* Cards demi-largeur (taux de conversion) */}
           {statsCards.filter(stat => stat.halfWidth).length > 0 && (

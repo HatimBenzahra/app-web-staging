@@ -1,0 +1,148 @@
+import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { AlertTriangle, Loader2, Mic, PlayCircle } from 'lucide-react'
+import AudioPlayer from '@/components/AudioPlayer'
+import { RecordingService } from '@/services/audio'
+import { getStatusColor, getStatusLabel } from '@/constants/domain/porte-status'
+import { formatDuration } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementComponents'
+
+/**
+ * Lecteur d'un segment d'enregistrement porte (durée, statut, lecteur audio à
+ * la demande + fallback audio complet, transcription). Partagé entre la page
+ * détail (expansion de porte) et la façade interactive de l'immeuble.
+ */
+export default function RecordingSegmentPlayer({ segment }) {
+  const [segmentUrl, setSegmentUrl] = useState(null)
+  const [loadingSegment, setLoadingSegment] = useState(false)
+  const [originalUrl, setOriginalUrl] = useState(null)
+  const [loadingOriginal, setLoadingOriginal] = useState(false)
+  const [audioError, setAudioError] = useState(null)
+  const canLoadSegment = Boolean(segment.s3KeySegment)
+  const canLoadOriginal = !canLoadSegment && segment.s3KeyOriginal
+
+  const handleLoadSegment = async () => {
+    if (!segment.s3KeySegment || loadingSegment) return
+
+    setLoadingSegment(true)
+    setAudioError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeySegment)
+      setSegmentUrl(url)
+    } catch {
+      setAudioError("Impossible de charger l'audio du segment.")
+    } finally {
+      setLoadingSegment(false)
+    }
+  }
+
+  const handleLoadOriginal = async () => {
+    if (!segment.s3KeyOriginal || loadingOriginal) return
+
+    setLoadingOriginal(true)
+    setAudioError(null)
+    try {
+      const url = await RecordingService.getStreamingUrl(segment.s3KeyOriginal)
+      setOriginalUrl(url)
+    } catch {
+      setAudioError("Impossible de charger l'audio complet.")
+    } finally {
+      setLoadingOriginal(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-background p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs">
+          <Mic className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-medium tabular-nums text-foreground">
+            {formatDuration(segment.durationSec) ?? 'Durée inconnue'}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {segment.statut && (
+            <Badge className={`text-[10px] ${getStatusColor(segment.statut)}`}>
+              {getStatusLabel(segment.statut)}
+            </Badge>
+          )}
+          {segment.status && segment.status !== 'COMPLETED' && (
+            <Badge variant="outline" className="text-[10px]">
+              {segment.status}
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {segmentUrl ? (
+        <AudioPlayer src={segmentUrl} />
+      ) : originalUrl ? (
+        <div className="space-y-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            Segment indisponible. Audio complet chargé, passage autour de{' '}
+            <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+          </div>
+          <AudioPlayer src={originalUrl} />
+        </div>
+      ) : segment.status === 'PENDING' || segment.status === 'PROCESSING' ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Traitement audio en cours...
+        </div>
+      ) : canLoadSegment ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleLoadSegment}
+          disabled={loadingSegment}
+          className="h-8 gap-1.5"
+        >
+          {loadingSegment ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <PlayCircle className="h-3.5 w-3.5" />
+          )}
+          Charger l'audio
+        </Button>
+      ) : canLoadOriginal ? (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-start gap-2 text-[11px] leading-relaxed text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Le découpage porte n'est pas disponible. Charge l'audio complet et écoute autour de{' '}
+              <span className="font-medium tabular-nums">{formatDuration(segment.startTime)}</span>.
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleLoadOriginal}
+            disabled={loadingOriginal}
+            className="h-8 gap-1.5 bg-background"
+          >
+            {loadingOriginal ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlayCircle className="h-3.5 w-3.5" />
+            )}
+            Charger l'audio complet
+          </Button>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          Aucun lecteur disponible pour ce segment.
+        </div>
+      )}
+
+      {audioError && <p className="mt-2 text-[11px] text-destructive">{audioError}</p>}
+
+      {segment.transcription && (
+        <p className="mt-2 line-clamp-2 rounded-lg bg-muted/30 px-3 py-2 text-xs italic text-muted-foreground">
+          {segment.transcription}
+        </p>
+      )}
+    </div>
+  )
+}
