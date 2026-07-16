@@ -7,7 +7,6 @@ import {
   parseAssignedUserId,
   parseAssignedUserIds,
   polygonAreaKm2,
-  removeRedundantAssignments,
   zoneToGeoJSON,
 } from './zones-utils'
 
@@ -221,51 +220,6 @@ describe('parseAssignedUserIds', () => {
 
   it('returns empty array for empty input array', () => {
     expect(parseAssignedUserIds([])).toEqual([])
-  })
-})
-
-describe('removeRedundantAssignments', () => {
-  beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('removes manager and commercial when their directeur is assigned', () => {
-    const assignments = [
-      { role: 'directeur', id: 10 },
-      { role: 'manager', id: 20 },
-      { role: 'commercial', id: 30 },
-      { role: 'commercial', id: 31 },
-    ]
-
-    const managers = [{ id: 20, directeurId: 10, prenom: 'M', nom: 'One' }]
-    const commercials = [
-      { id: 30, directeurId: 10, managerId: null, prenom: 'C', nom: 'One' },
-      { id: 31, directeurId: null, managerId: 20, prenom: 'C', nom: 'Two' },
-    ]
-
-    expect(removeRedundantAssignments(assignments, [], managers, commercials)).toEqual([
-      { role: 'directeur', id: 10 },
-    ])
-  })
-
-  it('removes commercial when its manager is assigned and no directeur cascade applies', () => {
-    const assignments = [
-      { role: 'manager', id: 20 },
-      { role: 'commercial', id: 31 },
-      { role: 'commercial', id: 99 },
-    ]
-
-    const managers = [{ id: 20, directeurId: null, prenom: 'M', nom: 'One' }]
-    const commercials = [{ id: 31, directeurId: null, managerId: 20, prenom: 'C', nom: 'Two' }]
-
-    expect(removeRedundantAssignments(assignments, [], managers, commercials)).toEqual([
-      { role: 'manager', id: 20 },
-      { role: 'commercial', id: 99 },
-    ])
   })
 })
 

@@ -78,18 +78,6 @@ export class ZoneResolver {
 
   @Mutation(() => Boolean)
   @Roles('admin', 'directeur')
-  assignZoneToDirecteur(
-    @Args('zoneId', { type: () => Int }) zoneId: number,
-    @Args('directeurId', { type: () => Int }) directeurId: number,
-    @CurrentUser() user: any,
-  ) {
-    return this.zoneService
-      .assignToDirecteur(zoneId, directeurId, user.id, user.role)
-      .then(() => true);
-  }
-
-  @Mutation(() => Boolean)
-  @Roles('admin', 'directeur')
   assignZoneToManager(
     @Args('zoneId', { type: () => Int }) zoneId: number,
     @Args('managerId', { type: () => Int }) managerId: number,
@@ -117,13 +105,15 @@ export class ZoneResolver {
   @Mutation(() => ZoneEnCours, { name: 'assignZoneToUser' })
   @Roles('admin', 'directeur', 'manager')
   assignZoneToUser(@Args('input') input: AssignZoneInput, @CurrentUser() user: any) {
+    // `input.cascade` est accepté mais ignoré (déprécié) : l'assignation est
+    // toujours individuelle, sans cascade. Le champ reste dans le schéma pour
+    // ne pas casser les clients mobiles qui l'envoient encore.
     return this.zoneService.assignZoneToUser(
       input.zoneId,
       input.userId,
       input.userType,
       user.id,
       user.role,
-      input.cascade ?? true,
     );
   }
 

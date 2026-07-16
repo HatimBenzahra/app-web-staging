@@ -249,12 +249,13 @@ export class ZoneService {
   }
 
   /**
-   * Fonction unifiée pour assigner une zone à un utilisateur (commercial, manager ou directeur)
-   * Gère automatiquement l'historique des assignations et l'assignation en cascade
+   * Fonction unifiée pour assigner une zone à un utilisateur (commercial ou manager).
+   * Gère l'historique des assignations et n'assigne QUE l'utilisateur cible.
    *
-   * CASCADE:
-   * - Manager → assigne automatiquement tous ses commerciaux
-   * - Directeur → assigne automatiquement tous ses managers ET commerciaux
+   * Règle métier : assignation individuelle, sans cascade. Assigner un manager
+   * n'assigne pas ses commerciaux ; c'est au manager de répartir sa zone
+   * lui-même (flux mobile). Le web (admin/directeur) assigne chaque cible
+   * explicitement.
    */
   async assignZoneToUser(
     zoneId: number,
@@ -262,7 +263,6 @@ export class ZoneService {
     userType: UserType,
     requestUserId?: number,
     requestUserRole?: string,
-    cascade: boolean = true,
   ) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Vérifier que la zone existe
@@ -284,61 +284,8 @@ export class ZoneService {
         }
       }
 
-      // 3. Assigner l'utilisateur principal
-      const mainAssignment = await this.assignSingleUserToZone(
-        zoneId,
-        userId,
-        userType,
-        tx,
-      );
-
-      // 4. CASCADE: Assigner les subordonnés selon le type d'utilisateur
-      // Désactivable (cascade=false) pour n'assigner QUE l'utilisateur cible
-      // (ex: flow mobile où le manager choisit explicitement les assignés).
-      if (cascade) {
-        if (userType === UserType.MANAGER) {
-          // Récupérer tous les commerciaux du manager
-          const commercialIds = await this.getCommercialsUnderManager(
-            userId,
-            tx,
-          );
-
-          // Assigner chaque commercial à la même zone
-          for (const commercialId of commercialIds) {
-            await this.assignSingleUserToZone(
-              zoneId,
-              commercialId,
-              UserType.COMMERCIAL,
-              tx,
-            );
-          }
-        } else if (userType === UserType.DIRECTEUR) {
-          // Récupérer tous les managers et commerciaux du directeur
-          const team = await this.getTeamUnderDirector(userId, tx);
-
-          // Assigner tous les managers
-          for (const managerId of team.managers) {
-            await this.assignSingleUserToZone(
-              zoneId,
-              managerId,
-              UserType.MANAGER,
-              tx,
-            );
-          }
-
-          // Assigner tous les commerciaux
-          for (const commercialId of team.commercials) {
-            await this.assignSingleUserToZone(
-              zoneId,
-              commercialId,
-              UserType.COMMERCIAL,
-              tx,
-            );
-          }
-        }
-      }
-
-      return mainAssignment;
+      // 3. Assigner uniquement l'utilisateur cible (pas de cascade).
+      return this.assignSingleUserToZone(zoneId, userId, userType, tx);
     });
   }
 
@@ -706,20 +653,6 @@ export class ZoneService {
     await this.validateZoneAssignmentAuth(zoneId, userId, userRole, 'manager');
     // Utiliser la nouvelle fonction unifiée
     return this.assignZoneToUser(zoneId, commercialId, UserType.COMMERCIAL);
-  }
-
-  async assignToDirecteur(
-    zoneId: number,
-    directeurId: number,
-    userId: number,
-    userRole: string,
-  ) {
-    // Only admin can assign to directeur
-    if (userRole !== 'admin') {
-      throw new ForbiddenException('Only admin can assign zones to directeurs');
-    }
-    // Utiliser la nouvelle fonction unifiée
-    return this.assignZoneToUser(zoneId, directeurId, UserType.DIRECTEUR);
   }
 
   async assignToManager(

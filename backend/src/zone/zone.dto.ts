@@ -262,9 +262,10 @@ export class AssignZoneInput {
   @IsEnum(UserType)
   userType: UserType;
 
-  // Si false, n'assigne QUE l'utilisateur cible sans cascader sur ses subordonnés.
-  // Défaut = true pour préserver le comportement web admin/directeur.
-  @Field(() => Boolean, { nullable: true })
+  // @deprecated Ignoré. L'assignation est toujours individuelle (aucune
+  // cascade). Le champ reste accepté pour ne pas casser les clients mobiles
+  // existants qui l'envoient encore ; il sera retiré après leur mise à jour.
+  @Field(() => Boolean, { nullable: true, deprecationReason: 'Ignoré : aucune cascade. Sera retiré.' })
   @IsOptional()
   @IsBoolean()
   cascade?: boolean;

@@ -11,7 +11,6 @@ import {
   CREATE_DIRECTEUR,
   UPDATE_DIRECTEUR,
   REMOVE_DIRECTEUR,
-  ASSIGN_ZONE_TO_DIRECTEUR,
 } from './directeur.mutations'
 import type {
   Directeur,
@@ -64,13 +63,5 @@ export const directeurApi = {
       { id }
     )
     return response.removeDirecteur
-  },
-
-  async assignZone(directeurId: number, zoneId: number): Promise<boolean> {
-    const response = await gql<
-      { assignZoneToDirecteur: boolean },
-      { directeurId: number; zoneId: number }
-    >(ASSIGN_ZONE_TO_DIRECTEUR, { directeurId, zoneId })
-    return response.assignZoneToDirecteur
   },
 }

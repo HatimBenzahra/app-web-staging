@@ -16,7 +16,6 @@ import {
   UPDATE_ZONE,
   REMOVE_ZONE,
 } from './zone.mutations'
-import { ASSIGN_ZONE_TO_DIRECTEUR as ASSIGN_TO_DIRECTEUR_MUTATION } from '../directeurs/directeur.mutations'
 import { ASSIGN_ZONE_TO_MANAGER as ASSIGN_TO_MANAGER_MUTATION } from '../managers/manager.mutations'
 
 import type {
@@ -61,14 +60,6 @@ export const zoneApi = {
       id,
     })
     return response.removeZone
-  },
-
-  async assignToDirecteur(directeurId: number, zoneId: number): Promise<boolean> {
-    const response = await gql<
-      { assignZoneToDirecteur: boolean },
-      { directeurId: number; zoneId: number }
-    >(ASSIGN_TO_DIRECTEUR_MUTATION, { directeurId, zoneId })
-    return response.assignZoneToDirecteur
   },
 
   async assignToManager(managerId: number, zoneId: number): Promise<boolean> {

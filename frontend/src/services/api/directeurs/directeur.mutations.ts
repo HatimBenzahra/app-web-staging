@@ -49,9 +49,3 @@ export const REMOVE_DIRECTEUR = `
     }
   }
 `
-
-export const ASSIGN_ZONE_TO_DIRECTEUR = `
-  mutation AssignZoneToDirecteur($directeurId: Int!, $zoneId: Int!) {
-    assignZoneToDirecteur(directeurId: $directeurId, zoneId: $zoneId)
-  }
-`

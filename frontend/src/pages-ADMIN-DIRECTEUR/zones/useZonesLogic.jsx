@@ -9,7 +9,6 @@ import {
   useManagers,
   useCommercials,
   useAssignZone,
-  useAssignZoneToDirecteur,
   useAssignZoneToManager,
   useAllCurrentAssignments,
 } from '@/services'
@@ -17,16 +16,18 @@ import { useEntityPermissions, useEntityDescription } from '@/hooks/metier/permi
 import { useRole } from '@/contexts/userole'
 import { fetchLocationName } from './zones-utils'
 import { ROLES } from '@/hooks/metier/permissions/roleFilters'
-import {
-  parseAssignedUserIds,
-  removeRedundantAssignments,
-  getAssignedUserIdsFromZone,
-} from './zones-utils'
+import { parseAssignedUserIds, getAssignedUserIdsFromZone } from './zones-utils'
 
 /**
  * Hook to get assignable users based on permissions and role
  */
-export const useAssignableUsers = (permissions, currentUserId, currentRole, directeurs, managers, commercials) => {
+export const useAssignableUsers = (
+  permissions,
+  currentUserId,
+  currentRole,
+  managers,
+  commercials
+) => {
   return useMemo(() => {
     if (!permissions.canAdd && !permissions.canEdit) {
       return []
@@ -46,30 +47,10 @@ export const useAssignableUsers = (permissions, currentUserId, currentRole, dire
 
     switch (currentRole) {
       case ROLES.ADMIN:
-        return [
-          ...formatUsers(directeurs, 'directeur'),
-          ...formatUsers(managers, 'manager'),
-          ...formatUsers(commercials, 'commercial'),
-        ]
+        return [...formatUsers(managers, 'manager'), ...formatUsers(commercials, 'commercial')]
 
-      case ROLES.DIRECTEUR: {
-        const scopedDirecteur = directeurs?.find(d => d.id === safeUserId)
-        const directeurOption = scopedDirecteur
-          ? [
-              {
-                id: scopedDirecteur.id,
-                name: `${scopedDirecteur.prenom} ${scopedDirecteur.nom}`,
-                role: 'directeur',
-              },
-            ]
-          : []
-
-        return [
-          ...directeurOption,
-          ...formatUsers(managers, 'manager'),
-          ...formatUsers(commercials, 'commercial'),
-        ]
-      }
+      case ROLES.DIRECTEUR:
+        return [...formatUsers(managers, 'manager'), ...formatUsers(commercials, 'commercial')]
 
       case ROLES.COMMERCIAL: {
         const scopedCommercial = commercials?.find(c => c.id === safeUserId)
@@ -87,7 +68,7 @@ export const useAssignableUsers = (permissions, currentUserId, currentRole, dire
       default:
         return []
     }
-  }, [permissions, currentUserId, currentRole, directeurs, managers, commercials])
+  }, [permissions, currentUserId, currentRole, managers, commercials])
 }
 
 /**
@@ -216,7 +197,6 @@ export function useZonesLogic() {
   const { mutate: updateZone } = useUpdateZone()
   const { mutate: removeZone } = useRemoveZone()
   const { mutate: assignZoneToCommercial } = useAssignZone()
-  const { mutate: assignZoneToDirecteur } = useAssignZoneToDirecteur()
   const { mutate: assignZoneToManager } = useAssignZoneToManager()
   
   const { data: directeurs } = useDirecteurs()
@@ -230,7 +210,7 @@ export function useZonesLogic() {
 
   // Custom Hooks for Data Logic
   const enrichedZones = useEnrichedZones(zonesData, directeurs, managers, commercials, allAssignments)
-  const assignableUsers = useAssignableUsers(permissions, currentUserId, currentRole, directeurs, managers, commercials)
+  const assignableUsers = useAssignableUsers(permissions, currentUserId, currentRole, managers, commercials)
   const mapboxLazyLoader = useMapboxLoader()
 
   // Helper local pour le traitement des assignations
@@ -242,14 +222,6 @@ export function useZonesLogic() {
           zoneId: zoneId,
         }).catch(err => {
           console.warn('Assignation commerciale échouée (ignorée):', err)
-          return null
-        })
-      } else if (assignment.role === 'directeur') {
-        return assignZoneToDirecteur({
-          directeurId: assignment.id,
-          zoneId: zoneId,
-        }).catch(err => {
-          console.warn('Assignation directeur échouée (ignorée):', err)
           return null
         })
       } else if (assignment.role === 'manager') {
@@ -325,9 +297,8 @@ export function useZonesLogic() {
   const handleZoneValidate = async (zoneData, assignedUserIds) => {
     setIsSubmittingZone(true)
     try {
-      const parsedAssignments = parseAssignedUserIds(assignedUserIds)
-      // Filtrer les assignations redondantes (commerciaux dont le manager/directeur est déjà assigné)
-      const assignments = removeRedundantAssignments(parsedAssignments, directeurs, managers, commercials)
+      // Chaque sélection correspond à une assignation réelle (assignation individuelle, sans cascade)
+      const assignments = parseAssignedUserIds(assignedUserIds)
 
       if (editingZone) {
         // Modifier la zone existante (sans directeurId/managerId)

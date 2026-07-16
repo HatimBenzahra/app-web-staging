@@ -475,59 +475,6 @@ export const ZoneCreatorModal = ({
 
   const step = hasValidPolygon || isEditMode ? 2 : 1
 
-  /**
-   * Détermine si une option doit être désactivée
-   * CASCADE BACKEND:
-   * - Directeur → assigne automatiquement ses managers ET commerciaux
-   * - Manager → assigne automatiquement ses commerciaux
-   */
-  const getOptionDisabled = option => {
-    // Extraire le role depuis le format "role-id"
-    const [role] = option.value.split('-')
-
-    // Les directeurs ne sont jamais désactivés
-    if (role === 'directeur') return false
-
-    // Vérifier si un directeur sélectionné gère cet utilisateur
-    const hasDirecteurSelected = assignedUserIds.some(selectedValue => {
-      const [selectedRole, selectedIdStr] = selectedValue.split('-')
-      const selectedId = parseInt(selectedIdStr, 10)
-
-      if (selectedRole === 'directeur' && option.directeurId === selectedId) {
-        return true
-      }
-      return false
-    })
-
-    // Si c'est un manager et son directeur est sélectionné, le désactiver
-    if (role === 'manager' && hasDirecteurSelected) {
-      return true
-    }
-
-    // Si c'est un commercial
-    if (role === 'commercial') {
-      // Si son directeur est sélectionné, le désactiver
-      if (hasDirecteurSelected) {
-        return true
-      }
-
-      // Sinon, vérifier si son manager est sélectionné
-      return assignedUserIds.some(selectedValue => {
-        const [selectedRole, selectedIdStr] = selectedValue.split('-')
-        const selectedId = parseInt(selectedIdStr, 10)
-
-        // Si un manager est sélectionné et que c'est le manager de ce commercial
-        if (selectedRole === 'manager' && option.managerId === selectedId) {
-          return true
-        }
-
-        return false
-      })
-    }
-
-    return false
-  }
-
   return (
     <div className="fixed inset-0 z-[100] flex flex-col animate-in fade-in duration-300">
       {/* Backdrop */}
@@ -817,18 +764,10 @@ export const ZoneCreatorModal = ({
                           options={assignableUsers.map(user => ({
                             value: `${user.role}-${user.id}`,
                             label: `${user.name} (${user.role})`,
-                            group:
-                              user.role === 'directeur'
-                                ? 'Directeurs'
-                                : user.role === 'manager'
-                                  ? 'Managers'
-                                  : 'Commerciaux',
-                            managerId: user.managerId,
-                            directeurId: user.directeurId,
+                            group: user.role === 'manager' ? 'Managers' : 'Commerciaux',
                           }))}
                           selected={assignedUserIds}
                           onChange={setAssignedUserIds}
-                          getOptionDisabled={getOptionDisabled}
                           placeholder="Sélectionner des membres..."
                           emptyText="Aucun membre disponible"
                           className="bg-background/50 border-input/50"
