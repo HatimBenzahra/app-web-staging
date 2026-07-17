@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, Loader2, Mic, PlayCircle } from 'lucide-react'
@@ -12,7 +12,7 @@ import { formatDuration } from '@/pages-ADMIN-DIRECTEUR/ecoutes/EnregistrementCo
  * la demande + fallback audio complet, transcription). Partagé entre la page
  * détail (expansion de porte) et la façade interactive de l'immeuble.
  */
-export default function RecordingSegmentPlayer({ segment }) {
+export default function RecordingSegmentPlayer({ segment, autoLoad = false }) {
   const [segmentUrl, setSegmentUrl] = useState(null)
   const [loadingSegment, setLoadingSegment] = useState(false)
   const [originalUrl, setOriginalUrl] = useState(null)
@@ -51,6 +51,15 @@ export default function RecordingSegmentPlayer({ segment }) {
     }
   }
 
+  // Chargement automatique (modale) : pas de bouton, l'audio se prépare dès
+  // l'affichage. Sur les autres surfaces (autoLoad=false) on garde le bouton.
+  useEffect(() => {
+    if (!autoLoad) return
+    if (canLoadSegment) handleLoadSegment()
+    else if (canLoadOriginal) handleLoadOriginal()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoad, segment.s3KeySegment, segment.s3KeyOriginal])
+
   return (
     <div className="rounded-lg border border-border/60 bg-background p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -88,6 +97,11 @@ export default function RecordingSegmentPlayer({ segment }) {
         <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Traitement audio en cours...
+        </div>
+      ) : autoLoad && (canLoadSegment || canLoadOriginal) ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Chargement de l'audio...
         </div>
       ) : canLoadSegment ? (
         <Button

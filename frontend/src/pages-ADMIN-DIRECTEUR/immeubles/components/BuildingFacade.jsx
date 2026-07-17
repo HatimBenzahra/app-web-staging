@@ -11,13 +11,41 @@ import PorteDetailModal from './PorteDetailModal'
 // Couleurs de statut théma-aware, exprimées uniquement via le point + le label
 // (jamais via la bordure de la carte). Teintes qui tiennent en clair ET sombre.
 const STATUS_TONE = {
-  contrat_signe: { text: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' },
-  rendez_vous_pris: { text: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500' },
-  argumente: { text: 'text-amber-600 dark:text-amber-400', dot: 'bg-amber-500' },
-  refus: { text: 'text-red-600 dark:text-red-400', dot: 'bg-red-500' },
-  absent: { text: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-400' },
-  necessite_repassage: { text: 'text-violet-600 dark:text-violet-400', dot: 'bg-violet-500' },
-  non_visite: { text: 'text-muted-foreground', dot: 'bg-muted-foreground/50' },
+  contrat_signe: {
+    text: 'text-emerald-600 dark:text-emerald-400',
+    dot: 'bg-emerald-500',
+    soft: 'bg-emerald-500/[0.06] hover:bg-emerald-500/[0.1]',
+  },
+  rendez_vous_pris: {
+    text: 'text-blue-600 dark:text-blue-400',
+    dot: 'bg-blue-500',
+    soft: 'bg-blue-500/[0.06] hover:bg-blue-500/[0.1]',
+  },
+  argumente: {
+    text: 'text-amber-600 dark:text-amber-400',
+    dot: 'bg-amber-500',
+    soft: 'bg-amber-500/[0.06] hover:bg-amber-500/[0.1]',
+  },
+  refus: {
+    text: 'text-red-600 dark:text-red-400',
+    dot: 'bg-red-500',
+    soft: 'bg-red-500/[0.06] hover:bg-red-500/[0.1]',
+  },
+  absent: {
+    text: 'text-slate-500 dark:text-slate-400',
+    dot: 'bg-slate-400',
+    soft: 'bg-slate-500/[0.05] hover:bg-slate-500/[0.09]',
+  },
+  necessite_repassage: {
+    text: 'text-violet-600 dark:text-violet-400',
+    dot: 'bg-violet-500',
+    soft: 'bg-violet-500/[0.06] hover:bg-violet-500/[0.1]',
+  },
+  non_visite: {
+    text: 'text-muted-foreground',
+    dot: 'bg-muted-foreground/50',
+    soft: 'bg-card hover:bg-muted/40',
+  },
 }
 
 const toneOf = status => STATUS_TONE[status] || STATUS_TONE.non_visite
@@ -50,8 +78,12 @@ function AudioSignal({ durationSec, hasAudio }) {
         {[0, 1, 2, 3].map(i => (
           <span
             key={i}
-            className="w-[3px] rounded-sm bg-primary"
-            style={{ height: `${5 + i * 2.5}px`, opacity: i < filled ? 0.95 : 0.25 }}
+            className="eq-bar w-[3px] rounded-sm bg-primary"
+            style={{
+              height: `${5 + i * 2.5}px`,
+              opacity: i < filled ? 0.95 : 0.25,
+              animationDelay: `${i * 0.12}s`,
+            }}
           />
         ))}
       </span>
@@ -71,8 +103,9 @@ function DoorTile({ door, selected, onSelect }) {
       onClick={onSelect}
       title={`Porte ${door.number}${durationLabel ? ` — audio ${durationLabel}` : ''}`}
       className={cn(
-        'group rounded-lg border border-border/70 bg-card p-2.5 text-left transition',
-        'hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group rounded-lg border border-border/70 p-2.5 text-left transition-all duration-200 ease-out',
+        tone.soft,
+        'hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected && 'ring-2 ring-primary/45',
         isLong && !selected && 'ring-1 ring-primary/25'
       )}

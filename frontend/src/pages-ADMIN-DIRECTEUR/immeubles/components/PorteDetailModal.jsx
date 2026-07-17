@@ -107,7 +107,7 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
             ) : segments.length > 0 ? (
               <div className="space-y-2">
                 {segments.map(segment => (
-                  <RecordingSegmentPlayer key={segment.id} segment={segment} />
+                  <RecordingSegmentPlayer key={segment.id} segment={segment} autoLoad />
                 ))}
               </div>
             ) : (

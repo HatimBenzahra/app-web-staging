@@ -378,6 +378,28 @@ body {
     animation: fade-in-content 0.3s ease-out forwards;
   }
 
+  /* Equalizer : barres audio qui "s'animent" au survol de la tuile de porte */
+  @keyframes eq {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  .eq-bar {
+    transform-origin: bottom;
+  }
+  .group:hover .eq-bar {
+    animation: eq 0.9s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .group:hover .eq-bar {
+      animation: none;
+    }
+  }
+
   /* Scrollbar personnalisée concerant le mode visualtion des portes dans l'espace commercial/manager */
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
