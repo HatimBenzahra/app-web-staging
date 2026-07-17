@@ -6,7 +6,9 @@ import {
   useTeamLastStatusActivities,
 } from '@/services'
 import { useEffect, useMemo, useState } from 'react'
-import { calculateRank, aggregateStats } from '@/utils/business/ranks'
+import { aggregateStats } from '@/utils/business/ranks'
+import { useCommercialRankings } from '@/hooks/metier/api/gamification'
+import { pickMonthlySnapshot, toRankInfo } from '@/lib/rank-wps'
 import { Badge } from '@/components/ui/badge'
 import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 import DateRangeFilter from '@/components/DateRangeFilter'
@@ -132,15 +134,10 @@ export function useCommercialDetailsLogic() {
     }
   }, [commercial?.statistics])
 
-  // Calculer le rang du commercial basé sur TOUTES ses stats (non filtrées)
-  const memoizedCommercialRank = useMemo(() => {
-    if (!backendStats) return null
-    return calculateRank(
-      backendStats.totalContratsSignes,
-      backendStats.totalRendezVousPris,
-      backendStats.totalImmeublesVisites
-    )
-  }, [backendStats])
+  // Rang = classement mensuel WinLeadPlus (source de vérité gamification),
+  // aligné sur le mobile. Repli Bronze/0 si non classé ce mois.
+  const { data: rankings } = useCommercialRankings(parseInt(id))
+  const rankInfo = useMemo(() => toRankInfo(pickMonthlySnapshot(rankings)), [rankings])
 
   const lastStatusActivity = useMemo(() => {
     return (lastStatusActivities || []).find(
@@ -173,8 +170,8 @@ export function useCommercialDetailsLogic() {
       totalImmeublesProspectes: statsSource.totalImmeublesProspectes,
       zonesCount: currentZone ? 1 : 0,
       immeublesCount: commercial.immeubles?.length || 0,
-      rank: memoizedCommercialRank?.rank,
-      points: memoizedCommercialRank?.points,
+      rank: rankInfo,
+      points: rankInfo.points,
       lastStatusActivity,
     }
   }, [
@@ -182,7 +179,7 @@ export function useCommercialDetailsLogic() {
     managers,
     personalStats,
     backendStats,
-    memoizedCommercialRank,
+    rankInfo,
     currentZone,
     appliedStartDate,
     appliedEndDate,
@@ -381,7 +378,7 @@ export function useCommercialDetailsLogic() {
           label: 'Rang',
           value: (
             <span
-              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${commercialData.rank.bgColor} ${commercialData.rank.textColor} ${commercialData.rank.borderColor} border font-semibold`}
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border font-semibold ${commercialData.rank.badgeClasses}`}
             >
               <span className="text-lg">🏆</span>
               {commercialData.rank.name}

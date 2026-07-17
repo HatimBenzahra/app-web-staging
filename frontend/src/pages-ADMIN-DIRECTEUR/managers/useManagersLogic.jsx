@@ -8,9 +8,10 @@ import {
 import { useEntityPage } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useRole } from '@/contexts/userole'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
-import { calculateRankFromStats } from '@/utils/business/ranks'
 import { USER_STATUS_CONFIG, getStatusFilterOptions } from '@/constants/domain/user-status'
 import { useStatusBadge } from '@/hooks/utils/ui/useStatusBadge'
+import { useRanking } from '@/hooks/metier/api/gamification'
+import { currentMonthlyPeriodKey, indexRankingByUser, toRankInfo } from '@/lib/rank-wps'
 
 const getActivityTime = activity => {
   if (!activity?.changedAt) return 0
@@ -49,7 +50,9 @@ const renderActivityCell = row => {
 
   return (
     <div className="min-w-28">
-      <p className="text-sm font-medium">{formatRelativeActivityDate(row.lastActivity.changedAt)}</p>
+      <p className="text-sm font-medium">
+        {formatRelativeActivityDate(row.lastActivity.changedAt)}
+      </p>
     </div>
   )
 }
@@ -117,10 +120,8 @@ export function useManagersLogic() {
   // API hooks
   const { data: managersApi, loading: managersLoading, refetch } = useManagers()
   const { data: directeurs } = useDirecteurs()
-  const {
-    data: lastStatusActivities,
-    loading: lastActivitiesLoading,
-  } = useTeamLastStatusActivities()
+  const { data: lastStatusActivities, loading: lastActivitiesLoading } =
+    useTeamLastStatusActivities()
   const { mutate: updateManager } = useUpdateManager()
 
   // Utilisation du système de rôles pour filtrer les données
@@ -132,6 +133,14 @@ export function useManagersLogic() {
 
   const { renderStatusBadge } = useStatusBadge()
 
+  // Rang = classement mensuel WinLeadPlus (source de vérité), indexé par manager.
+  const monthlyPeriodKey = useMemo(() => currentMonthlyPeriodKey(), [])
+  const { data: monthlyRanking } = useRanking('MONTHLY', monthlyPeriodKey)
+  const rankByManager = useMemo(
+    () => indexRankingByUser(monthlyRanking).byManager,
+    [monthlyRanking]
+  )
+
   // Préparation des données pour le tableau avec mapping API -> UI
   const tableData = useMemo(() => {
     if (!filteredManagers) return []
@@ -142,36 +151,38 @@ export function useManagersLogic() {
         .map(activity => [activity.userId, activity])
     )
 
-    return filteredManagers.map(manager => {
-      const directeur = directeurs?.find(d => d.id === manager.directeurId)
-      const { rank, points } = calculateRankFromStats(manager.statistics)
-      const lastActivity = activityByManager.get(manager.id) || null
-      const lastActivityAt = getActivityTime(lastActivity)
+    return filteredManagers
+      .map(manager => {
+        const directeur = directeurs?.find(d => d.id === manager.directeurId)
+        const rankInfo = toRankInfo(rankByManager.get(manager.id))
+        const lastActivity = activityByManager.get(manager.id) || null
+        const lastActivityAt = getActivityTime(lastActivity)
 
-      return {
-        ...manager,
-        nom: manager.nom,
-        prenom: manager.prenom,
-        status: manager.status,
-        email: manager.email || 'Non renseigné',
-        numTelephone: manager.numTelephone || 'Non renseigné',
-        directeur: directeur ? `${directeur.prenom} ${directeur.nom}` : 'Aucun directeur',
-        lastActivity,
-        lastActivityAt,
-        lastActivityLabel: formatRelativeActivityDate(lastActivity?.changedAt),
-        rankBadge: (
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${rank.bgColor} ${rank.textColor} ${rank.borderColor} border`}
-          >
-            <span>🏆</span>
-            {rank.name}
-            <span className="text-[10px] opacity-75">({points}pts)</span>
-          </span>
-        ),
-        points,
-      }
-    }).sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.nom.localeCompare(b.nom, 'fr'))
-  }, [filteredManagers, directeurs, lastStatusActivities])
+        return {
+          ...manager,
+          nom: manager.nom,
+          prenom: manager.prenom,
+          status: manager.status,
+          email: manager.email || 'Non renseigné',
+          numTelephone: manager.numTelephone || 'Non renseigné',
+          directeur: directeur ? `${directeur.prenom} ${directeur.nom}` : 'Aucun directeur',
+          lastActivity,
+          lastActivityAt,
+          lastActivityLabel: formatRelativeActivityDate(lastActivity?.changedAt),
+          rankBadge: (
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${rankInfo.badgeClasses}`}
+            >
+              <span>🏆</span>
+              {rankInfo.name}
+              <span className="text-[10px] opacity-75">({rankInfo.points}pts)</span>
+            </span>
+          ),
+          points: rankInfo.points,
+        }
+      })
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.nom.localeCompare(b.nom, 'fr'))
+  }, [filteredManagers, directeurs, lastStatusActivities, rankByManager])
 
   // Options dynamiques pour les directeurs
   const directeurOptions = useMemo(() => {
@@ -216,17 +227,17 @@ export function useManagersLogic() {
         section: 'Affectation',
         options: directeurOptions,
       },
-       {
-         key: 'status',
-         label: 'Statut',
-         type: 'select',
-         section: 'Statut',
-         options: USER_STATUS_CONFIG.map(option => ({
-           value: option.value,
-           label: option.label,
-         })),
-         hint: 'Actif par défaut pour les nouveaux comptes.',
-       },
+      {
+        key: 'status',
+        label: 'Statut',
+        type: 'select',
+        section: 'Statut',
+        options: USER_STATUS_CONFIG.map(option => ({
+          value: option.value,
+          label: option.label,
+        })),
+        hint: 'Actif par défaut pour les nouveaux comptes.',
+      },
     ],
     [directeurOptions]
   )
