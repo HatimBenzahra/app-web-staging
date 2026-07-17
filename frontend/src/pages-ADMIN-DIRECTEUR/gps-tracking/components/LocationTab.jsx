@@ -238,6 +238,7 @@ export default function LocationTab({
   routePositions,
   routeLoading,
   routeTotal,
+  embedded = false,
 }) {
   const [viewState, setViewState] = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -543,39 +544,41 @@ export default function LocationTab({
       className={`flex min-h-[420px] bg-background overflow-hidden ${
         isFullscreen
           ? 'h-dvh rounded-none border-0'
-          : 'h-[calc(100dvh-130px)] rounded-xl border border-border/40'
+          : `${embedded ? 'h-[560px]' : 'h-[calc(100dvh-130px)]'} rounded-xl border border-border/40`
       }`}
     >
       <aside className="w-[360px] shrink-0 min-h-0 border-r border-border/50 bg-card/95 backdrop-blur-sm flex flex-col">
         <div className="p-3 border-b border-border/50 space-y-3">
-          <div className="flex items-center gap-1 rounded-full bg-muted/40 p-1">
-            <button
-              type="button"
-              onClick={() => setMode('live')}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                mode === 'live'
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full bg-chart-2 ${mode === 'live' ? 'animate-pulse' : ''}`}
-              />
-              Live
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('trajet')}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                mode === 'trajet'
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Route className="h-3.5 w-3.5" />
-              Trajet
-            </button>
-          </div>
+          {!embedded && (
+            <div className="flex items-center gap-1 rounded-full bg-muted/40 p-1">
+              <button
+                type="button"
+                onClick={() => setMode('live')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  mode === 'live'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full bg-chart-2 ${mode === 'live' ? 'animate-pulse' : ''}`}
+                />
+                Live
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('trajet')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  mode === 'trajet'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Route className="h-3.5 w-3.5" />
+                Trajet
+              </button>
+            </div>
+          )}
 
           {mode === 'live' ? (
             <div className="space-y-2">
@@ -699,54 +702,56 @@ export default function LocationTab({
                 )}
               </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
-                  <Users className="h-3.5 w-3.5" />
-                  Filtre commerciaux
-                </div>
-                <div
-                  className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1"
-                  style={{ scrollbarWidth: 'none' }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedActorKey(null)
-                      setTrajetPopupPos(null)
-                      setSelectedStopIndex(null)
-                    }}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      !selectedActorKey
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
-                    }`}
+              {!embedded && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                    Filtre commerciaux
+                  </div>
+                  <div
+                    className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1"
+                    style={{ scrollbarWidth: 'none' }}
                   >
-                    Tous
-                  </button>
-                  {(actors || []).map(actor => {
-                    const active = selectedActorKey === actor.key
-                    return (
-                      <button
-                        key={actor.key}
-                        type="button"
-                        onClick={() => {
-                          setSelectedActorKey(actor.key)
-                          setTrajetPopupPos(null)
-                          setSelectedStopIndex(null)
-                        }}
-                        className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors max-w-[180px] truncate ${
-                          active
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                            : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
-                        }`}
-                        title={actor.name}
-                      >
-                        {actor.name}
-                      </button>
-                    )
-                  })}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedActorKey(null)
+                        setTrajetPopupPos(null)
+                        setSelectedStopIndex(null)
+                      }}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        !selectedActorKey
+                          ? 'border-primary/40 bg-primary/10 text-primary'
+                          : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Tous
+                    </button>
+                    {(actors || []).map(actor => {
+                      const active = selectedActorKey === actor.key
+                      return (
+                        <button
+                          key={actor.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedActorKey(actor.key)
+                            setTrajetPopupPos(null)
+                            setSelectedStopIndex(null)
+                          }}
+                          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors max-w-[180px] truncate ${
+                            active
+                              ? 'border-primary/40 bg-primary/10 text-primary'
+                              : 'border-border/60 bg-background hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                          }`}
+                          title={actor.name}
+                        >
+                          {actor.name}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center justify-between text-xs rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5">
                 <span className="text-muted-foreground">{periodLabel}</span>

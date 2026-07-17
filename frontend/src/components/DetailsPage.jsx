@@ -368,6 +368,7 @@ function DoorsTableContent({
   nestedTableColumns = null,
   nestedDataKey = null,
   showFilters = true,
+  onRowClick = null,
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -616,13 +617,19 @@ function DoorsTableContent({
                     nestedDataKey && row[nestedDataKey] && row[nestedDataKey].length > 0
                   const isDoorRow =
                     !hasNestedData && Boolean(row.porteId || row.number || row.numero)
+                  // Ligne bâtiment cliquable → ouvre un modal (au lieu d'imbriquer une sous-table)
+                  const clickToOpen = Boolean(onRowClick && hasNestedData)
 
                   return (
                     <React.Fragment key={rowKey}>
                       <TableRow
-                        className={cn('hover:bg-muted/50', isDoorRow && 'cursor-pointer')}
+                        className={cn(
+                          'hover:bg-muted/50',
+                          (isDoorRow || clickToOpen) && 'cursor-pointer'
+                        )}
                         onClick={() => {
-                          if (isDoorRow) toggleRow(rowKey)
+                          if (clickToOpen) onRowClick(row)
+                          else if (isDoorRow) toggleRow(rowKey)
                         }}
                       >
                         <TableCell>
@@ -631,13 +638,20 @@ function DoorsTableContent({
                             size="sm"
                             onClick={event => {
                               event.stopPropagation()
-                              toggleRow(rowKey)
+                              if (clickToOpen) onRowClick(row)
+                              else toggleRow(rowKey)
                             }}
                             className="h-8 w-8 p-0"
-                            aria-label={isExpanded ? 'Replier la ligne' : 'Déplier la ligne'}
+                            aria-label={
+                              clickToOpen
+                                ? 'Ouvrir le bâtiment'
+                                : isExpanded
+                                  ? 'Replier la ligne'
+                                  : 'Déplier la ligne'
+                            }
                           >
                             <ChevronRight
-                              className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                              className={`h-4 w-4 transition-transform ${!clickToOpen && isExpanded ? 'rotate-90' : ''}`}
                             />
                           </Button>
                         </TableCell>
@@ -647,7 +661,7 @@ function DoorsTableContent({
                           </TableCell>
                         ))}
                       </TableRow>
-                      {isExpanded && (
+                      {!clickToOpen && isExpanded && (
                         <TableRow>
                           <TableCell colSpan={columns.length + 1} className="p-0 bg-muted/20">
                             <div className="p-2 sm:p-4">
@@ -787,7 +801,6 @@ export default function DetailsPage({
   const navigate = useNavigate()
   const zonePermissions = useEntityPermissions('zones')
   const { setSections, focusedSection } = useDetailsSections()
-  const [showAssignedZoneMaps, setShowAssignedZoneMaps] = useState(false)
 
   // Créer un ID unique pour chaque section basé sur son titre
   const createSectionId = title => {
@@ -1081,13 +1094,41 @@ export default function DetailsPage({
           {statsFilter && <div className="mb-5">{statsFilter}</div>}
 
           {/* Cards en pleine largeur en premier */}
-          {statsCards.filter(stat => stat.fullWidth).length > 0 && (
-            <div className="mb-5 grid gap-4">
-              {statsCards
-                .filter(stat => stat.fullWidth)
-                .map((stat, index) => renderStatCard(stat, index, 'full'))}
-            </div>
-          )}
+          {statsCards.filter(stat => stat.fullWidth).length > 0 &&
+            (dense ? (
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                {statsCards
+                  .filter(stat => stat.fullWidth)
+                  .map((stat, index) => (
+                    <div key={index} className="rounded-lg border border-border/60 bg-card p-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {stat.title}
+                        </p>
+                        {stat.icon && (
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/60 text-primary">
+                            {getIcon(stat.icon, stat.iconColor || 'text-primary', 'h-3.5 w-3.5')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-1 truncate text-lg font-bold tracking-tight text-foreground">
+                        {stat.value}
+                      </div>
+                      {stat.description && (
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {stat.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="mb-5 grid gap-4">
+                {statsCards
+                  .filter(stat => stat.fullWidth)
+                  .map((stat, index) => renderStatCard(stat, index, 'full'))}
+              </div>
+            ))}
 
           {/* Cards normales en grille */}
           {dense ? (
@@ -1140,35 +1181,15 @@ export default function DetailsPage({
           />
           <div className="space-y-4">
             {assignedZones.length > 0 ? (
-              showAssignedZoneMaps ? (
-                assignedZones.map(zone => (
-                  <Suspense key={zone.id} fallback={<MapSkeleton />}>
-                    <AssignedZoneCard
-                      zone={zone}
-                      assignmentDate={zone.assignmentDate || zone.createdAt}
-                      immeublesCount={zone.immeublesCount || 0}
-                    />
-                  </Suspense>
-                ))
-              ) : (
-                <Card className="border-border/60 bg-card">
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Les cartes des zones sont chargees a la demande pour alleger la page.
-                      </p>
-                      <Button
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => setShowAssignedZoneMaps(true)}
-                      >
-                        <MapPin className="h-4 w-4" />
-                        Afficher les cartes ({assignedZones.length})
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
+              assignedZones.map(zone => (
+                <Suspense key={zone.id} fallback={<MapSkeleton />}>
+                  <AssignedZoneCard
+                    zone={zone}
+                    assignmentDate={zone.assignmentDate || zone.createdAt}
+                    immeublesCount={zone.immeublesCount || 0}
+                  />
+                </Suspense>
+              ))
             ) : (
               <Card className="border-border/60 bg-card">
                 <CardContent className="pt-6">
@@ -1192,6 +1213,10 @@ export default function DetailsPage({
           {section.customFilter && <div className="mb-5">{section.customFilter}</div>}
           {section.type === 'custom' && section.component === 'ChartsSection' ? (
             <ProspectionChartsSection charts={section.data.charts} />
+          ) : section.type === 'custom' && section.bare && section.render ? (
+            // Section auto-encadrée (ex. carte trajet) → pas de Card externe pour
+            // éviter une carte dans une carte.
+            section.render(data)
           ) : (
             <Card className="border-border/60 bg-card">
               <CardContent className="pt-6">
@@ -1243,6 +1268,7 @@ export default function DetailsPage({
                     nestedTableColumns={section.data.nestedColumns}
                     nestedDataKey="doors"
                     showFilters={section.data.showFilters !== false}
+                    onRowClick={section.data.onImmeubleClick}
                   />
                 )}
                 {section.type === 'custom' && section.component === 'FloorDetails' && (

@@ -1,7 +1,8 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Filter, Calendar, Clock } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { CalendarDays, ChevronDown, RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
+import { cn } from '@/lib/utils'
 
 // Fonction utilitaire pour obtenir les dates selon les presets
 const getDatePreset = preset => {
@@ -30,12 +31,13 @@ const getDatePreset = preset => {
     case 'last30days':
       startDate.setDate(today.getDate() - 29)
       break
-    case 'thisWeek':
+    case 'thisWeek': {
       const dayOfWeek = today.getDay()
       const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
       startDate.setDate(today.getDate() + mondayOffset)
       break
-    case 'lastWeek':
+    }
+    case 'lastWeek': {
       const lastWeekEnd = new Date(today)
       lastWeekEnd.setDate(today.getDate() - today.getDay())
       lastWeekEnd.setHours(23, 59, 59, 999)
@@ -46,16 +48,18 @@ const getDatePreset = preset => {
         start: lastWeekStart.toISOString().split('T')[0],
         end: lastWeekEnd.toISOString().split('T')[0],
       }
+    }
     case 'thisMonth':
       startDate.setDate(1)
       break
-    case 'lastMonth':
+    case 'lastMonth': {
       const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
       const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
       return {
         start: lastMonthStart.toISOString().split('T')[0],
         end: lastMonthEnd.toISOString().split('T')[0],
       }
+    }
     case 'all':
       return { start: '', end: '' }
     default:
@@ -69,17 +73,24 @@ const getDatePreset = preset => {
 }
 
 const DATE_PRESETS = [
-  { id: 'today', label: "Aujourd'hui", icon: '📅' },
-  { id: 'yesterday', label: 'Hier', icon: '📆' },
-  { id: 'last7days', label: '7 derniers jours', icon: '📊' },
-  { id: 'last14days', label: '14 derniers jours', icon: '📈' },
-  { id: 'last30days', label: '30 derniers jours', icon: '📉' },
-  { id: 'thisWeek', label: 'Cette semaine', icon: '🗓️' },
-  { id: 'lastWeek', label: 'Semaine dernière', icon: '📋' },
-  { id: 'thisMonth', label: 'Ce mois-ci', icon: '🗂️' },
-  { id: 'lastMonth', label: 'Mois dernier', icon: '📁' },
-  { id: 'all', label: 'Tout', icon: '🌐' },
+  { id: 'today', label: "Aujourd'hui" },
+  { id: 'yesterday', label: 'Hier' },
+  { id: 'last7days', label: '7 jours' },
+  { id: 'last14days', label: '14 jours' },
+  { id: 'last30days', label: '30 jours' },
+  { id: 'thisWeek', label: 'Cette semaine' },
+  { id: 'lastWeek', label: 'Semaine dernière' },
+  { id: 'thisMonth', label: 'Ce mois-ci' },
+  { id: 'lastMonth', label: 'Mois dernier' },
+  { id: 'all', label: 'Tout' },
 ]
+
+const formatFr = value => {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString('fr-FR')
+}
 
 export default function DateRangeFilter({
   startDate,
@@ -96,198 +107,162 @@ export default function DateRangeFilter({
   dateType = 'created',
   onDateTypeChange,
 }) {
-  const [selectedPreset, setSelectedPreset] = useState(null)
-  const [showCustomDates, setShowCustomDates] = useState(true)
+  const [open, setOpen] = useState(false)
+  const hasApplied = Boolean(appliedStartDate || appliedEndDate)
   const hasAnyValue = Boolean(startDate || endDate || appliedStartDate || appliedEndDate)
+
+  // Libellé du bouton déclencheur = période appliquée courante
+  const triggerLabel = hasApplied
+    ? `${formatFr(appliedStartDate) ?? 'Début'} – ${formatFr(appliedEndDate) ?? 'Fin'}`
+    : 'Toutes les périodes'
 
   const handlePresetClick = preset => {
     const dates = getDatePreset(preset.id)
-    setSelectedPreset(preset.id)
     onChangeStart?.(dates.start)
     onChangeEnd?.(dates.end)
-
-    // Appliquer automatiquement le filtre
     setTimeout(() => {
       onApply?.()
-    }, 100)
+      setOpen(false)
+    }, 80)
   }
 
-  const handleCustomDateChange = () => {
-    setSelectedPreset(null)
+  const handleApply = () => {
+    onApply?.()
+    setOpen(false)
+  }
+
+  const handleReset = () => {
+    onReset?.()
+    setOpen(false)
   }
 
   return (
-    <Card className={`border-2 ${className}`}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Filter className="h-5 w-5" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          {/* Sélecteur de type de date */}
-          {showDateTypeSelector && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span>Filtrer par</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => onDateTypeChange?.('created')}
-                  className={`
-                    flex-1 px-4 py-2.5 rounded-lg text-sm font-medium
-                    transition-all duration-200
-                    ${dateType === 'created'
-                      ? 'bg-primary text-primary-foreground shadow-md'
-                      : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
-                    }
-                  `}
-                >
-                  📅 Date de création
-                </button>
-                <button
-                  onClick={() => onDateTypeChange?.('modified')}
-                  className={`
-                    flex-1 px-4 py-2.5 rounded-lg text-sm font-medium
-                    transition-all duration-200
-                    ${dateType === 'modified'
-                      ? 'bg-primary text-primary-foreground shadow-md'
-                      : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
-                    }
-                  `}
-                >
-                  🔄 Date de modification
-                </button>
-              </div>
-            </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            'h-9 justify-between gap-2 rounded-lg font-normal',
+            hasApplied && 'border-primary/30 text-primary',
+            className
           )}
+        >
+          <span className="inline-flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 opacity-70" />
+            <span className="tabular-nums">{triggerLabel}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 opacity-60" />
+        </Button>
+      </PopoverTrigger>
 
-          {/* Filtres par bulles */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>Périodes rapides</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {DATE_PRESETS.map(preset => (
-                <button
-                  key={preset.id}
-                  onClick={() => handlePresetClick(preset)}
-                  className={`
-                    inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium
-                    transition-all duration-200 transform hover:scale-105 hover:shadow-md
-                    ${selectedPreset === preset.id
-                      ? 'bg-primary text-primary-foreground shadow-lg scale-105'
-                      : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
-                    }
-                  `}
-                >
-                  <span className="text-base">{preset.icon}</span>
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
+      <PopoverContent align="start" className="w-80">
+        <div className="space-y-4">
+          <p className="text-sm font-semibold">{title}</p>
 
-          {/* Séparateur avec option pour dates personnalisées */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
+          {showDateTypeSelector && (
+            <div className="flex gap-1.5">
               <button
-                onClick={() => setShowCustomDates(!showCustomDates)}
-                className="bg-background px-2 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                type="button"
+                onClick={() => onDateTypeChange?.('created')}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                  dateType === 'created'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                )}
               >
-                <Calendar className="h-3 w-3" />
-                Dates personnalisées
+                Création
+              </button>
+              <button
+                type="button"
+                onClick={() => onDateTypeChange?.('modified')}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                  dateType === 'modified'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                )}
+              >
+                Modification
               </button>
             </div>
-          </div>
-
-          {/* Dates personnalisées (affichées conditionnellement) */}
-          {showCustomDates && (
-            <div className="space-y-4 animate-in fade-in-50 slide-in-from-top-2 duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="start-date" className="text-sm font-medium">
-                    Date de début
-                  </label>
-                  <input
-                    id="start-date"
-                    type="date"
-                    value={startDate}
-                    onChange={e => {
-                      onChangeStart?.(e.target.value)
-                      handleCustomDateChange()
-                    }}
-                    max={endDate || new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="end-date" className="text-sm font-medium">
-                    Date de fin
-                  </label>
-                  <input
-                    id="end-date"
-                    type="date"
-                    value={endDate}
-                    onChange={e => {
-                      onChangeEnd?.(e.target.value)
-                      handleCustomDateChange()
-                    }}
-                    min={startDate || undefined}
-                    max={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button size="sm" onClick={onApply} disabled={!startDate && !endDate}>
-                  Appliquer
-                </Button>
-              </div>
-            </div>
           )}
 
-          {/* Affichage de la période sélectionnée et bouton reset */}
-          <div className="flex items-center justify-between pt-2 border-t">
-            <div className="text-sm">
-              {appliedStartDate || appliedEndDate ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Période:</span>
-                  <span className="font-medium text-primary">
-                    {appliedStartDate
-                      ? new Date(appliedStartDate).toLocaleDateString('fr-FR')
-                      : 'Début'}{' '}
-                    -{' '}
-                    {appliedEndDate ? new Date(appliedEndDate).toLocaleDateString('fr-FR') : 'Fin'}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">Toutes les périodes</span>
-              )}
-            </div>
-
-            {hasAnyValue && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onReset()
-                  setSelectedPreset(null)
-                }}
+          {/* Raccourcis */}
+          <div className="flex flex-wrap gap-1.5">
+            {DATE_PRESETS.map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handlePresetClick(preset)}
+                className="rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
               >
-                Réinitialiser
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Dates personnalisées */}
+          <div className="space-y-2 border-t pt-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label
+                  htmlFor="drf-start"
+                  className="text-[11px] font-medium text-muted-foreground"
+                >
+                  Début
+                </label>
+                <input
+                  id="drf-start"
+                  type="date"
+                  value={startDate}
+                  onChange={e => onChangeStart?.(e.target.value)}
+                  max={endDate || new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="drf-end" className="text-[11px] font-medium text-muted-foreground">
+                  Fin
+                </label>
+                <input
+                  id="drf-end"
+                  type="date"
+                  value={endDate}
+                  onChange={e => onChangeEnd?.(e.target.value)}
+                  min={startDate || undefined}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              {hasAnyValue ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleReset}
+                  className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Réinitialiser
+                </Button>
+              ) : (
+                <span className="text-xs text-muted-foreground">Toutes les périodes</span>
+              )}
+              <Button
+                size="sm"
+                onClick={handleApply}
+                disabled={!startDate && !endDate}
+                className="h-8 gap-1.5"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Appliquer
               </Button>
-            )}
+            </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PopoverContent>
+    </Popover>
   )
 }

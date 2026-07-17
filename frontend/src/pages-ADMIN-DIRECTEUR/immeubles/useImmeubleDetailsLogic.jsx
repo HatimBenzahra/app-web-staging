@@ -9,6 +9,7 @@ import {
 } from '@/constants/domain/habitat'
 import { porteApi } from '@/services/api/portes/porte.service'
 import BuildingFacade from './components/BuildingFacade'
+import { buildFacadeFloors } from './facade-data'
 
 export function useImmeubleDetailsLogic() {
   const { id } = useParams()
@@ -147,40 +148,12 @@ export function useImmeubleDetailsLogic() {
     [immeubleData?.effectiveType]
   )
 
-  // Données pour la façade : étages empilés (haut → bas), chaque porte enrichie
-  // du signal audio (durée de son enregistrement).
-  const facadeFloors = useMemo(() => {
-    if (!immeubleData?.floorDetails) return []
-    const isMaison = immeubleData.effectiveType === TypeHabitat.MAISON
-    return immeubleData.floorDetails
-      .map(fl => {
-        const floorLabel = isMaison ? fl.unitLabel : `${fl.unitLabel} ${fl.floor}`
-        return {
-          floor: fl.floor,
-          label: floorLabel,
-          totalDoors: fl.totalDoors,
-          doors: fl.doors.map(door => {
-            const segment = porteSegmentMap.get(door.id) || null
-            return {
-              porteId: door.id,
-              number: door.number,
-              nomPersonnalise: door.nomPersonnalise,
-              status: door.status,
-              rdvDate: door.rdvDate,
-              rdvTime: door.rdvTime,
-              lastVisit: door.lastVisit,
-              comment: door.comment,
-              nbContrats: door.nbContrats,
-              nbRepassages: door.nbRepassages,
-              floorLabel,
-              audioDurationSec: segment?.durationSec ?? null,
-              hasAudio: Boolean(segment),
-            }
-          }),
-        }
-      })
-      .sort((a, b) => b.floor - a.floor)
-  }, [immeubleData?.floorDetails, immeubleData?.effectiveType, porteSegmentMap])
+  // Données pour la façade — construites via le helper partagé (même source que
+  // la modale bâtiment de la page commercial).
+  const facade = useMemo(
+    () => buildFacadeFloors(immeuble, portes, porteSegmentMap),
+    [immeuble, portes, porteSegmentMap]
+  )
 
   const personalInfo = useMemo(() => {
     if (!immeubleData) return []
@@ -272,33 +245,23 @@ export function useImmeubleDetailsLogic() {
 
   const additionalSections = useMemo(() => {
     if (!immeubleData) return []
-    const type = immeubleData.effectiveType
-    const nbMaisons = immeubleData.nbMaisonsPrevu ?? 0
-    const nbEtages = immeubleData.floors ?? 0
-    const nbPortesParEtage = immeubleData.nbPortesParEtage ?? 0
-    const planSubtitle =
-      type === TypeHabitat.MAISON
-        ? 'Maison individuelle · 1 porte'
-        : type === TypeHabitat.PAVILLON
-          ? `${nbMaisons} maison${nbMaisons > 1 ? 's' : ''} · 1 porte par maison`
-          : `${nbEtages} étage${nbEtages > 1 ? 's' : ''} · ${nbPortesParEtage} portes/étage`
 
     return [
       {
-        title: habitatMeta.planTitle,
+        title: facade.planTitle,
         description: 'Cliquez une porte pour écouter son enregistrement et voir son détail',
         type: 'custom',
         render: () => (
           <BuildingFacade
-            floors={facadeFloors}
-            address={immeubleData.address}
-            planSubtitle={planSubtitle}
-            type={immeubleData.effectiveType}
+            floors={facade.floors}
+            address={facade.address}
+            planSubtitle={facade.planSubtitle}
+            type={facade.type}
           />
         ),
       },
     ]
-  }, [habitatMeta.planTitle, immeubleData, facadeFloors])
+  }, [immeubleData, facade])
 
   return {
     immeubleData,

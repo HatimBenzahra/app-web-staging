@@ -1,6 +1,7 @@
 import DetailsPage from '@/components/DetailsPage'
 import { DetailsPageSkeleton } from '@/components/LoadingSkeletons'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import BuildingFacadeModal from '@/pages-ADMIN-DIRECTEUR/immeubles/components/BuildingFacadeModal'
 import { useCommercialDetailsLogic } from './useCommercialDetailsLogic'
 
 export default function CommercialDetails() {
@@ -13,6 +14,7 @@ export default function CommercialDetails() {
     statsCards,
     additionalSections,
     dateFilter,
+    buildingModal,
   } = useCommercialDetailsLogic()
 
   if (loading) return <DetailsPageSkeleton />
@@ -34,30 +36,42 @@ export default function CommercialDetails() {
   }
 
   return (
-    <DetailsPage
-      title={commercialData.name}
-      subtitle={`Commercial - ID: ${commercialData.id}`}
-      status={'Commercial'}
-      data={commercialData}
-      personalInfo={personalInfo}
-      statsCards={statsCards}
-      statsFilter={
-        <DateRangeFilter
-          className="h-fit"
-          startDate={dateFilter.startDate}
-          endDate={dateFilter.endDate}
-          appliedStartDate={dateFilter.appliedStartDate}
-          appliedEndDate={dateFilter.appliedEndDate}
-          onChangeStart={dateFilter.setStartDate}
-          onChangeEnd={dateFilter.setEndDate}
-          onApply={dateFilter.handleApplyFilters}
-          onReset={dateFilter.handleResetFilters}
-          title="Filtres de période (stats & portes)"
-        />
-      }
-      assignedZones={assignedZones}
-      additionalSections={additionalSections}
-      backUrl="/commerciaux"
-    />
+    <>
+      <DetailsPage
+        title={commercialData.name}
+        subtitle={
+          commercialData.rank?.name
+            ? `${commercialData.managerName} · 🏆 ${commercialData.rank.name}`
+            : commercialData.managerName
+        }
+        status={'Commercial'}
+        dense
+        data={commercialData}
+        personalInfo={personalInfo}
+        statsCards={statsCards}
+        statsFilter={
+          <DateRangeFilter
+            className="h-fit"
+            startDate={dateFilter.startDate}
+            endDate={dateFilter.endDate}
+            appliedStartDate={dateFilter.appliedStartDate}
+            appliedEndDate={dateFilter.appliedEndDate}
+            onChangeStart={dateFilter.setStartDate}
+            onChangeEnd={dateFilter.setEndDate}
+            onApply={dateFilter.handleApplyFilters}
+            onReset={dateFilter.handleResetFilters}
+            title="Filtres de période (stats & portes)"
+          />
+        }
+        assignedZones={assignedZones}
+        additionalSections={additionalSections}
+        backUrl="/commerciaux"
+      />
+      <BuildingFacadeModal
+        open={buildingModal.open}
+        onOpenChange={buildingModal.onOpenChange}
+        facade={buildingModal.facade}
+      />
+    </>
   )
 }
