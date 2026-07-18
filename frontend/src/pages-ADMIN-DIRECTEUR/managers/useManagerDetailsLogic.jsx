@@ -536,9 +536,9 @@ export function useManagerDetailsLogic() {
       icon: 'calendar',
     },
     {
-      title: 'Immeubles visités',
+      title: 'Bâtiments visités',
       value: managerData.totalImmeublesVisites,
-      description: 'Total des immeubles visités',
+      description: 'Total des bâtiments visités',
       icon: 'building',
     },
     {
@@ -566,9 +566,9 @@ export function useManagerDetailsLogic() {
       icon: 'fileText',
     },
     {
-      title: 'Immeubles prospectés',
+      title: 'Bâtiments prospectés',
       value: managerData.totalImmeublesProspectes,
-      description: 'Total des immeubles prospectés',
+      description: 'Total des bâtiments prospectés',
       icon: 'building',
     },
   ] : []
@@ -599,7 +599,7 @@ export function useManagerDetailsLogic() {
       icon: 'calendar',
     },
     {
-      title: "Immeubles visités par l'équipe",
+      title: "Bâtiments visités par l'équipe",
       value: teamTotals.totalImmeubles,
       description: `Total de ${commercialStats.length} commercial${commercialStats.length > 1 ? 'aux' : ''}`,
       icon: 'building',
@@ -618,7 +618,7 @@ export function useManagerDetailsLogic() {
     { header: 'Commercial', accessor: 'nom', sortable: true, className: 'font-medium' },
     { header: 'Contrats signés', accessor: 'contratsSignes', sortable: true, className: 'text-center', cell: row => <Badge className="bg-green-100 text-green-800">{row.contratsSignes || 0}</Badge> },
     { header: 'RDV pris', accessor: 'rendezVous', sortable: true, className: 'text-center', cell: row => <Badge className="bg-blue-100 text-blue-800">{row.rendezVous || 0}</Badge> },
-    { header: 'Immeubles visités', accessor: 'immeubles', sortable: true, className: 'text-center', cell: row => <Badge className="bg-purple-100 text-purple-800">{row.immeubles || 0}</Badge> },
+    { header: 'Bâtiments visités', accessor: 'immeubles', sortable: true, className: 'text-center', cell: row => <Badge className="bg-purple-100 text-purple-800">{row.immeubles || 0}</Badge> },
     { header: 'Refus', accessor: 'refus', sortable: true, className: 'text-center', cell: row => <Badge className="bg-red-100 text-red-800">{row.refus || 0}</Badge> },
     { header: 'Rang', accessor: 'rank', sortable: false, className: 'text-center', cell: row => <Badge className={`${row.rank.bgColor} ${row.rank.textColor} ${row.rank.borderColor} border`}>{row.rank.name}</Badge> },
     { header: 'Points', accessor: 'points', sortable: true, className: 'text-center font-semibold', cell: row => `${row.points} pts` },

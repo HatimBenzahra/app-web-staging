@@ -428,7 +428,7 @@ export default function TeamManagement() {
                   <div className="flex items-center gap-4 text-sm">
                     <div className={`flex items-center gap-2 ${base.text.muted}`}>
                       <Building2 className="h-4 w-4" />
-                      <span>{commercial.immeubleCount} immeubles prospectés</span>
+                      <span>{commercial.immeubleCount} bâtiments prospectés</span>
                     </div>
                   </div>
                 </div>

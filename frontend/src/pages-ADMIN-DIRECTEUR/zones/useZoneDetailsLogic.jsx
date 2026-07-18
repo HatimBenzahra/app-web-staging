@@ -252,7 +252,7 @@ export function useZoneDetailsLogic() {
       {
         title: 'Taux succès RDV',
         value: `${aggregatedStats.tauxSuccesRdv || 0}%`,
-        description: 'Pourcentage de RDV obtenus / immeubles visités',
+        description: 'Pourcentage de RDV obtenus / bâtiments visités',
         icon: 'target',
       },
       {

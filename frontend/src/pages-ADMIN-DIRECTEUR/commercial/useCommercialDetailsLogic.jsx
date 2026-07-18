@@ -424,9 +424,9 @@ export function useCommercialDetailsLogic() {
           icon: 'calendar',
         },
         {
-          title: 'Immeubles visités',
+          title: 'Bâtiments visités',
           value: commercialData.totalImmeublesVisites,
-          description: 'Total des immeubles visités',
+          description: 'Total des bâtiments visités',
           icon: 'building',
         },
         {
@@ -454,9 +454,9 @@ export function useCommercialDetailsLogic() {
           icon: 'fileText',
         },
         {
-          title: 'Immeubles prospectés',
+          title: 'Bâtiments prospectés',
           value: commercialData.totalImmeublesProspectes,
-          description: 'Total des immeubles prospectés',
+          description: 'Total des bâtiments prospectés',
           icon: 'building',
         },
       ]

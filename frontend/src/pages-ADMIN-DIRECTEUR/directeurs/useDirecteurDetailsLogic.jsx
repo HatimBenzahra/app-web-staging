@@ -525,9 +525,9 @@ export function useDirecteurDetailsLogic() {
       icon: 'fileText',
     },
     {
-      title: 'Immeubles visités',
+      title: 'Bâtiments visités',
       value: directeurData.totalImmeublesVisites,
-      description: 'Total de la division (5 pts/immeuble)',
+      description: 'Total de la division (5 pts/bâtiment)',
       icon: 'building',
     },
     {

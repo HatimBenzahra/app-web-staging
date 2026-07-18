@@ -104,7 +104,7 @@ export default function HistoriqueZones() {
       ),
     },
     {
-      header: 'Immeubles',
+      header: 'Bâtiments',
       accessor: 'totalImmeublesVisites',
       sortable: true,
       className: 'hidden xl:table-cell text-center',

@@ -229,7 +229,7 @@ export function useImmeublesLogic() {
         required: true,
         section: 'Informations générales',
         fullWidth: true,
-        placeholder: "Adresse complète de l'immeuble",
+        placeholder: 'Adresse complète du bâtiment',
       },
       {
         key: 'floors',
@@ -365,7 +365,7 @@ export function useImmeublesLogic() {
 
       await updateImmeuble(updateInput)
       await refetch()
-      showSuccess('Immeuble modifié avec succès')
+      showSuccess('Bâtiment modifié avec succès')
     } catch (error) {
       showError(error, 'Immeubles.handleEditImmeuble')
       throw error
@@ -376,7 +376,7 @@ export function useImmeublesLogic() {
     try {
       await removeImmeuble(id)
       await refetch()
-      showSuccess('Immeuble supprimé avec succès')
+      showSuccess('Bâtiment supprimé avec succès')
     } catch (error) {
       showError(error, 'Immeubles.handleDeleteImmeuble')
       throw error

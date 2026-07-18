@@ -56,7 +56,7 @@ const FILTERS = [
   },
   {
     key: 'Immeubles',
-    label: 'Immeubles',
+    label: 'Bâtiments',
     icon: Building2,
     color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
   },
@@ -207,7 +207,7 @@ export default function GlobalSearchDialog() {
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Rechercher un commercial, immeuble, porte..."
+            placeholder="Rechercher un commercial, bâtiment, porte..."
             className="flex-1 h-14 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/40"
           />
           {query && (

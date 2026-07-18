@@ -788,7 +788,7 @@ export default function Statistiques() {
         <MetricCard title="Argumentés" value={metrics.argumentes} icon={Users} />
         <MetricCard title="Refus" value={metrics.refus} icon={X} />
         <MetricCard title="Repassages" value={metrics.repassages} icon={RotateCcw} />
-        <MetricCard title="Immeubles" value={metrics.nbImmeubles} icon={Building2} />
+        <MetricCard title="Bâtiments" value={metrics.nbImmeubles} icon={Building2} />
         <MetricCard title="Équipe" value={metrics.nbIntervenants} icon={Users} />
       </div>
 

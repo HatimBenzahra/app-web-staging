@@ -27,7 +27,7 @@ const STEPS = [
   {
     id: 'address',
     title: 'Adresse',
-    description: "Localisation de l'immeuble",
+    description: 'Localisation du bâtiment',
     icon: MapPin,
   },
   {
@@ -521,7 +521,7 @@ export default function AddImmeubleModal({ open, onOpenChange, onSave }) {
       >
         <DialogHeader className="px-5 py-4 border-b border-gray-100 flex-shrink-0 bg-white">
           <DialogTitle className="text-xl font-bold text-gray-900 leading-tight">
-            Ajouter un immeuble
+            Ajouter un bâtiment
           </DialogTitle>
           <DialogDescription className="text-sm text-gray-500">
             Remplissez les informations de l'immeuble en suivant les étapes

@@ -48,7 +48,7 @@ import {
 const mainItems = [{ title: 'Dashboard', url: '/', icon: Home, entity: 'dashboard' }]
 
 const terrainItems = [
-  { title: 'Immeubles', url: '/immeubles', icon: Building2, entity: 'immeubles' },
+  { title: 'Bâtiments', url: '/immeubles', icon: Building2, entity: 'immeubles' },
   { title: 'Ciblage Acquiscan', url: '/adresses', icon: Target, entity: 'immeubles' },
   {
     title: 'Zones',

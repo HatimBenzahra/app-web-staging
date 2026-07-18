@@ -53,7 +53,7 @@ export default function Immeubles() {
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Immeubles</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Bâtiments</h1>
           <p className="text-muted-foreground text-base">
             Gestion du patrimoine immobilier et suivi des propriétés
           </p>
@@ -80,8 +80,13 @@ export default function Immeubles() {
               {stats.totalImmeubles}
             </div>
             <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-              {stats.typeBreakdown.IMMEUBLE} immeubles · {stats.typeBreakdown.MAISON} maisons ·{' '}
-              {stats.typeBreakdown.PAVILLON} pavillons
+              {[
+                stats.typeBreakdown.IMMEUBLE > 0 && `${stats.typeBreakdown.IMMEUBLE} immeubles`,
+                stats.typeBreakdown.MAISON > 0 && `${stats.typeBreakdown.MAISON} maisons`,
+                stats.typeBreakdown.PAVILLON > 0 && `${stats.typeBreakdown.PAVILLON} pavillons`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </CardContent>
         </Card>
@@ -232,7 +237,7 @@ export default function Immeubles() {
       {viewMode === 'list' ? (
         <AdvancedDataTable
           showStatusColumn={false}
-          title="Liste des Immeubles"
+          title="Liste des bâtiments"
           description={description}
           data={tableData}
           columns={immeublesColumns}

@@ -323,7 +323,7 @@ export default function CommercialDashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-2 flex-shrink-0">
         <StatCard title="Contrats signés" value={myStats.contratsSignes} icon={CheckCircle2} />
-        <StatCard title="Immeubles visités" value={myStats.immeublesVisites} icon={Building2} />
+        <StatCard title="Bâtiments visités" value={myStats.immeublesVisites} icon={Building2} />
         <StatCard title="Rendez-vous pris" value={myStats.rendezVousPris} icon={Clock} />
         <StatCard
           title="Taux de refus"

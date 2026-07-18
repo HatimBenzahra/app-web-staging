@@ -123,7 +123,7 @@ export default function ImmeublesList() {
       await refetch()
 
       // Toast de succès
-      showSuccess('Immeuble ajouté avec succès !')
+      showSuccess('Bâtiment ajouté avec succès !')
     } catch (error) {
       console.error('Error creating immeuble:', error)
       showError(error, 'Ajout immeuble')

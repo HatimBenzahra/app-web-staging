@@ -147,7 +147,7 @@ export default function UserCard({ user, type, isDragging = false, showGrip = tr
                       <span className="font-semibold text-foreground">
                         {immeublesVisites}
                       </span>
-                      <span className="text-muted-foreground"> immeubles</span>
+                      <span className="text-muted-foreground"> bâtiments</span>
                     </div>
                   </div>
                 </div>

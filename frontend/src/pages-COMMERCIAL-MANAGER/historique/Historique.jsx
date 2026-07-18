@@ -88,7 +88,7 @@ export default function Historique() {
           <Card className={`p-8 ${base.bg.card} ${base.border.card}`}>
             <div className="text-center">
               <Building2 className={`w-12 h-12 mx-auto mb-3 ${base.text.muted}`} />
-              <p className={`text-sm ${base.text.muted}`}>Aucun immeuble trouvé</p>
+              <p className={`text-sm ${base.text.muted}`}>Aucun bâtiment trouvé</p>
             </div>
           </Card>
         ) : (

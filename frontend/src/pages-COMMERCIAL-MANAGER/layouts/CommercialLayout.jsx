@@ -94,7 +94,7 @@ export default function CommercialLayout() {
       },
       {
         id: 'immeubles',
-        label: 'Immeubles',
+        label: 'Bâtiments',
         icon: Building2,
         badge: personalImmeublesCount,
         path: '/immeubles',
@@ -144,7 +144,7 @@ export default function CommercialLayout() {
   const getPageTitle = () => {
     const path = location.pathname
     if (path === '/') return 'Tableau de bord'
-    if (path === '/immeubles') return 'Mes Immeubles'
+    if (path === '/immeubles') return 'Mes Bâtiments'
     if (path === '/historique') return 'Historique'
     if (path.startsWith('/portes/')) return 'Gestion des Portes'
     if (path === '/equipe') return 'Mon Équipe'

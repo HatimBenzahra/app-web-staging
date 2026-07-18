@@ -311,7 +311,7 @@ export default function PorteDetails() {
                       <Calendar className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Immeuble</p>
+                      <p className="text-[10px] text-muted-foreground">Bâtiment</p>
                       <p className="text-[13px] font-medium leading-snug">{immeuble.adresse}</p>
                     </div>
                   </div>

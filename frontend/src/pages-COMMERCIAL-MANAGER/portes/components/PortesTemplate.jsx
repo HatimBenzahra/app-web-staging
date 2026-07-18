@@ -583,7 +583,7 @@ export default function PortesTemplate({
           <p className={base.text.muted}>
             {filteredStats.hasFilters
               ? 'Essayez de modifier vos critères de filtrage'
-              : "Aucune porte n'est disponible pour cet immeuble"}
+              : "Aucune porte n'est disponible pour ce bâtiment"}
           </p>
           {filteredStats.hasFilters && onClearStatutFilters && (
             <Button variant="outline" size="sm" onClick={onClearStatutFilters} className="mt-3">

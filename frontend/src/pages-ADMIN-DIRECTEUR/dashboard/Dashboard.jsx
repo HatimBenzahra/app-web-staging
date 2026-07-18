@@ -548,7 +548,7 @@ function TodaysRecordingsCard({ segments, loading, navigate }) {
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         <Building2 className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{seg.immeubleAdresse || 'Immeuble'}</span>
+                        <span className="truncate">{seg.immeubleAdresse || 'Bâtiment'}</span>
                         {seg.porteNumero != null && (
                           <>
                             <span className="shrink-0 text-border/80">&middot;</span>
@@ -825,7 +825,7 @@ export default function Dashboard() {
         <KpiCard
           title="Taux de conversion"
           value={tauxConversion}
-          description={`${totals.immeubles} immeuble${totals.immeubles > 1 ? 's' : ''} prospecté${totals.immeubles > 1 ? 's' : ''}`}
+          description={`${totals.immeubles} bâtiment${totals.immeubles > 1 ? 's' : ''} prospecté${totals.immeubles > 1 ? 's' : ''}`}
           icon={TrendingUp}
           color="violet"
         />
@@ -841,7 +841,7 @@ export default function Dashboard() {
                   <Building2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <span className="text-sm font-bold tabular-nums">{totals.immeubles}</span>
-                <span className="text-xs text-muted-foreground">immeubles</span>
+                <span className="text-xs text-muted-foreground">bâtiments</span>
               </div>
               <div className="h-4 w-px bg-border/60 shrink-0" />
               <div className="flex items-center gap-2">
