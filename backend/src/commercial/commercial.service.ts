@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
 import { CreateCommercialInput, UpdateCommercialInput } from './commercial.dto';
 import { UserType } from '../zone/zone.dto';
 
@@ -138,7 +139,12 @@ export class CommercialService {
     }
   }
 
-  async findOne(id: number, userId: number, userRole: string) {
+  async findOne(
+    id: number,
+    userId: number,
+    userRole: string,
+    excludeTestUsers = false,
+  ) {
     await this.ensureAccess(id, userId, userRole);
 
     return this.prisma.commercial.findUnique({
@@ -147,6 +153,7 @@ export class CommercialService {
         manager: true,
         directeur: true,
         immeubles: {
+          ...(excludeTestUsers ? { where: prodImmeubleWhere } : {}),
           include: {
             portes: true,
           },

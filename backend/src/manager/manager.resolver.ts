@@ -34,8 +34,18 @@ export class ManagerResolver {
 
   @Query(() => Manager, { name: 'managerPersonal', nullable: true })
   @Roles('admin', 'directeur', 'manager')
-  findPersonal(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
-    return this.managerService.findPersonal(id, user.id, user.role);
+  findPersonal(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('excludeTestUsers', { type: () => Boolean, defaultValue: false })
+    excludeTestUsers: boolean,
+    @CurrentUser() user: any,
+  ) {
+    return this.managerService.findPersonal(
+      id,
+      user.id,
+      user.role,
+      excludeTestUsers,
+    );
   }
 
   @Query(() => Manager, { name: 'managerFull', nullable: true })

@@ -54,9 +54,16 @@ export class CommercialResolver {
   @Roles('admin', 'directeur', 'manager', 'commercial')
   findOne(
     @Args('id', { type: () => Int }) id: number,
+    @Args('excludeTestUsers', { type: () => Boolean, defaultValue: false })
+    excludeTestUsers: boolean,
     @CurrentUser() user: any,
   ) {
-    return this.commercialService.findOne(id, user.id, user.role);
+    return this.commercialService.findOne(
+      id,
+      user.id,
+      user.role,
+      excludeTestUsers,
+    );
   }
 
   @Mutation(() => Commercial)

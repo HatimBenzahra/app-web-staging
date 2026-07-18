@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
 import { calculateStatsForStatus } from '../porte/porte-status.constants';
 import { CreateZoneInput, UpdateZoneInput, UserType } from './zone.dto';
 import { centroid, enclosingRadiusMeters, parseRing } from './zone.geometry';
@@ -402,7 +403,7 @@ export class ZoneService {
       case 'admin':
         return this.prisma.zone.findMany({
           include: {
-            immeubles: true,
+            immeubles: { where: prodImmeubleWhere },
           },
         });
 
@@ -413,7 +414,7 @@ export class ZoneService {
             directeurId: userId,
           },
           include: {
-            immeubles: true,
+            immeubles: { where: prodImmeubleWhere },
           },
         });
 
@@ -424,7 +425,7 @@ export class ZoneService {
             managerId: userId,
           },
           include: {
-            immeubles: true,
+            immeubles: { where: prodImmeubleWhere },
           },
         });
 
@@ -451,7 +452,7 @@ export class ZoneService {
             id: zoneEnCours.zoneId,
           },
           include: {
-            immeubles: true,
+            immeubles: { where: prodImmeubleWhere },
           },
         });
 
@@ -460,13 +461,22 @@ export class ZoneService {
     }
   }
 
-  async findOne(id: number, userId: number, userRole: string) {
+  async findOne(
+    id: number,
+    userId: number,
+    userRole: string,
+    excludeTestUsers = false,
+  ) {
+    const immeublesInclude = excludeTestUsers
+      ? { where: prodImmeubleWhere }
+      : true;
+
     // Admin can access all zones
     if (userRole === 'admin') {
       const zone = await this.prisma.zone.findUnique({
         where: { id },
         include: {
-          immeubles: true,
+          immeubles: immeublesInclude,
         },
       });
 
@@ -481,7 +491,7 @@ export class ZoneService {
     const zone = await this.prisma.zone.findUnique({
       where: { id },
       include: {
-        immeubles: true,
+        immeubles: immeublesInclude,
       },
     });
 

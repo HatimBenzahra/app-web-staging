@@ -38,8 +38,13 @@ export class ZoneResolver {
 
   @Query(() => Zone, { name: 'zone' })
   @Roles('admin', 'directeur', 'manager', 'commercial')
-  findOne(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: any) {
-    return this.zoneService.findOne(id, user.id, user.role);
+  findOne(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('excludeTestUsers', { type: () => Boolean, defaultValue: false })
+    excludeTestUsers: boolean,
+    @CurrentUser() user: any,
+  ) {
+    return this.zoneService.findOne(id, user.id, user.role, excludeTestUsers);
   }
 
   @Query(() => [Zone], { name: 'zonesForUser' })

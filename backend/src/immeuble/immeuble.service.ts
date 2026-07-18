@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
 import { parseRing, pointInZone, polygonAreaM2 } from '../zone/zone.geometry';
 import {
   CreateImmeubleInput,
@@ -430,7 +431,7 @@ export class ImmeubleService {
     }
 
     return this.prisma.immeuble.findMany({
-      where: roleWhere,
+      where: { AND: [roleWhere, prodImmeubleWhere] },
       include: {
         portes: {
           select: {

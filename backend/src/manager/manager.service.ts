@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
 import { CreateManagerInput, UpdateManagerInput } from './manager.dto';
 
 @Injectable()
@@ -109,7 +110,24 @@ export class ManagerService {
    * Récupère les données personnelles du manager (pour son espace commercial personnel)
    * Retourne UNIQUEMENT ses propres immeubles et statistiques
    */
-  async findPersonal(id: number, userId: number, userRole: string) {
+  async findPersonal(
+    id: number,
+    userId: number,
+    userRole: string,
+    excludeTestUsers = false,
+  ) {
+    // Options d'include/where construites dynamiquement selon excludeTestUsers,
+    // réutilisées par les branches admin et non-admin ci-dessous.
+    const commercialsImmeublesInclude = excludeTestUsers
+      ? { where: prodImmeubleWhere, include: { portes: true } }
+      : { include: { portes: true } };
+    const zonesImmeublesInclude = excludeTestUsers
+      ? { where: prodImmeubleWhere }
+      : true;
+    const managerImmeublesWhere = excludeTestUsers
+      ? { AND: [{ managerId: id }, prodImmeubleWhere] }
+      : { managerId: id };
+
     // Admin can access all
     if (userRole === 'admin') {
       const manager = await this.prisma.manager.findUnique({
@@ -118,11 +136,7 @@ export class ManagerService {
           directeur: true,
           commercials: {
             include: {
-              immeubles: {
-                include: {
-                  portes: true,
-                },
-              },
+              immeubles: commercialsImmeublesInclude,
             },
           },
         },
@@ -134,7 +148,7 @@ export class ManagerService {
 
       // Récupérer UNIQUEMENT les propres immeubles du manager
       const immeubles = await this.prisma.immeuble.findMany({
-        where: { managerId: id },
+        where: managerImmeublesWhere,
         include: {
           portes: true,
         },
@@ -149,7 +163,7 @@ export class ManagerService {
       const zones = await this.prisma.zone.findMany({
         where: { managerId: id },
         include: {
-          immeubles: true,
+          immeubles: zonesImmeublesInclude,
         },
       });
 
@@ -167,11 +181,7 @@ export class ManagerService {
         directeur: true,
         commercials: {
           include: {
-            immeubles: {
-              include: {
-                portes: true,
-              },
-            },
+            immeubles: commercialsImmeublesInclude,
           },
         },
       },
@@ -193,7 +203,7 @@ export class ManagerService {
 
     // Récupérer UNIQUEMENT les propres immeubles du manager
     const immeubles = await this.prisma.immeuble.findMany({
-      where: { managerId: id },
+      where: managerImmeublesWhere,
       include: {
         portes: true,
       },
@@ -208,7 +218,7 @@ export class ManagerService {
     const zones = await this.prisma.zone.findMany({
       where: { managerId: id },
       include: {
-        immeubles: true,
+        immeubles: zonesImmeublesInclude,
       },
     });
 
@@ -234,6 +244,7 @@ export class ManagerService {
         zones: {
           include: {
             immeubles: {
+              where: prodImmeubleWhere,
               include: {
                 portes: true,
               },
@@ -245,6 +256,7 @@ export class ManagerService {
           include: {
             statistics: true,
             immeubles: {
+              where: prodImmeubleWhere,
               include: {
                 portes: true,
               },
@@ -279,7 +291,7 @@ export class ManagerService {
 
     // Récupérer les propres immeubles et statistiques du manager séparément
     const managerImmeubles = await this.prisma.immeuble.findMany({
-      where: { managerId: id },
+      where: { AND: [{ managerId: id }, prodImmeubleWhere] },
       include: {
         portes: true,
       },
