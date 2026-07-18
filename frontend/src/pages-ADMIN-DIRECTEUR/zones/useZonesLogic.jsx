@@ -10,10 +10,13 @@ import {
   useCommercials,
   useAssignZone,
   useAssignZoneToManager,
+  useUnassignUser,
   useAllCurrentAssignments,
+  getErrorMessage,
 } from '@/services'
 import { useEntityPermissions, useEntityDescription } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useRole } from '@/contexts/userole'
+import { Badge } from '@/components/ui/badge'
 import { fetchLocationName } from './zones-utils'
 import { ROLES } from '@/hooks/metier/permissions/roleFilters'
 import { parseAssignedUserIds, getAssignedUserIdsFromZone } from './zones-utils'
@@ -163,10 +166,26 @@ export const useEnrichedZones = (zones, directeurs, managers, commercials, allAs
           ? uniqueAssignedUsers.join(', ')
           : 'Non assigné'
 
+        // Date d'assignation la plus récente parmi les assignations ZoneEnCours de la zone
+        // (reprend l'info affichée par l'ex-page "Assignations en cours")
+        const assignedAtDates = zoneAssignments
+          .map(assignment => assignment.assignedAt)
+          .filter(Boolean)
+          .map(date => new Date(date))
+        const assignedSince =
+          assignedAtDates.length > 0
+            ? new Date(Math.max(...assignedAtDates.map(date => date.getTime())))
+            : null
+        const daysSinceAssignment = assignedSince
+          ? Math.ceil((new Date() - assignedSince) / (1000 * 60 * 60 * 24))
+          : null
+
         return {
           ...zone,
           assignedTo,
           assignedUsersCount: uniqueAssignedUsers.length,
+          assignedSince,
+          daysSinceAssignment,
         }
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -184,6 +203,12 @@ export function useZonesLogic() {
     zone: null,
     isLoading: false,
   })
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    zone: null,
+    initialSelectedUserIds: [],
+  })
+  const [isReassigning, setIsReassigning] = useState(false)
 
   // Récupération du rôle de l'utilisateur
   const { currentRole, currentUserId } = useRole()
@@ -198,7 +223,8 @@ export function useZonesLogic() {
   const { mutate: removeZone } = useRemoveZone()
   const { mutate: assignZoneToCommercial } = useAssignZone()
   const { mutate: assignZoneToManager } = useAssignZoneToManager()
-  
+  const { mutate: unassignUser } = useUnassignUser()
+
   const { data: directeurs } = useDirecteurs()
   const { data: managers } = useManagers()
   const { data: commercials } = useCommercials()
@@ -213,30 +239,43 @@ export function useZonesLogic() {
   const assignableUsers = useAssignableUsers(permissions, currentUserId, currentRole, managers, commercials)
   const mapboxLazyLoader = useMapboxLoader()
 
-  // Helper local pour le traitement des assignations
-  const processAssignments = async (zoneId, assignments) => {
-    const assignmentPromises = assignments.map(assignment => {
-      if (assignment.role === 'commercial') {
-        return assignZoneToCommercial({
-          commercialId: assignment.id,
-          zoneId: zoneId,
-        }).catch(err => {
-          console.warn('Assignation commerciale échouée (ignorée):', err)
-          return null
-        })
-      } else if (assignment.role === 'manager') {
-        return assignZoneToManager({
-          managerId: assignment.id,
-          zoneId: zoneId,
-        }).catch(err => {
-          console.warn('Assignation manager échouée (ignorée):', err)
-          return null
-        })
-      }
-      return Promise.resolve()
-    })
+  // Synchronise les assignés d'une zone avec une sélection voulue : ajoute les
+  // nouveaux et désassigne ceux retirés (contrairement à l'ancien processAssignments
+  // qui n'ajoutait jamais). Ne surface les erreurs qu'après avoir tenté toutes
+  // les opérations, et rafraîchit systématiquement zones + assignations.
+  const syncZoneAssignments = async (zone, desiredUserIds) => {
+    const currentUserIds = getAssignedUserIdsFromZone(zone, allAssignments)
+    const currentSet = new Set(currentUserIds)
+    const desiredSet = new Set(desiredUserIds)
 
-    await Promise.allSettled(assignmentPromises)
+    const toAdd = parseAssignedUserIds(desiredUserIds.filter(id => !currentSet.has(id))).filter(
+      ({ role }) => role === 'commercial' || role === 'manager'
+    )
+
+    const toRemove = parseAssignedUserIds(currentUserIds.filter(id => !desiredSet.has(id))).filter(
+      ({ role }) => role === 'commercial' || role === 'manager'
+    )
+
+    const operations = [
+      ...toAdd.map(({ role, id }) =>
+        role === 'commercial'
+          ? assignZoneToCommercial({ commercialId: id, zoneId: zone.id })
+          : assignZoneToManager({ managerId: id, zoneId: zone.id })
+      ),
+      ...toRemove.map(({ role, id }) => unassignUser({ userId: id, userType: role.toUpperCase() })),
+    ]
+
+    const results = await Promise.allSettled(operations)
+
+    await Promise.all([refetchZones(), refetchAssignments()])
+
+    const failures = results.filter(result => result.status === 'rejected')
+    if (failures.length > 0) {
+      const messages = failures.map(failure => getErrorMessage(failure.reason))
+      throw new Error(
+        `${failures.length} assignation(s) n'ont pas pu être appliquées : ${messages.join(', ')}`
+      )
+    }
   }
 
   // Actions Handlers
@@ -297,33 +336,53 @@ export function useZonesLogic() {
   const handleZoneValidate = async (zoneData, assignedUserIds) => {
     setIsSubmittingZone(true)
     try {
-      // Chaque sélection correspond à une assignation réelle (assignation individuelle, sans cascade)
-      const assignments = parseAssignedUserIds(assignedUserIds)
-
       if (editingZone) {
         // Modifier la zone existante (sans directeurId/managerId)
         await updateZone({
           id: editingZone.id,
           ...zoneData,
         })
-        await processAssignments(editingZone.id, assignments)
+        await syncZoneAssignments(editingZone, assignedUserIds)
       } else {
         // Créer une nouvelle zone (sans directeurId/managerId)
         const newZone = await createZone(zoneData)
         if (newZone?.id) {
-          await processAssignments(newZone.id, assignments)
+          await syncZoneAssignments(newZone, assignedUserIds)
         }
       }
 
       showSuccess(editingZone ? 'Zone modifiée avec succès' : 'Zone créée avec succès')
-
-      // Rafraîchir la liste des zones
-      await Promise.all([refetchZones(), refetchAssignments()])
       setShowZoneModal(false)
     } catch (error) {
       showError(error, 'Zones.handleZoneValidate')
     } finally {
       setIsSubmittingZone(false)
+    }
+  }
+
+  const handleReassignZone = zone => {
+    setReassignModal({
+      isOpen: true,
+      zone,
+      initialSelectedUserIds: getAssignedUserIdsFromZone(zone, allAssignments),
+    })
+  }
+
+  const handleCloseReassignModal = () => {
+    setReassignModal({ isOpen: false, zone: null, initialSelectedUserIds: [] })
+  }
+
+  const handleReassignValidate = async selectedUserIds => {
+    if (!reassignModal.zone) return
+    setIsReassigning(true)
+    try {
+      await syncZoneAssignments(reassignModal.zone, selectedUserIds)
+      showSuccess('Zone réassignée avec succès')
+      setReassignModal({ isOpen: false, zone: null, initialSelectedUserIds: [] })
+    } catch (error) {
+      showError(error, 'Zones.handleReassignValidate')
+    } finally {
+      setIsReassigning(false)
     }
   }
 
@@ -392,6 +451,20 @@ export function useZonesLogic() {
       },
     },
     {
+      header: 'Depuis',
+      accessor: 'daysSinceAssignment',
+      sortable: true,
+      className: 'hidden lg:table-cell text-center',
+      cell: row =>
+        row.daysSinceAssignment != null ? (
+          <Badge className="bg-blue-100 text-blue-800">
+            {row.daysSinceAssignment} jour{row.daysSinceAssignment > 1 ? 's' : ''}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
       header: 'Rayon (km)',
       accessor: 'rayon',
       sortable: true,
@@ -422,5 +495,10 @@ export function useZonesLogic() {
     setConfirmAction,
     confirmDeleteZone,
     confirmEditZone,
+    reassignModal,
+    isReassigning,
+    handleReassignZone,
+    handleCloseReassignModal,
+    handleReassignValidate,
   }
 }

@@ -56,9 +56,8 @@ const terrainItems = [
     icon: MapPin,
     entity: 'zones',
     subitems: [
-      { title: "Vue d'ensemble", url: '/zones' },
-      { title: 'Assignations', url: '/zones/assignations' },
-      { title: 'Historique', url: '/zones/historique' },
+      { title: 'Zones en cours', url: '/zones' },
+      { title: 'Historique de zones', url: '/zones/historique' },
     ],
   },
   {

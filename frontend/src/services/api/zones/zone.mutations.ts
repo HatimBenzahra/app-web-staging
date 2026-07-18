@@ -50,3 +50,9 @@ export const REMOVE_ZONE = `
     }
   }
 `
+
+export const UNASSIGN_USER = `
+  mutation UnassignUser($userId: Int!, $userType: UserType!) {
+    unassignUser(userId: $userId, userType: $userType)
+  }
+`

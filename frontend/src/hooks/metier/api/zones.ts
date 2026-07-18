@@ -47,6 +47,16 @@ export function useAssignZoneToManager(): UseApiMutation<
   )
 }
 
+export function useUnassignUser(): UseApiMutation<
+  { userId: number; userType: string },
+  boolean
+> {
+  return useApiMutation(
+    ({ userId, userType }) => api.zones.unassignUser(userId, userType),
+    'zones'
+  )
+}
+
 export function useCurrentZoneAssignment(
   userId: number,
   userType: string

@@ -22,7 +22,6 @@ const Immeubles = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/Immeubles
 const AdressesAcquiscan = lazy(() => import('@/pages-ADMIN-DIRECTEUR/adresses/AdressesAcquiscan'))
 const Zones = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/Zones'))
 const HistoriqueZones = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/HistoriqueZones'))
-const AssignationsEnCours = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/AssignationsEnCours'))
 const CommercialDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/commercial/CommercialDetails'))
 const ManagerDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/managers/ManagerDetails'))
 const DirecteurDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/directeurs/DirecteurDetails'))
@@ -81,7 +80,7 @@ function AdminLayout() {
     immeubles: { label: 'Bâtiments', href: '/immeubles' },
     adresses: { label: 'Ciblage Acquiscan', href: '/adresses' },
     portes: { label: 'Porte', href: '' },
-    zones: { label: 'Zones', href: '/zones' },
+    zones: { label: 'Zones en cours', href: '/zones' },
     gestion: { label: 'Gestion', href: '/gestion' },
     'gps-tracking': { label: 'Suivi GPS', href: '/gps-tracking' },
     ecoutes: { label: 'Bibliothèque', href: '/ecoutes/enregistrement' },
@@ -92,8 +91,7 @@ function AdminLayout() {
     releases: { label: 'Releases', href: '/kiosk/releases' },
     deploiements: { label: 'Déploiements', href: '/kiosk/deploiements' },
     logs: { label: 'Logs', href: '/kiosk/logs' },
-    assignations: { label: 'Assignations en cours', href: '/zones/assignations' },
-    historique: { label: 'Historique', href: '/zones/historique' },
+    historique: { label: 'Historique de zones', href: '/zones/historique' },
   }
 
   const buildBreadcrumbs = () => {
@@ -284,14 +282,7 @@ function AdminLayout() {
                       </SectionErrorBoundary>
                     }
                   />
-                  <Route
-                    path="/zones/assignations"
-                    element={
-                      <SectionErrorBoundary>
-                        <AssignationsEnCours />
-                      </SectionErrorBoundary>
-                    }
-                  />
+                  <Route path="/zones/assignations" element={<Navigate to="/zones" replace />} />
                   <Route
                     path="/zones/:id"
                     element={

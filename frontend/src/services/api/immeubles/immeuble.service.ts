@@ -6,6 +6,7 @@ import { gql } from '../../core/graphql'
 import {
   GET_IMMEUBLES,
   GET_IMMEUBLE,
+  GET_QUARTIERS,
 } from './immeuble.queries'
 import {
   CREATE_IMMEUBLE,
@@ -18,8 +19,10 @@ import {
 } from './immeuble.mutations'
 import type {
   Immeuble,
+  Quartier,
   QueryImmeublesResponse,
   QueryImmeubleResponse,
+  QueryQuartiersResponse,
   CreateImmeubleVariables,
   MutationCreateImmeubleResponse,
   UpdateImmeubleVariables,
@@ -37,6 +40,15 @@ export const immeubleApi = {
   async getById(id: number): Promise<Immeuble> {
     const response = await gql<QueryImmeubleResponse, GetEntityByIdVariables>(GET_IMMEUBLE, { id })
     return response.immeuble
+  },
+
+  /**
+   * Charge les quartiers (id + nom uniquement) pour le filtre/regroupement
+   * de la page Bâtiments. Requête role-scopée côté backend (admin/directeur).
+   */
+  async getQuartiers(): Promise<Quartier[]> {
+    const response = await gql<QueryQuartiersResponse, {}>(GET_QUARTIERS, {})
+    return response.quartiers
   },
 
   async create(input: CreateImmeubleVariables['createImmeubleInput']): Promise<Immeuble> {

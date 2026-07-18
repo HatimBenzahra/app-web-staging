@@ -9,6 +9,7 @@ import type {
   Commercial,
   Zone,
   Immeuble,
+  Quartier,
   Statistic,
   TimelinePoint,
   OwnerActivityStatistic,
@@ -81,6 +82,10 @@ export interface QueryImmeublesResponse {
 
 export interface QueryImmeubleResponse {
   immeuble: Immeuble
+}
+
+export interface QueryQuartiersResponse {
+  quartiers: Quartier[]
 }
 
 export interface QueryStatisticsResponse {

@@ -3,12 +3,14 @@
  */
 
 export type {
-  Immeuble
+  Immeuble,
+  Quartier,
 } from '../../../types/api'
 
 export type {
   QueryImmeublesResponse,
   QueryImmeubleResponse,
+  QueryQuartiersResponse,
   CreateImmeubleVariables,
   MutationCreateImmeubleResponse,
   UpdateImmeubleVariables,

@@ -15,6 +15,7 @@ import {
   CREATE_ZONE,
   UPDATE_ZONE,
   REMOVE_ZONE,
+  UNASSIGN_USER,
 } from './zone.mutations'
 import { ASSIGN_ZONE_TO_MANAGER as ASSIGN_TO_MANAGER_MUTATION } from '../managers/manager.mutations'
 
@@ -68,6 +69,14 @@ export const zoneApi = {
       { managerId: number; zoneId: number }
     >(ASSIGN_TO_MANAGER_MUTATION, { managerId, zoneId })
     return response.assignZoneToManager
+  },
+
+  async unassignUser(userId: number, userType: string): Promise<boolean> {
+    const response = await gql<
+      { unassignUser: boolean },
+      { userId: number; userType: string }
+    >(UNASSIGN_USER, { userId, userType })
+    return response.unassignUser
   },
 
   async getCurrentUserAssignment(userId: number, userType: string): Promise<any> {

@@ -88,11 +88,21 @@ export interface Immeuble extends BaseEntity {
   commercialId?: number | null
   managerId?: number | null
   zoneId?: number | null
+  quartierId?: number | null
   ascenseurPresent?: boolean
   digitalCode?: string | null
   latitude?: number | null
   longitude?: number | null
   portes?: Porte[]
+}
+
+/**
+ * Quartier (regroupement de bâtiments) — version allégée (id + nom) utilisée
+ * côté web pour le filtre / regroupement de la page Bâtiments.
+ */
+export interface Quartier {
+  id: number
+  nom: string
 }
 
 export interface Statistic extends BaseEntity {

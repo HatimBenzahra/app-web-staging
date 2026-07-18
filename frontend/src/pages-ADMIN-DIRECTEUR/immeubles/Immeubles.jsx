@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { AdvancedDataTable } from '@/components/tableau'
 import { MapSkeleton, TableSkeleton } from '@/components/LoadingSkeletons'
 import { Button } from '@/components/ui/button'
@@ -23,10 +23,53 @@ import {
   User,
   CalendarCheck,
   EyeOff,
+  MapPin,
+  Layers,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
-import { useImmeublesLogic } from './useImmeublesLogic'
+import { useImmeublesLogic, AUTONOMES_KEY } from './useImmeublesLogic'
 
 const AssignedZoneCard = lazy(() => import('@/components/AssignedZoneCard'))
+
+function QuartierGroupSection({ group, columns, description, permissions, onDelete }) {
+  const [open, setOpen] = useState(true)
+  const label = group.isAutonomes ? 'Autonomes' : group.label
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen(prev => !prev)}
+        className="flex w-full items-center justify-between rounded-lg border bg-muted/30 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2">
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-sm font-semibold">{label}</span>
+        </div>
+        <Badge variant="secondary" className="text-xs tabular-nums">
+          {group.data.length} bâtiment{group.data.length > 1 ? 's' : ''}
+        </Badge>
+      </button>
+      {open && (
+        <AdvancedDataTable
+          showStatusColumn={false}
+          title={label}
+          description={description}
+          data={group.data}
+          columns={columns}
+          searchKey="address"
+          detailsPath="/immeubles"
+          onDelete={permissions.canDelete ? onDelete : undefined}
+        />
+      )}
+    </div>
+  )
+}
 
 export default function Immeubles() {
   const {
@@ -42,11 +85,17 @@ export default function Immeubles() {
     stats,
     filterCommercial,
     setFilterCommercial,
+    filterQuartier,
+    setFilterQuartier,
+    groupByQuartier,
+    setGroupByQuartier,
+    groupedByQuartier,
     dateFilterMode,
     setDateFilterMode,
     createdDate,
     setCreatedDate,
     commercialsList,
+    quartiersList,
   } = useImmeublesLogic()
 
   if (immeublesLoading) {
@@ -204,6 +253,22 @@ export default function Immeubles() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={filterQuartier} onValueChange={setFilterQuartier}>
+            <SelectTrigger className="w-auto">
+              <MapPin className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Quartier..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les quartiers</SelectItem>
+              {quartiersList?.map(quartier => (
+                <SelectItem key={quartier.id} value={String(quartier.id)}>
+                  {quartier.nom}
+                </SelectItem>
+              ))}
+              <SelectItem value={AUTONOMES_KEY}>Autonomes</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex items-center gap-3">
@@ -211,6 +276,17 @@ export default function Immeubles() {
             {filteredImmeubles.length} immeuble{filteredImmeubles.length > 1 ? 's' : ''}
           </Badge>
           <div className="flex gap-1">
+            {viewMode === 'list' && (
+              <Button
+                variant={groupByQuartier ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setGroupByQuartier(prev => !prev)}
+                className="gap-2"
+              >
+                <Layers className="h-4 w-4" />
+                Grouper par quartier
+              </Button>
+            )}
             <Button
               variant={viewMode === 'list' ? 'default' : 'outline'}
               size="sm"
@@ -235,16 +311,31 @@ export default function Immeubles() {
 
       {/* Affichage conditionnel basé sur viewMode */}
       {viewMode === 'list' ? (
-        <AdvancedDataTable
-          showStatusColumn={false}
-          title="Liste des bâtiments"
-          description={description}
-          data={tableData}
-          columns={immeublesColumns}
-          searchKey="address"
-          detailsPath="/immeubles"
-          onDelete={permissions.canDelete ? handleDeleteImmeuble : undefined}
-        />
+        groupByQuartier ? (
+          <div className="space-y-4">
+            {groupedByQuartier.map(group => (
+              <QuartierGroupSection
+                key={group.key}
+                group={group}
+                columns={immeublesColumns}
+                description={description}
+                permissions={permissions}
+                onDelete={handleDeleteImmeuble}
+              />
+            ))}
+          </div>
+        ) : (
+          <AdvancedDataTable
+            showStatusColumn={false}
+            title="Liste des bâtiments"
+            description={description}
+            data={tableData}
+            columns={immeublesColumns}
+            searchKey="address"
+            detailsPath="/immeubles"
+            onDelete={permissions.canDelete ? handleDeleteImmeuble : undefined}
+          />
+        )
       ) : (
         <Suspense fallback={<MapSkeleton />}>
           <AssignedZoneCard

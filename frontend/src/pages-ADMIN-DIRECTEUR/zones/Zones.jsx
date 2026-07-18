@@ -1,8 +1,10 @@
 import { lazy, Suspense } from 'react'
+import { Repeat } from 'lucide-react'
 import { AdvancedDataTable } from '@/components/tableau'
 import { MapSkeleton } from '@/components/LoadingSkeletons'
 import { ActionConfirmation } from '@/components/ActionConfirmation'
 import { useZonesLogic } from './useZonesLogic'
+import ZoneAssignModal from './ZoneAssignModal'
 
 const ZoneCreatorModal = lazy(() => import('@/components/ZoneCreatorModal'))
 
@@ -28,13 +30,29 @@ export default function Zones() {
     setConfirmAction,
     confirmDeleteZone,
     confirmEditZone,
+    reassignModal,
+    isReassigning,
+    handleReassignZone,
+    handleCloseReassignModal,
+    handleReassignValidate,
   } = useZonesLogic()
+
+  const rowActions = permissions.canEdit
+    ? [
+        {
+          key: 'reassign',
+          label: 'Réassigner',
+          icon: Repeat,
+          onClick: handleReassignZone,
+        },
+      ]
+    : []
 
   return (
     <div className="space-y-6">
       <AdvancedDataTable
         showStatusColumn={false}
-        title="Liste des Zones"
+        title="Zones en cours"
         description={description}
         data={enrichedZones}
         columns={zonesColumns}
@@ -44,6 +62,7 @@ export default function Zones() {
         detailsPath="/zones"
         onEdit={permissions.canEdit ? handleEditZone : undefined}
         onDelete={permissions.canDelete ? handleDeleteZone : undefined}
+        rowActions={rowActions}
         lazyLoaders={[mapboxLazyLoader]}
       />
 
@@ -66,6 +85,16 @@ export default function Zones() {
           />
         </Suspense>
       )}
+
+      <ZoneAssignModal
+        isOpen={reassignModal.isOpen}
+        zone={reassignModal.zone}
+        assignableUsers={assignableUsers}
+        initialSelectedUserIds={reassignModal.initialSelectedUserIds}
+        onValidate={handleReassignValidate}
+        onClose={handleCloseReassignModal}
+        isSubmitting={isReassigning}
+      />
 
       <ActionConfirmation
         isOpen={confirmAction.isOpen}

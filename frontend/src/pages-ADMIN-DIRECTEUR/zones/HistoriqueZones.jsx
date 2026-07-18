@@ -127,7 +127,7 @@ export default function HistoriqueZones() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Historique des Zones</CardTitle>
+          <CardTitle>Historique de zones</CardTitle>
           <CardDescription>Chargement...</CardDescription>
         </CardHeader>
       </Card>
@@ -138,7 +138,7 @@ export default function HistoriqueZones() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Historique des Zones</CardTitle>
+          <CardTitle>Historique de zones</CardTitle>
           <CardDescription className="text-red-500">
             Erreur lors du chargement : {historyError}
           </CardDescription>
@@ -150,14 +150,14 @@ export default function HistoriqueZones() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Historique des Zones</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Historique de zones</h1>
         <p className="text-muted-foreground text-base">
           Consultez l'historique complet des assignations de zones avec leurs performances
         </p>
       </div>
       <AdvancedDataTable
         showStatusColumn={false}
-        title="Historique des Zones"
+        title="Historique de zones"
         description="Toutes les assignations de zones passées avec leurs statistiques"
         data={enrichedHistory}
         columns={columns}

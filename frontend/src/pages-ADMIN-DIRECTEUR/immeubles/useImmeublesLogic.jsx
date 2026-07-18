@@ -5,6 +5,7 @@ import {
   useRemoveImmeuble,
   useCommercials,
   useManagers,
+  useQuartiers,
 } from '@/services'
 import {
   useEntityPermissions,
@@ -14,6 +15,9 @@ import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { Badge } from '@/components/ui/badge'
 import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 import { habitatBreakdown } from '@/constants/domain/habitat'
+
+// Valeur de filtre/groupe pour les bâtiments sans quartier
+export const AUTONOMES_KEY = 'autonomes'
 
 function calculnbcontrats(immeuble) {
   return (immeuble.portes || [])
@@ -26,14 +30,23 @@ export function useImmeublesLogic() {
   const [viewMode, setViewMode] = useState('list')
   const [dateFilterMode, setDateFilterMode] = useState('updatedAt_desc')
   const [filterCommercial, setFilterCommercial] = useState('all')
+  const [filterQuartier, setFilterQuartier] = useState('all')
+  const [groupByQuartier, setGroupByQuartier] = useState(false)
   const [createdDate, setCreatedDate] = useState('')
 
   // API hooks
   const { data: immeublesApi, loading: immeublesLoading, refetch } = useImmeubles()
   const { data: commercials } = useCommercials()
   const { data: managers } = useManagers()
+  const { data: quartiers } = useQuartiers()
   const { mutate: updateImmeuble } = useUpdateImmeuble()
   const { mutate: removeImmeuble } = useRemoveImmeuble()
+
+  const quartierNameById = useMemo(() => {
+    const map = new Map()
+    ;(quartiers || []).forEach(q => map.set(q.id, q.nom))
+    return map
+  }, [quartiers])
 
   useEffect(() => {
     if (dateFilterMode !== 'created_specific_date' && createdDate) {
@@ -58,6 +71,14 @@ export function useImmeublesLogic() {
 
     if (filterCommercial !== 'all') {
       result = result.filter(imm => imm.commercialId === parseInt(filterCommercial))
+    }
+
+    if (filterQuartier !== 'all') {
+      if (filterQuartier === AUTONOMES_KEY) {
+        result = result.filter(imm => imm.quartierId == null)
+      } else {
+        result = result.filter(imm => imm.quartierId === parseInt(filterQuartier))
+      }
     }
 
     if (dateFilterMode === 'created_yesterday') {
@@ -103,7 +124,7 @@ export function useImmeublesLogic() {
     }
 
     return result
-  }, [immeublesApi, filterCommercial, dateFilterMode, createdDate])
+  }, [immeublesApi, filterCommercial, filterQuartier, dateFilterMode, createdDate])
 
   // Récupération des permissions et description
   const permissions = useEntityPermissions('immeubles')
@@ -135,6 +156,17 @@ export function useImmeublesLogic() {
         accessor: 'commercial_name',
         sortable: true,
         className: 'hidden xl:table-cell text-[13px]',
+      },
+      {
+        header: 'Quartier',
+        accessor: 'quartier_name',
+        sortable: true,
+        className: 'hidden lg:table-cell text-[13px]',
+        cell: row => (
+          <span className={row.quartierId == null ? 'text-muted-foreground' : ''}>
+            {row.quartier_name}
+          </span>
+        ),
       },
       {
         header: 'Ét.',
@@ -292,6 +324,10 @@ export function useImmeublesLogic() {
 
       const rdvCount = portesImmeuble.filter(p => p.statut === 'RENDEZ_VOUS_PRIS').length
       const nonVisiteCount = portesImmeuble.filter(p => p.statut === 'NON_VISITE').length
+      const quartierName =
+        immeuble.quartierId != null
+          ? quartierNameById.get(immeuble.quartierId) || 'Quartier inconnu'
+          : 'Autonome'
 
       return {
         ...immeuble,
@@ -304,6 +340,7 @@ export function useImmeublesLogic() {
         rdvCount,
         nonVisiteCount,
         commercial_name: responsibleName,
+        quartier_name: quartierName,
       }
     })
 
@@ -337,7 +374,7 @@ export function useImmeublesLogic() {
         typeBreakdown,
       },
     }
-  }, [filteredImmeubles, commercials, managers, effectiveSortBy])
+  }, [filteredImmeubles, commercials, managers, quartierNameById, effectiveSortBy])
 
   const stats = tableData?.stats || {
     totalImmeubles: 0,
@@ -347,7 +384,33 @@ export function useImmeublesLogic() {
     totalNonVisites: 0,
     typeBreakdown: { total: 0, IMMEUBLE: 0, MAISON: 0, PAVILLON: 0 },
   }
-  const finalTableData = tableData?.data || []
+  const finalTableData = useMemo(() => tableData?.data || [], [tableData])
+
+  // Regroupement par quartier (utilisé quand groupByQuartier est actif) :
+  // réutilise finalTableData / immeublesColumns, aucune logique de rendu de ligne dupliquée.
+  const groupedByQuartier = useMemo(() => {
+    const groupsById = new Map()
+
+    finalTableData.forEach(row => {
+      const key = row.quartierId != null ? String(row.quartierId) : AUTONOMES_KEY
+      if (!groupsById.has(key)) {
+        groupsById.set(key, {
+          key,
+          label: row.quartier_name,
+          isAutonomes: row.quartierId == null,
+          data: [],
+        })
+      }
+      groupsById.get(key).data.push(row)
+    })
+
+    const groups = Array.from(groupsById.values())
+    groups.sort((a, b) => {
+      if (a.isAutonomes !== b.isAutonomes) return a.isAutonomes ? 1 : -1
+      return a.label.localeCompare(b.label, 'fr')
+    })
+    return groups
+  }, [finalTableData])
 
   const handleEditImmeuble = async editedData => {
     try {
@@ -398,10 +461,16 @@ export function useImmeublesLogic() {
     filteredImmeubles,
     filterCommercial,
     setFilterCommercial,
+    filterQuartier,
+    setFilterQuartier,
+    groupByQuartier,
+    setGroupByQuartier,
+    groupedByQuartier,
     dateFilterMode,
     setDateFilterMode,
     createdDate,
     setCreatedDate,
     commercialsList: commercials,
+    quartiersList: quartiers,
   }
 }

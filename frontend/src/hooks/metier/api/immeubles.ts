@@ -5,6 +5,7 @@
 import { api } from '../../../services/api'
 import type {
   Immeuble,
+  Quartier,
   CreateImmeubleInput,
   UpdateImmeubleInput,
 } from '../../../types/api'
@@ -23,6 +24,10 @@ export function useImmeubles(): UseApiListState<Immeuble> & UseApiActions {
 
 export function useImmeuble(id: number): UseApiState<Immeuble> & UseApiActions {
   return useApiCall(() => api.immeubles.getById(id), [id], 'immeubles')
+}
+
+export function useQuartiers(): UseApiListState<Quartier> & UseApiActions {
+  return useApiCall(() => api.immeubles.getQuartiers(), [], 'quartiers')
 }
 
 export function useCreateImmeuble(): UseApiMutation<CreateImmeubleInput, Immeuble> {

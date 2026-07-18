@@ -17,6 +17,7 @@ export const GET_IMMEUBLES = `
       digitalCode
       commercialId
       managerId
+      quartierId
       portes {
         id
         statut
@@ -42,8 +43,18 @@ export const GET_IMMEUBLE = `
       digitalCode
       commercialId
       managerId
+      quartierId
       createdAt
       updatedAt
+    }
+  }
+`
+
+export const GET_QUARTIERS = `
+  query GetQuartiers {
+    quartiers {
+      id
+      nom
     }
   }
 `
