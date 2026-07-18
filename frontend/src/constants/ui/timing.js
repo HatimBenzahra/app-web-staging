@@ -4,24 +4,6 @@
  */
 
 // =============================================================================
-// Audio & Recording
-// =============================================================================
-
-export const AUDIO_TIMING = {
-  // Délai avant connexion audio automatique (laisser le layout se charger)
-  AUTO_CONNECT_DELAY: 2000,
-
-  // Délai avant démarrage enregistrement (attendre stabilisation audio)
-  RECORDING_START_DELAY: 2000,
-
-  // Timeout pour connexion LiveKit
-  CONNECTION_TIMEOUT: 10000,
-
-  // Intervalle de vérification de qualité audio
-  QUALITY_CHECK_INTERVAL: 5000,
-}
-
-// =============================================================================
 // UI & Navigation
 // =============================================================================
 
@@ -78,7 +60,6 @@ export const msToSeconds = ms => Math.round(ms / 1000)
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 export default {
-  AUDIO_TIMING,
   UI_TIMING,
   API_TIMING,
   msToSeconds,

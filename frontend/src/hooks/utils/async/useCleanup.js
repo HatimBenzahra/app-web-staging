@@ -1,6 +1,6 @@
 /**
  * Hook pour gérer le cleanup de ressources de manière générique
- * Élimine la duplication dans useCommercialAutoAudio.js, useRecording.js, etc.
+ * Élimine la duplication dans plusieurs hooks du projet
  */
 
 import { useEffect, useRef, useCallback } from 'react'

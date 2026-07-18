@@ -1,47 +1,12 @@
 import { Field, ObjectType, InputType, Int, Float } from '@nestjs/graphql';
 
 @ObjectType()
-export class RecordingResult {
-  @Field() egressId: string;
-  @Field() roomName: string;
-  @Field() status: string;
-  @Field() s3Key: string;
-  @Field({ nullable: true }) url?: string;
-}
-
-@ObjectType()
 export class RecordingItem {
   @Field() key: string;
   @Field({ nullable: true }) url?: string;
   @Field({ nullable: true }) size?: number;
   @Field({ nullable: true }) lastModified?: Date;
   @Field({ nullable: true }) hasConversation?: boolean;
-}
-
-@ObjectType()
-export class EgressState {
-  @Field() egressId: string;
-  @Field() status: string;
-  @Field({ nullable: true }) roomName?: string;
-  @Field({ nullable: true }) error?: string;
-}
-
-@InputType()
-export class StartRecordingInput {
-  @Field() roomName: string;
-  @Field({ nullable: true, defaultValue: true })
-  audioOnly?: boolean;
-
-  @Field({ nullable: true })
-  participantIdentity?: string;
-
-  @Field({ nullable: true })
-  immeubleId?: number;
-}
-
-@InputType()
-export class StopRecordingInput {
-  @Field() egressId: string;
 }
 
 @InputType()

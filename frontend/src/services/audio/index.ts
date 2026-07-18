@@ -1,5 +1,5 @@
 /**
- * Audio Module - Central export for recording and monitoring services
+ * Audio Module - Central export for recording services
  */
 
 // Recording module exports
@@ -11,14 +11,3 @@ export type {
   StartRecordingResponse,
   StopRecordingInput,
 } from './recordings'
-
-// Monitoring module exports
-export { AudioMonitoringService, LiveKitUtils } from './monitoring'
-export type {
-  TokenResponse,
-  MonitoringSession,
-  ActiveRoom,
-  StopMonitoringInput,
-  ConnectionDetails,
-  LiveKitRoom,
-} from './monitoring'

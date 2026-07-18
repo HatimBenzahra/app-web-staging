@@ -8,12 +8,6 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EgressClient } from 'livekit-server-sdk';
-import {
-  EncodedFileOutput,
-  EncodedFileType,
-  S3Upload,
-} from 'livekit-server-sdk';
 import {
   S3Client,
   ListObjectsV2Command,
@@ -26,10 +20,7 @@ import { promisify } from 'util';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import {
-  RecordingResult,
   RecordingItem,
-  EgressState,
-  StartRecordingInput,
   RequestRecordingUploadInput,
   RecordingUploadDetails,
   ConfirmRecordingUploadInput,
@@ -55,23 +46,11 @@ const FFMPEG_MAX_BUFFER = 10 * 1024 * 1024;
 export class RecordingService {
   private readonly logger = new Logger(RecordingService.name);
 
-  private readonly lkHost = process.env.LK_HOST!;
-  private readonly lkApiKey = process.env.LK_API_KEY!;
-  private readonly lkApiSecret = process.env.LK_API_SECRET!;
-
   private readonly region = process.env.AWS_REGION || 'eu-west-3';
   private readonly bucket = process.env.S3_BUCKET_NAME!;
   private readonly prefix = process.env.S3_PREFIX || 'recordings/';
   private readonly awsAccessKey = process.env.AWS_ACCESS_KEY_ID!;
   private readonly awsSecretKey = process.env.AWS_SECRET_ACCESS_KEY!;
-
-
-  // EgressClient needs HTTP(S) URL, convert if WSS provided
-  private readonly egress = new EgressClient(
-    this.lkHost.replace(/^wss?:\/\//, 'https://'),
-    this.lkApiKey,
-    this.lkApiSecret,
-  );
 
   // Force l’usage des clés de .env (évite ~/.aws/credentials)
   private readonly s3 = new S3Client({
@@ -139,25 +118,6 @@ export class RecordingService {
       return null;
     }
 
-    return { type: type as RoomTarget['type'], id };
-  }
-
-  private parseParticipantIdentity(identity?: string): RoomTarget | null {
-    if (!identity) {
-      return null;
-    }
-    const [rawType, rawId] = identity.split('-');
-    if (!rawType || !rawId) {
-      return null;
-    }
-    const type = rawType.toUpperCase();
-    const id = Number(rawId);
-    if (!Number.isFinite(id)) {
-      return null;
-    }
-    if (type !== 'COMMERCIAL' && type !== 'MANAGER') {
-      return null;
-    }
     return { type: type as RoomTarget['type'], id };
   }
 
@@ -396,133 +356,6 @@ export class RecordingService {
     };
   }
 
-  /**
-   * Démarre un enregistrement audio-only (par défaut) vers S3.
-   * - Si `participantIdentity` est fourni → Participant Egress (cible unique)
-   * - Sinon → Room Composite Egress.
-   */
-  async startRecording(
-    input: StartRecordingInput,
-    currentUser: { id: number; role: string },
-  ): Promise<RecordingResult> {
-    const {
-      roomName,
-      audioOnly = true,
-      participantIdentity,
-      immeubleId,
-    } = input;
-
-    const target = await this.ensureRoomAccess(
-      roomName,
-      currentUser.id,
-      currentUser.role,
-    );
-
-    if (participantIdentity && target) {
-      const parsed = this.parseParticipantIdentity(participantIdentity);
-      if (!parsed || parsed.type !== target.type || parsed.id !== target.id) {
-        throw new ForbiddenException(
-          'Participant identity does not match the room owner',
-        );
-      }
-    }
-
-    const safe = this.safeRoom(roomName);
-    const ts = new Date().toISOString().replace(/[:]/g, '-');
-
-    let addressPart = '';
-    if (immeubleId) {
-      const immeuble = await this.prisma.immeuble.findUnique({
-        where: { id: immeubleId },
-        select: { adresse: true },
-      });
-      if (immeuble?.adresse) {
-        // Nettoyage de l'adresse pour le nom de fichier
-        addressPart = immeuble.adresse.replace(/[^a-z0-9]/gi, '_') + '_';
-      }
-    }
-
-    // OGG (léger). Pour compat Safari, remplace par MP4:
-    // fileType: EncodedFileType.MP4, fileKey = `${...}.mp4`
-    const fileKey = `${this.prefix}${safe}/${addressPart}${ts}.mp4`;
-
-    const fileOutput = new EncodedFileOutput({
-      fileType: EncodedFileType.MP4,
-      filepath: fileKey,
-      output: {
-        case: 's3',
-        value: new S3Upload({
-          bucket: this.bucket,
-          region: this.region,
-          accessKey: this.awsAccessKey,
-          secret: this.awsSecretKey,
-        }),
-      },
-    });
-
-    let info: any;
-    if (participantIdentity) {
-      // Cible uniquement le commercial (ex: "commercial-10")
-      info = await this.egress.startParticipantEgress(
-        roomName,
-        participantIdentity,
-        { file: fileOutput }, // EncodedOutputs
-        { screenShare: false },
-      );
-    } else {
-      // Room composite (n’enregistre que ce qui est publié)
-      info = await this.egress.startRoomCompositeEgress(
-        roomName,
-        fileOutput, // <- le paramètre "output" requis
-        { audioOnly }, // options
-      );
-    }
-
-    this.logger.log(
-      `Recording started: egressId=${info.egressId} room=${roomName} key=${fileKey}`,
-    );
-
-    const url = await this.signedUrlOrUndefined(fileKey);
-
-    return {
-      egressId: info.egressId,
-      roomName,
-      status: String(info.status),
-      s3Key: fileKey,
-      url,
-    };
-  }
-
-  async stopRecording(
-    egressId: string,
-    currentUser: { id: number; role: string },
-  ): Promise<boolean> {
-    try {
-      const list = await this.egress.listEgress({ egressId });
-      const info: any = list[0];
-
-      if (info?.roomName) {
-        await this.ensureRoomAccess(
-          info.roomName,
-          currentUser.id,
-          currentUser.role,
-        );
-      } else if (currentUser.role !== 'admin') {
-        throw new ForbiddenException('Cannot verify recording ownership');
-      }
-
-      await this.egress.stopEgress(egressId);
-      return true;
-    } catch (e: any) {
-      if (e instanceof ForbiddenException) {
-        throw e;
-      }
-      this.logger.warn(`stopRecording(${egressId}): ${e?.message || e}`);
-      // Si déjà FAILED/STOPPED, on considère OK pour l’UI
-      return false;
-    }
-  }
-
   async listRecordings(
     roomName: string,
     currentUser: { id: number; role: string },
@@ -564,34 +397,6 @@ export class RecordingService {
     );
 
     return out;
-  }
-
-  async egressState(
-    egressId: string,
-    currentUser: { id: number; role: string },
-  ): Promise<EgressState> {
-    const list = await this.egress.listEgress({ egressId });
-    const info: any = list[0];
-    if (!info) {
-      return { egressId, status: 'UNKNOWN' };
-    }
-
-    if (info.roomName) {
-      await this.ensureRoomAccess(
-        info.roomName,
-        currentUser.id,
-        currentUser.role,
-      );
-    } else if (currentUser.role !== 'admin') {
-      throw new ForbiddenException('Cannot verify recording ownership');
-    }
-
-    return {
-      egressId: info.egressId || info.id,
-      status: String(info.status),
-      roomName: info.roomName,
-      error: info.error,
-    };
   }
 
   async requestRecordingUpload(

@@ -1,4 +1,3 @@
-import { useOutletContext } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -10,8 +9,6 @@ import {
 } from '@/components/ui/dialog'
 import { List, LogOut, AlertTriangle, Zap } from 'lucide-react'
 
-import { useRecording } from '@/hooks/audio/useRecording'
-import { useRole } from '@/contexts/userole'
 import { usePortesLogic } from './hooks/usePortesLogic'
 
 import EditPorteModal from './components/EditPorteModal'
@@ -23,8 +20,6 @@ import PortesRapide from './components/PortesRapide'
  * Agit comme un conteneur principal qui gère les données et le basculement entre les vues.
  */
 export default function PortesGestion() {
-  const { currentUserId, isManager } = useRole()
-
   // Custom Hook englobant toute la logique
   const { state, actions } = usePortesLogic()
 
@@ -67,25 +62,6 @@ export default function PortesGestion() {
     handleBackToImmeubles,
     handleOpenEditModalFromRapide,
   } = actions
-
-  // Récupère contexte audio (layout) pour le hook d'enregistrement
-  const { audioStatus } = useOutletContext() || {}
-
-  // Déterminer le type d'utilisateur
-  const userType = isManager ? 'manager' : 'commercial'
-
-  // Hook d'enregistrement automatique (attend la connexion audio)
-  const {
-    isRecording: _isRecording,
-    isStarting: _isStarting,
-    error: _recordingError,
-  } = useRecording(
-    parseInt(currentUserId),
-    userType,
-    true,
-    audioStatus?.audioConnected,
-    parseInt(immeubleId, 10)
-  )
 
   return (
     <div className="space-y-4">

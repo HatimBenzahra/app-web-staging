@@ -186,27 +186,7 @@ class ErrorHandler {
       return
     }
 
-    // Ignorer les erreurs LiveKit non critiques (déconnexions normales)
-    const liveKitNormalErrors = [
-      'websocket closed',
-      'peerconnection failed',
-      'signal disconnected',
-      'datachannel',
-      'connection state changed',
-      'ICE connection',
-      'event: error on websocket',
-      'event: close on websocket',
-    ]
-
-    if (liveKitNormalErrors.some(pattern =>
-      messageStr.toLowerCase().includes(pattern.toLowerCase()) ||
-      stackStr.toLowerCase().includes(pattern.toLowerCase())
-    )) {
-      // Ces erreurs sont normales avec LiveKit (déconnexions réseau, fermeture page, etc.)
-      return
-    }
-
-    // Ignorer les promise rejections de type Event (souvent liées à LiveKit)
+    // Ignorer les promise rejections de type Event (déconnexions réseau normales)
     if (error.type === 'promise' && error.reason instanceof Event) {
       // Ces Event objects sont généralement des déconnexions WebSocket/WebRTC normales
       return

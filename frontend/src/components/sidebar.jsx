@@ -79,14 +79,10 @@ const performanceItems = [
   { title: 'Statistiques', url: '/statistiques', icon: BarChart3, entity: 'statistics' },
   { title: 'Classement', url: '/gamification', icon: Trophy, entity: 'gamification', exact: true },
   {
-    title: 'Écoutes',
-    url: '/ecoutes',
+    title: 'Bibliothèque',
+    url: '/ecoutes/enregistrement',
     icon: Headphones,
     entity: 'ecoutes',
-    subitems: [
-      { title: 'Écoute Live', url: '/ecoutes/live' },
-      { title: 'Enregistrements', url: '/ecoutes/enregistrement' },
-    ],
   },
   {
     title: 'Gamification',

@@ -1,6 +1,6 @@
 /**
  * Hook pour gérer les timeouts avec cleanup automatique et annulation
- * Élimine la duplication dans useCommercialAutoAudio.js, useRecording.js, etc.
+ * Élimine la duplication dans plusieurs hooks du projet
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'

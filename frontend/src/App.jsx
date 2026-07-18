@@ -30,7 +30,6 @@ const ImmeubleDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/Imm
 const PorteDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/PorteDetails'))
 const ZoneDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/ZoneDetails'))
 const GPSTracking = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gps-tracking/GPSTracking'))
-const EcouteLive = lazy(() => import('@/pages-ADMIN-DIRECTEUR/ecoutes/EcouteLive'))
 const Enregistrement = lazy(() => import('@/pages-ADMIN-DIRECTEUR/ecoutes/Enregistrement'))
 const Statistiques = lazy(() => import('@/pages-ADMIN-DIRECTEUR/statistiques/Statistiques'))
 const Gestion = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gestion/Gestion'))
@@ -85,7 +84,7 @@ function AdminLayout() {
     zones: { label: 'Zones', href: '/zones' },
     gestion: { label: 'Gestion', href: '/gestion' },
     'gps-tracking': { label: 'Suivi GPS', href: '/gps-tracking' },
-    ecoutes: { label: 'Écoutes', href: '/ecoutes/live' },
+    ecoutes: { label: 'Bibliothèque', href: '/ecoutes/enregistrement' },
     statistiques: { label: 'Statistiques', href: '/statistiques' },
     gamification: { label: 'Gamification', href: '/gamification' },
     kiosk: { label: 'Kiosk', href: '/kiosk' },
@@ -317,14 +316,9 @@ function AdminLayout() {
                       </SectionErrorBoundary>
                     }
                   />
-                  <Route path="/ecoutes" element={<Navigate to="/ecoutes/live" replace />} />
                   <Route
-                    path="/ecoutes/live"
-                    element={
-                      <SectionErrorBoundary>
-                        <EcouteLive />
-                      </SectionErrorBoundary>
-                    }
+                    path="/ecoutes"
+                    element={<Navigate to="/ecoutes/enregistrement" replace />}
                   />
                   <Route
                     path="/ecoutes/enregistrement"
@@ -415,7 +409,7 @@ function CommercialLayout() {
       <div className="light" data-theme="light">
         <Suspense fallback={null}>
           <Routes>
-            {/* Toutes les routes sous CommercialLayout pour éviter les déconnexions LiveKit */}
+            {/* Toutes les routes sous CommercialLayout pour éviter les remontages du layout */}
             <Route element={<CommercialLayoutComponent />}>
               <Route path="/" element={<CommercialDashboard />} />
               <Route path="/immeubles" element={<ImmeublesList />} />

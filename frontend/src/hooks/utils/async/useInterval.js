@@ -1,6 +1,6 @@
 /**
  * Hook pour gérer les intervals avec cleanup automatique
- * Élimine la duplication dans useActiveRooms.js et autres
+ * Élimine la duplication dans plusieurs hooks du projet
  */
 
 import { useEffect, useRef, useCallback } from 'react'

@@ -2,7 +2,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import * as fs from 'fs';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -35,38 +34,6 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
-
-  // Proxy WebSocket pour LiveKit
-  // Permet de convertir WSS (Front) -> WS (LiveKit)
-  const proxyLogger = new Logger('LiveKitProxy');
-
-  app.use(
-    '/livekit-proxy',
-    createProxyMiddleware({
-      target: process.env.LK_HOST || 'http://localhost:7880', // URL du serveur LiveKit
-      ws: true, // Active le support WebSocket
-      changeOrigin: true,
-      pathRewrite: {
-        '^/livekit-proxy': '', // Enlever le préfixe lors du transfert
-      },
-      // @ts-ignore - Type mismatch in library but valid option
-      onProxyReqWs: (_proxyReq: any, req: any, _socket: any) => {
-         proxyLogger.log(`🔌 WebSocket connection request: ${req.url}`);
-         proxyLogger.log(`🎯 Target: ${process.env.LK_HOST || 'http://localhost:7880'}`);
-         proxyLogger.debug(`📋 Headers: ${JSON.stringify(req.headers)}`);
-      },
-      onOpen: (_proxySocket: any) => {
-        proxyLogger.log('✅ WebSocket connection opened to LiveKit');
-      },
-      onClose: (_res: any, _socket: any, _head: any) => {
-        proxyLogger.log('🔌 WebSocket connection closed');
-      },
-      onError: (err: any, _req: any, _res: any) => {
-        proxyLogger.error(`❌ Proxy Error: ${err.message}`);
-        proxyLogger.error(`❌ Error stack: ${err.stack}`);
-      }
-    }),
-  );
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');

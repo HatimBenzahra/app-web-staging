@@ -1,6 +1,6 @@
 /**
  * Hook générique pour gérer les états asynchrones (loading/error/data)
- * Élimine la duplication dans use-api.ts, use-page-loading.js, useActiveRooms.js
+ * Élimine la duplication dans use-api.ts, use-page-loading.js et autres
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'

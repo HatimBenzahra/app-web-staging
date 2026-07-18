@@ -162,21 +162,6 @@ body {
   -ms-overflow-style: auto; /* IE 10+ */
 }
 
-/* LiveKit BarVisualizer overrides */
-.lk-bar-visualizer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-
-.lk-bar-visualizer .lk-audio-bar {
-  border-radius: 9999px;
-  min-width: 3px;
-  flex-shrink: 0;
-  transition: height 80ms ease-out;
-}
-
 /* Utility to hide scrollbar when explicitly needed */
 .scrollbar-hidden {
   scrollbar-width: none;

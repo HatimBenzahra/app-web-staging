@@ -1,10 +1,6 @@
 import { graphqlClient } from '../../core/graphql'
 import { logger as Logger } from '../../core/graphql'
-import type {
-  RecordingData,
-  EnrichedRecording,
-  StartRecordingResponse,
-} from './recording.types'
+import type { RecordingData, EnrichedRecording } from './recording.types'
 
 // GraphQL Queries pour les enregistrements
 const LIST_RECORDINGS = `
@@ -15,24 +11,6 @@ const LIST_RECORDINGS = `
       lastModified
       url
     }
-  }
-`
-
-const START_RECORDING = `
-  mutation StartRecording($input: StartRecordingInput!) {
-    startRecording(input: $input) {
-      egressId
-      roomName
-      status
-      s3Key
-      url
-    }
-  }
-`
-
-const STOP_RECORDING = `
-  mutation StopRecording($input: StopRecordingInput!) {
-    stopRecording(input: $input)
   }
 `
 
@@ -146,7 +124,7 @@ export class RecordingService {
     userType: string
   ): Promise<EnrichedRecording[]> {
     try {
-      // Le backend, LiveKit et les clés S3 attendent le format room:<userType>:<id>
+      // Le backend et les clés S3 attendent le format room:<userType>:<id>
       // (le service backend remplace les deux-points par des underscores pour le stockage)
       const roomName = `room:${userType.toLowerCase()}:${userId}`
       console.log(
@@ -197,68 +175,6 @@ export class RecordingService {
       return enrichedRecordings
     } catch (error) {
       console.error('❌ Erreur récupération enregistrements:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Démarre un enregistrement pour un utilisateur (commercial ou manager)
-   */
-  static async startRecording(
-    userId: number,
-    userType: string,
-    audioOnly = true,
-    immeubleId: number | null = null
-  ): Promise<StartRecordingResponse> {
-    try {
-      Logger.debug('🔧 Service startRecording appelé avec:', {
-        userId,
-        userType,
-        audioOnly,
-        immeubleId,
-      })
-
-      const roomName = `room:${userType.toLowerCase()}:${userId}`
-
-      console.log('🎤 Démarrage enregistrement (room composite):', {
-        roomName,
-        audioOnly,
-        mode: 'composite',
-      })
-
-      const data = await graphqlClient.request(START_RECORDING, {
-        input: {
-          roomName,
-          audioOnly,
-          immeubleId,
-          // Room composite : fonctionne parfaitement
-          // participantIdentity non spécifié = room composite
-        },
-      })
-
-      Logger.debug('✅ Réponse startRecording:', data.startRecording)
-      return data.startRecording
-    } catch (error) {
-      Logger.debug('❌ Erreur démarrage enregistrement:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Arrête un enregistrement
-   */
-  static async stopRecording(egressId: string): Promise<void> {
-    try {
-      Logger.debug('🛑 Arrêt enregistrement, egressId:', egressId)
-
-      const data = await graphqlClient.request(STOP_RECORDING, {
-        input: { egressId },
-      })
-
-      Logger.debug('✅ Réponse stopRecording:', data.stopRecording)
-      return data.stopRecording
-    } catch (error) {
-      Logger.debug('❌ Erreur arrêt enregistrement:', error)
       throw error
     }
   }

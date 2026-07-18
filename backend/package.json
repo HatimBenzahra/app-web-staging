@@ -40,8 +40,6 @@
     "firebase-admin": "^14.1.0",
     "graphql": "^16.11.0",
     "graphql-type-json": "^0.3.2",
-    "http-proxy-middleware": "^3.0.5",
-    "livekit-server-sdk": "^2.14.0",
     "p-limit": "^7.3.0",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",

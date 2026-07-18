@@ -14,7 +14,6 @@ import { ZoneModule } from './zone/zone.module';
 import { ImmeubleModule } from './immeuble/immeuble.module';
 import { StatisticModule } from './statistic/statistic.module';
 import { PorteModule } from './porte/porte.module';
-import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { RecordingModule } from './recording/recording.module';
 import { CreationCompteModule } from './creation_compte/creation_compte.module';
 import { GamificationModule } from './gamification/gamification.module';
@@ -42,7 +41,6 @@ import { NotificationsModule } from './notifications/notifications.module';
     ImmeubleModule,
     StatisticModule,
     PorteModule,
-    AudioMonitoringModule,
     RecordingModule,
     CreationCompteModule,
     GamificationModule,

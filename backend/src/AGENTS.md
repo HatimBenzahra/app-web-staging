@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-NestJS 11 API with GraphQL (Apollo) code-first approach. Prisma ORM with PostgreSQL. LiveKit for audio streaming.
+NestJS 11 API with GraphQL (Apollo) code-first approach. Prisma ORM with PostgreSQL.
 
 ## STRUCTURE
 
@@ -16,13 +16,10 @@ src/
 ├── auth/
 │   ├── guards/                  # JWT + Roles guards
 │   └── decorators/              # @CurrentUser, @Roles
-├── audio-monitoring/            # LiveKit integration
-│   ├── livekit.service.ts       # Token generation, room management
-│   └── audio-monitoring.*       # Recording streams
 ├── enumeration-Status/          # Shared enums
 ├── schema.gql                   # AUTO-GENERATED GraphQL schema
 ├── app.module.ts                # Root module imports
-├── main.ts                      # Bootstrap + CORS + LiveKit proxy
+├── main.ts                      # Bootstrap + CORS
 └── prisma.service.ts            # Prisma client singleton
 ```
 
@@ -47,7 +44,6 @@ src/
 | Add GraphQL field | Modify resolver → schema.gql auto-updates |
 | Database change | `prisma/schema.prisma` → `npx prisma migrate dev` |
 | Add auth guard | `auth/guards/` - extend JwtAuthGuard |
-| LiveKit tokens | `audio-monitoring/livekit.service.ts` |
 
 ## CONVENTIONS
 
@@ -75,4 +71,3 @@ export class EntityResolver {
 - **DO NOT** edit `schema.gql` directly - it's auto-generated
 - **DO NOT** create new PrismaService instances - use injection
 - **DO NOT** skip DTO validation decorators (class-validator)
-- **DO NOT** hardcode LiveKit host - use `process.env.LK_HOST`

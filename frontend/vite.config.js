@@ -47,10 +47,6 @@ export default defineConfig({
             return 'vendor-mapbox-react'
           }
 
-          if (id.includes('node_modules/livekit-client') || id.includes('node_modules/@livekit/')) {
-            return 'vendor-livekit'
-          }
-
           if (id.includes('node_modules/recharts')) {
             return 'vendor-recharts'
           }

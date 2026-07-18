@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-//component utilisé pour la pagination dans la page EcouteLive et Enregistrement
+//component utilisé pour la pagination dans la page Enregistrement
 /**
  * Hook personnalisé pour gérer la pagination
  * @param {Array} items - Liste des éléments à paginer

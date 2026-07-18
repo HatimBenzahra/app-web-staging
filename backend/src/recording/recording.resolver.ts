@@ -2,11 +2,7 @@ import { Resolver, Mutation, Args, Query } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { Int } from '@nestjs/graphql';
 import {
-  RecordingResult,
-  StartRecordingInput,
-  StopRecordingInput,
   RecordingItem,
-  EgressState,
   RequestRecordingUploadInput,
   RecordingUploadDetails,
   ConfirmRecordingUploadInput,
@@ -30,24 +26,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class RecordingResolver {
   constructor(private readonly svc: RecordingService) {}
 
-  @Mutation(() => RecordingResult)
-  @Roles('admin', 'directeur', 'manager', 'commercial')
-  async startRecording(
-    @Args('input') input: StartRecordingInput,
-    @CurrentUser() user: any,
-  ): Promise<RecordingResult> {
-    return this.svc.startRecording(input, user);
-  }
-
-  @Mutation(() => Boolean)
-  @Roles('admin', 'directeur', 'manager', 'commercial')
-  async stopRecording(
-    @Args('input') input: StopRecordingInput,
-    @CurrentUser() user: any,
-  ): Promise<boolean> {
-    return this.svc.stopRecording(input.egressId, user);
-  }
-
   @Query(() => [RecordingItem])
   @Roles('admin', 'directeur')
   async listRecordings(
@@ -55,15 +33,6 @@ export class RecordingResolver {
     @CurrentUser() user: any,
   ): Promise<RecordingItem[]> {
     return this.svc.listRecordings(roomName, user);
-  }
-
-  @Query(() => EgressState)
-  @Roles('admin', 'directeur')
-  async egressState(
-    @Args('egressId') egressId: string,
-    @CurrentUser() user: any,
-  ): Promise<EgressState> {
-    return this.svc.egressState(egressId, user);
   }
 
   @Query(() => String)
