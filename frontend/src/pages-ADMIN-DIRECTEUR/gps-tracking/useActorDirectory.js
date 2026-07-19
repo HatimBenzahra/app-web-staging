@@ -1,5 +1,6 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useCommercials, useManagers } from '@/services'
+import { useKioskDevices } from '@/hooks/metier/api/kiosk'
 
 const normalizeUserType = value => (value === 'MANAGER' ? 'MANAGER' : 'COMMERCIAL')
 
@@ -12,6 +13,25 @@ const normalizeUserType = value => (value === 'MANAGER' ? 'MANAGER' : 'COMMERCIA
 export function useActorDirectory() {
   const { data: allCommercials } = useCommercials()
   const { data: allManagers } = useManagers()
+  const { data: kioskDevices } = useKioskDevices()
+
+  // La batterie correcte est celle des tablettes kiosk (même source que les pages
+  // Kiosk). On indexe la batterie par commercial : clé principale = commercialId,
+  // fallback = commercialName (les pages kiosk joignent par nom). On ignore les
+  // batteries inconnues (-1) pour laisser retomber sur le « — » habituel.
+  const kioskBatteryByCommercial = useMemo(() => {
+    const byId = new Map()
+    const byName = new Map()
+    for (const device of kioskDevices ?? []) {
+      if (device?.batteryLevel == null || device.batteryLevel < 0) continue
+      const level = device.batteryLevel
+      const id = device.commercialId != null ? Number(device.commercialId) : NaN
+      if (Number.isFinite(id) && !byId.has(id)) byId.set(id, level)
+      const name = (device.commercialName ?? '').trim()
+      if (name && !byName.has(name)) byName.set(name, level)
+    }
+    return { byId, byName }
+  }, [kioskDevices])
 
   const resolveActorName = useCallback(
     (userId, userType) => {
@@ -35,22 +55,32 @@ export function useActorDirectory() {
         const key = `${userType}-${userId}`
         if (seen.has(key)) continue
         seen.add(key)
+        const name = resolveActorName(userId, userType)
+        // Pour un commercial, la batterie fiable vient de sa tablette kiosk
+        // (identique aux pages Kiosk) ; sinon on garde la valeur de la position GPS.
+        let batteryLevel = pos.batteryLevel
+        if (userType === 'COMMERCIAL') {
+          const kioskLevel =
+            kioskBatteryByCommercial.byId.get(userId) ??
+            kioskBatteryByCommercial.byName.get(name)
+          if (kioskLevel != null) batteryLevel = kioskLevel
+        }
         result.push({
           key,
           userId,
           userType,
-          name: resolveActorName(userId, userType),
+          name,
           latitude: pos.latitude,
           longitude: pos.longitude,
           accuracy: pos.accuracy,
-          batteryLevel: pos.batteryLevel,
+          batteryLevel,
           online: Boolean(pos.isOnline),
           lastSeen: pos.recordedAt,
         })
       }
       return result
     },
-    [resolveActorName]
+    [resolveActorName, kioskBatteryByCommercial]
   )
 
   return { resolveActorName, buildActors }
