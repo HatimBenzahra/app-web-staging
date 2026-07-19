@@ -193,6 +193,21 @@ export class ImmeublesPageInput {
 }
 
 @ObjectType()
+export class BackfillImmeubleZonesResult {
+  @Field(() => Int)
+  scanned: number;
+
+  @Field(() => Int)
+  updated: number;
+
+  @Field(() => Int)
+  attached: number;
+
+  @Field(() => Int)
+  detached: number;
+}
+
+@ObjectType()
 export class ImmeublesPageSummary {
   @Field(() => Int)
   coveragePercent: number;

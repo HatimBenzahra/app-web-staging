@@ -8,12 +8,16 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
 import { calculateStatsForStatus } from '../porte/porte-status.constants';
+import { ImmeubleService } from '../immeuble/immeuble.service';
 import { CreateZoneInput, UpdateZoneInput, UserType } from './zone.dto';
 import { centroid, enclosingRadiusMeters, parseRing } from './zone.geometry';
 
 @Injectable()
 export class ZoneService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private immeubleService: ImmeubleService,
+  ) {}
 
   /**
    * Calcule les statistiques d'un utilisateur pour une zone pendant une période donnée
@@ -370,13 +374,20 @@ export class ZoneService {
 
     // Zone polygonale : on calcule et persiste xOrigin/yOrigin/rayon depuis le polygone.
     if (polygon !== undefined && polygon !== null) {
-      return this.prisma.zone.create({
-        data: {
-          ...rest,
-          ...createdBy,
-          polygon,
-          ...this.deriveCircleFromPolygon(polygon),
-        },
+      return this.prisma.$transaction(async (tx) => {
+        const zone = await tx.zone.create({
+          data: {
+            ...rest,
+            ...createdBy,
+            polygon,
+            ...this.deriveCircleFromPolygon(polygon),
+          },
+        });
+        // Auto-guérison : rattache/détache les immeubles concernés par ce
+        // nouveau tracé (membership purement géométrique). Réutilise le même
+        // cœur que le backfill admin — pas de duplication du lancer de rayon.
+        await this.immeubleService.reresolveAllImmeubleZones(tx);
+        return zone;
       });
     }
 
@@ -387,8 +398,12 @@ export class ZoneService {
       );
     }
 
-    return this.prisma.zone.create({
-      data: { ...rest, ...createdBy, xOrigin, yOrigin, rayon },
+    return this.prisma.$transaction(async (tx) => {
+      const zone = await tx.zone.create({
+        data: { ...rest, ...createdBy, xOrigin, yOrigin, rayon },
+      });
+      await this.immeubleService.reresolveAllImmeubleZones(tx);
+      return zone;
     });
   }
 
@@ -1296,27 +1311,40 @@ export class ZoneService {
   async update(data: UpdateZoneInput) {
     const { id, polygon, ...updateData } = data;
 
-    // Nouveau polygone fourni : recalcule et persiste xOrigin/yOrigin/rayon.
-    if (polygon !== undefined && polygon !== null) {
-      return this.prisma.zone.update({
-        where: { id },
-        data: { ...updateData, polygon, ...this.deriveCircleFromPolygon(polygon) },
-      });
-    }
+    return this.prisma.$transaction(async (tx) => {
+      let zone;
 
-    // polygon explicitement null : la zone redevient un cercle (colonne remise à NULL),
-    // xOrigin/yOrigin/rayon existants sont conservés.
-    if (polygon === null) {
-      return this.prisma.zone.update({
-        where: { id },
-        data: { ...updateData, polygon: Prisma.DbNull },
-      });
-    }
+      // Nouveau polygone fourni : recalcule et persiste xOrigin/yOrigin/rayon.
+      if (polygon !== undefined && polygon !== null) {
+        zone = await tx.zone.update({
+          where: { id },
+          data: {
+            ...updateData,
+            polygon,
+            ...this.deriveCircleFromPolygon(polygon),
+          },
+        });
+      } else if (polygon === null) {
+        // polygon explicitement null : la zone redevient un cercle (colonne
+        // remise à NULL), xOrigin/yOrigin/rayon existants sont conservés.
+        zone = await tx.zone.update({
+          where: { id },
+          data: { ...updateData, polygon: Prisma.DbNull },
+        });
+      } else {
+        // polygon absent : chemin cercle inchangé.
+        zone = await tx.zone.update({
+          where: { id },
+          data: updateData,
+        });
+      }
 
-    // polygon absent : chemin cercle inchangé.
-    return this.prisma.zone.update({
-      where: { id },
-      data: updateData,
+      // Auto-guérison : après tout changement de zone (tracé ou périmètre
+      // cercle), ré-attache/détache les immeubles concernés. Membership
+      // purement géométrique, même cœur que le backfill admin.
+      await this.immeubleService.reresolveAllImmeubleZones(tx);
+
+      return zone;
     });
   }
 

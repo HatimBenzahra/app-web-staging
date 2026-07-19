@@ -178,3 +178,55 @@ export function polygonAreaM2(ring: Ring): number {
 
   return Math.abs(twiceArea) / 2;
 }
+
+/** Géométrie minimale d'une zone nécessaire à la résolution d'appartenance. */
+export interface ZoneGeometryCandidate {
+  id: number;
+  polygon: unknown;
+  xOrigin: number;
+  yOrigin: number;
+  rayon: number;
+}
+
+/**
+ * Aire (m²) d'une zone : polygone via `polygonAreaM2`, sinon disque π·rayon².
+ * Sert uniquement à départager plusieurs zones contenant le même point (la
+ * plus petite gagne). Un polygon présent mais invalide bascule sur le disque.
+ */
+export function zoneAreaM2(zone: { polygon: unknown; rayon: number }): number {
+  if (zone.polygon != null) {
+    try {
+      return polygonAreaM2(parseRing(zone.polygon));
+    } catch {
+      // polygon invalide → repli sur le disque.
+    }
+  }
+  return Math.PI * zone.rayon * zone.rayon;
+}
+
+/**
+ * Résolution PUREMENT géométrique de la zone contenant un point : parcourt
+ * `zones` (déjà filtrées sur une géométrie exploitable), retient celles qui
+ * contiennent le point (`pointInZone`) et renvoie l'id de la plus petite aire.
+ * `null` si aucune zone ne contient le point. Cœur partagé par la création
+ * d'immeuble, le déplacement (update), le backfill admin et la ré-résolution
+ * automatique après création/édition de zone — pour ne jamais dupliquer le
+ * lancer de rayon.
+ */
+export function resolveContainingZoneId(
+  lng: number,
+  lat: number,
+  zones: ZoneGeometryCandidate[],
+): number | null {
+  let best: { id: number; area: number } | undefined;
+  for (const zone of zones) {
+    if (!pointInZone(lng, lat, zone)) {
+      continue;
+    }
+    const area = zoneAreaM2(zone);
+    if (!best || area < best.area) {
+      best = { id: zone.id, area };
+    }
+  }
+  return best?.id ?? null;
+}

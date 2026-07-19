@@ -1,7 +1,6 @@
 import { useParams } from 'react-router-dom'
 import {
   useZone,
-  useStatisticsByZone,
   useCommercials,
   useZoneStatistics,
   useZoneCurrentAssignments,
@@ -59,7 +58,6 @@ export function useZoneDetailsLogic() {
 
   // API hooks
   const { data: zone, loading: zoneLoading, error } = useZone(parseInt(id))
-  const { data: statistics, loading: statsLoading } = useStatisticsByZone(parseInt(id))
   const { data: allZoneStats, loading: zoneStatsLoading } = useZoneStatistics()
   const { data: commercials } = useCommercials()
   const { data: zoneAssignments } = useZoneCurrentAssignments(parseInt(id))
@@ -122,77 +120,24 @@ export function useZoneDetailsLogic() {
     return allZoneStats.find(stat => stat.zoneId === parseInt(id))
   }, [allZoneStats, id])
 
-  // Calculer les statistiques agrégées de la zone (fallback si API pas disponible)
+  // Statistiques de la zone : uniquement l'agrégat fourni par le backend (même
+  // source que le mobile). Si le backend n'a pas de stats pour cette zone, on
+  // n'invente rien (pas de calcul de secours divergent) → les cartes afficheront « — ».
   const aggregatedStats = useMemo(() => {
-    // Utiliser les stats de l'API si disponibles
-    if (zoneStats) {
-      return {
-        contratsSignes: zoneStats.totalContratsSignes,
-        immeublesVisites: zoneStats.totalImmeublesVisites,
-        rendezVousPris: zoneStats.totalRendezVousPris,
-        refus: zoneStats.totalRefus,
-        nbImmeublesProspectes: zoneStats.totalImmeublesProspectes,
-        nbPortesProspectes: zoneStats.totalPortesProspectes,
-        tauxConversion: zoneStats.tauxConversion,
-        tauxSuccesRdv: zoneStats.tauxSuccesRdv,
-        nombreCommerciaux: zoneStats.nombreCommerciaux,
-        performanceGlobale: zoneStats.performanceGlobale,
-      }
-    }
-
-    // Fallback vers le calcul manuel si API pas disponible
-    if (!statistics || statistics.length === 0) {
-      return {
-        contratsSignes: 0,
-        immeublesVisites: 0,
-        rendezVousPris: 0,
-        refus: 0,
-        nbImmeublesProspectes: 0,
-        nbPortesProspectes: 0,
-        tauxConversion: 0,
-        tauxSuccesRdv: 0,
-        nombreCommerciaux: 0,
-        performanceGlobale: 0,
-      }
-    }
-
-    const totals = statistics.reduce(
-      (acc, stat) => ({
-        contratsSignes: acc.contratsSignes + (stat.contratsSignes || 0),
-        immeublesVisites: acc.immeublesVisites + (stat.immeublesVisites || 0),
-        rendezVousPris: acc.rendezVousPris + (stat.rendezVousPris || 0),
-        refus: acc.refus + (stat.refus || 0),
-        nbImmeublesProspectes: acc.nbImmeublesProspectes + (stat.nbImmeublesProspectes || 0),
-        nbPortesProspectes: acc.nbPortesProspectes + (stat.nbPortesProspectes || 0),
-      }),
-      {
-        contratsSignes: 0,
-        immeublesVisites: 0,
-        rendezVousPris: 0,
-        refus: 0,
-        nbImmeublesProspectes: 0,
-        nbPortesProspectes: 0,
-        tauxConversion: 0,
-        tauxSuccesRdv: 0,
-        nombreCommerciaux: 0,
-        performanceGlobale: 0,
-      }
-    )
-
-    // Calcul des taux
-    const tauxConversion =
-      totals.nbPortesProspectes > 0 ? (totals.contratsSignes / totals.nbPortesProspectes) * 100 : 0
-    const tauxSuccesRdv =
-      totals.immeublesVisites > 0 ? (totals.rendezVousPris / totals.immeublesVisites) * 100 : 0
-
+    if (!zoneStats) return null
     return {
-      ...totals,
-      tauxConversion: Math.round(tauxConversion * 100) / 100,
-      tauxSuccesRdv: Math.round(tauxSuccesRdv * 100) / 100,
-      nombreCommerciaux: new Set(statistics.map(s => s.commercialId).filter(Boolean)).size,
-      performanceGlobale: Math.round((tauxConversion * 0.4 + tauxSuccesRdv * 0.6) * 100) / 100,
+      contratsSignes: zoneStats.totalContratsSignes,
+      immeublesVisites: zoneStats.totalImmeublesVisites,
+      rendezVousPris: zoneStats.totalRendezVousPris,
+      refus: zoneStats.totalRefus,
+      nbImmeublesProspectes: zoneStats.totalImmeublesProspectes,
+      nbPortesProspectes: zoneStats.totalPortesProspectes,
+      tauxConversion: zoneStats.tauxConversion,
+      tauxSuccesRdv: zoneStats.tauxSuccesRdv,
+      nombreCommerciaux: zoneStats.nombreCommerciaux,
+      performanceGlobale: zoneStats.performanceGlobale,
     }
-  }, [zoneStats, statistics])
+  }, [zoneStats])
 
   const personalInfo = useMemo(() => {
     if (!zoneData) return []
@@ -216,60 +161,64 @@ export function useZoneDetailsLogic() {
     ]
   }, [zoneData, locationName])
 
-  // Statistiques personnalisées pour la zone
-  const customStatsCards = useMemo(
-    () => [
+  // Statistiques personnalisées pour la zone.
+  // Sans agrégat backend (zone absente de zoneStatistics) → « — » comme le mobile.
+  // Les % sont arrondis à l'entier pour coller à l'affichage mobile.
+  const customStatsCards = useMemo(() => {
+    const s = aggregatedStats
+    const count = v => (s ? v : '—')
+    const pct = v => (s && v != null ? `${Math.round(v)}%` : '—')
+    return [
       {
         title: 'Contrats signés',
-        value: aggregatedStats.contratsSignes,
+        value: count(s?.contratsSignes),
         description: 'Total des contrats dans cette zone',
         icon: 'fileText',
       },
       {
         title: 'Rendez-vous pris',
-        value: aggregatedStats.rendezVousPris,
+        value: count(s?.rendezVousPris),
         description: 'Total des rendez-vous dans cette zone',
         icon: 'calendar',
       },
       {
         title: 'Bâtiments visités',
-        value: aggregatedStats.immeublesVisites,
+        value: count(s?.immeublesVisites),
         description: 'Bâtiments visités dans cette zone',
         icon: 'building',
       },
       {
         title: 'Refus',
-        value: aggregatedStats.refus,
+        value: count(s?.refus),
         description: 'Total des refus dans cette zone',
         icon: 'x',
       },
       {
         title: 'Taux de conversion',
-        value: `${aggregatedStats.tauxConversion || 0}%`,
-        description: 'Pourcentage de contrats signés / portes prospectées',
+        value: pct(s?.tauxConversion),
+        description: 'Contrats signés / (refus + RDV + contrats)',
         icon: 'trendingUp',
       },
       {
         title: 'Taux succès RDV',
-        value: `${aggregatedStats.tauxSuccesRdv || 0}%`,
-        description: 'Pourcentage de RDV obtenus / bâtiments visités',
+        value: pct(s?.tauxSuccesRdv),
+        description: 'RDV obtenus / bâtiments visités',
         icon: 'target',
       },
       {
         title: 'Performance globale',
-        value: `${aggregatedStats.performanceGlobale || 0} pts`,
-        description: 'Score de performance composite de la zone',
+        value: s ? `${Math.round(s.performanceGlobale)} pts` : '—',
+        description: 'Taux de conversion + taux de succès RDV',
         icon: 'award',
       },
       {
         title: 'Portes prospectées',
-        value: aggregatedStats.nbPortesProspectes,
+        value: count(s?.nbPortesProspectes),
         description: 'Total des portes prospectées dans cette zone',
         icon: 'door',
       },
-    ],
-    [aggregatedStats]
-  )
+    ]
+  }, [aggregatedStats])
 
   // Sections personnalisées avec la carte de zone
   const customSections = useMemo(
@@ -294,7 +243,6 @@ export function useZoneDetailsLogic() {
   return {
     zoneData,
     zoneLoading,
-    statsLoading,
     zoneStatsLoading,
     error,
     permissions,

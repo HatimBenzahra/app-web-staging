@@ -6,7 +6,6 @@ export default function ZoneDetails() {
   const {
     zoneData,
     zoneLoading,
-    statsLoading,
     zoneStatsLoading,
     error,
     permissions,
@@ -15,7 +14,7 @@ export default function ZoneDetails() {
     customSections,
   } = useZoneDetailsLogic()
 
-  if (zoneLoading || statsLoading || zoneStatsLoading) return <DetailsPageSkeleton />
+  if (zoneLoading || zoneStatsLoading) return <DetailsPageSkeleton />
   if (error) return <div className="text-red-500">Erreur: {error}</div>
   if (!zoneData) return <div>Zone non trouvée</div>
 

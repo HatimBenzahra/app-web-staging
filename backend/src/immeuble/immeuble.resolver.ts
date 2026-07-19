@@ -3,6 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { ImmeubleService } from './immeuble.service';
 import {
   Immeuble,
+  BackfillImmeubleZonesResult,
   CreateImmeubleInput,
   CreateQuartierInput,
   ImmeublesPage,
@@ -233,5 +234,17 @@ export class ImmeubleResolver {
       user.id,
       user.role,
     );
+  }
+
+  /**
+   * Backfill admin (idempotent, relançable) : ré-applique la résolution
+   * géométrique zoneId à TOUS les immeubles géolocalisés. À déclencher après
+   * déploiement du correctif de rattachement zone <-> immeuble, ou après
+   * avoir tracé/édité des zones, pour réparer les données existantes.
+   */
+  @Mutation(() => BackfillImmeubleZonesResult)
+  @Roles('admin')
+  backfillImmeubleZones() {
+    return this.immeubleService.backfillImmeubleZones();
   }
 }

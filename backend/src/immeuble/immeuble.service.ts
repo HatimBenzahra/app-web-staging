@@ -7,7 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { prodImmeubleWhere } from '../enumeration-Status/prod-immeuble-where.util';
-import { parseRing, pointInZone, polygonAreaM2 } from '../zone/zone.geometry';
+import { resolveContainingZoneId } from '../zone/zone.geometry';
 import {
   CreateImmeubleInput,
   CreateQuartierInput,
@@ -114,21 +114,19 @@ export class ImmeubleService {
   }
 
   /**
-   * Résout géométriquement la zone contenant le point (lat/lng) de l'immeuble,
-   * une seule fois à la création. Périmètre des zones candidates :
-   * - commercial (data.commercialId) : zones de SON manager (`managerId`) +
-   *   celles de SON directeur (`directeurId`) auquel il est directement rattaché ;
-   * - manager (data.managerId) : SES zones (`managerId`).
-   * Seules les zones AVEC géométrie (polygon non null OU rayon > 0) sont retenues,
-   * en une seule requête. Si plusieurs zones contiennent le point → la plus petite
-   * aire (`polygonAreaM2`, ou π·rayon² pour un cercle). Retourne l'id ou undefined.
+   * Résout géométriquement la zone contenant le point (lat/lng) de l'immeuble.
+   * PUREMENT géométrique : aucun filtre par périmètre (créateur/manager/
+   * directeur) — une zone créée par un admin (managerId/directeurId null)
+   * doit pouvoir contenir le point tout autant qu'une autre. Charge TOUTES
+   * les zones avec une géométrie exploitable (polygon non null OU rayon > 0)
+   * et applique `resolveContainingZoneId` (plus petite aire gagne en cas de
+   * chevauchement). Retourne `null` si les coordonnées sont absentes/invalides
+   * ou si aucune zone ne contient le point.
    */
-  private async resolveZoneIdByGeometry(
-    data: Pick<
-      CreateImmeubleInput,
-      'commercialId' | 'managerId' | 'latitude' | 'longitude'
-    >,
-  ): Promise<number | undefined> {
+  private async resolveZoneIdByGeometry(data: {
+    latitude?: number | null;
+    longitude?: number | null;
+  }): Promise<number | null> {
     const { latitude, longitude } = data;
     if (
       latitude == null ||
@@ -136,43 +134,12 @@ export class ImmeubleService {
       !Number.isFinite(latitude) ||
       !Number.isFinite(longitude)
     ) {
-      return undefined;
+      return null;
     }
 
-    // Déterminer le périmètre (managers / directeurs) dont dépendent les zones.
-    const managerIds = new Set<number>();
-    const directeurIds = new Set<number>();
-
-    if (data.commercialId) {
-      const commercial = await this.prisma.commercial.findUnique({
-        where: { id: data.commercialId },
-        select: { managerId: true, directeurId: true },
-      });
-      if (commercial?.managerId != null) managerIds.add(commercial.managerId);
-      if (commercial?.directeurId != null)
-        directeurIds.add(commercial.directeurId);
-    }
-
-    if (data.managerId != null) {
-      managerIds.add(data.managerId);
-    }
-
-    const orConditions: {
-      managerId?: { in: number[] };
-      directeurId?: { in: number[] };
-    }[] = [];
-    if (managerIds.size > 0)
-      orConditions.push({ managerId: { in: [...managerIds] } });
-    if (directeurIds.size > 0)
-      orConditions.push({ directeurId: { in: [...directeurIds] } });
-    if (orConditions.length === 0) {
-      return undefined;
-    }
-
-    // Une seule requête : zones du périmètre avec une géométrie exploitable.
-    const candidates = await this.prisma.zone.findMany({
+    // Toutes les zones avec une géométrie exploitable, sans filtre de périmètre.
+    const zones = await this.prisma.zone.findMany({
       where: {
-        OR: orConditions,
         // polygon non null OU rayon > 0 (le disque hérité).
         NOT: { polygon: { equals: Prisma.DbNull }, rayon: { lte: 0 } },
       },
@@ -185,33 +152,7 @@ export class ImmeubleService {
       },
     });
 
-    let best: { id: number; area: number } | undefined;
-    for (const zone of candidates) {
-      if (!pointInZone(longitude, latitude, zone)) {
-        continue;
-      }
-      const area = this.zoneAreaM2(zone);
-      if (!best || area < best.area) {
-        best = { id: zone.id, area };
-      }
-    }
-
-    return best?.id;
-  }
-
-  /**
-   * Aire (m²) d'une zone : polygone via `polygonAreaM2`, sinon disque π·rayon².
-   * Sert uniquement à départager plusieurs zones contenant le même point (la plus petite gagne).
-   */
-  private zoneAreaM2(zone: { polygon: unknown; rayon: number }): number {
-    if (zone.polygon != null) {
-      try {
-        return polygonAreaM2(parseRing(zone.polygon));
-      } catch {
-        // polygon invalide → repli sur le disque.
-      }
-    }
-    return Math.PI * zone.rayon * zone.rayon;
+    return resolveContainingZoneId(longitude, latitude, zones);
   }
 
   private async resolveZoneId(
@@ -226,11 +167,113 @@ export class ImmeubleService {
     }
 
     // b. Appartenance PUREMENT géométrique, calculée une fois à la création :
-    //    le bâtiment est rattaché à la zone (du périmètre du créateur) qui
-    //    contient sa position. S'il n'est dans aucune zone → aucune zone
-    //    (zoneId = null). Pas de fallback sur la zone active du créateur : la
-    //    membership reflète la réalité géographique du tracé.
+    //    le bâtiment est rattaché à la zone qui contient sa position. S'il
+    //    n'est dans aucune zone → aucune zone (zoneId = null). Pas de fallback
+    //    sur la zone active du créateur : la membership reflète la réalité
+    //    géographique du tracé.
     return this.resolveZoneIdByGeometry(data);
+  }
+
+  /**
+   * Cœur partagé de la ré-résolution géométrique de TOUS les immeubles
+   * géolocalisés (latitude ET longitude non null) : recalcule le zoneId de
+   * chacun par rapport à TOUTES les zones ayant une géométrie exploitable, et
+   * persiste le nouveau zoneId s'il diffère (attache ou détache). Idempotent
+   * et relançable — traite en batches pour ne pas tout charger d'un coup.
+   *
+   * Accepte optionnellement un client de transaction Prisma (`tx`) pour être
+   * appelé depuis une autre transaction (ex. `ZoneService.create`/`update`,
+   * pour ré-attacher/détacher automatiquement après création/édition d'une
+   * zone). Sans `tx`, utilise `this.prisma` (backfill admin autonome).
+   * Ne duplique jamais le lancer de rayon : toute la géométrie passe par
+   * `resolveContainingZoneId` (zone.geometry.ts).
+   */
+  async reresolveAllImmeubleZones(
+    tx?: any,
+  ): Promise<{
+    scanned: number;
+    updated: number;
+    attached: number;
+    detached: number;
+  }> {
+    const client = tx ?? this.prisma;
+    const BATCH_SIZE = 500;
+
+    const zones = await client.zone.findMany({
+      where: {
+        NOT: { polygon: { equals: Prisma.DbNull }, rayon: { lte: 0 } },
+      },
+      select: {
+        id: true,
+        polygon: true,
+        xOrigin: true,
+        yOrigin: true,
+        rayon: true,
+      },
+    });
+
+    let scanned = 0;
+    let updated = 0;
+    let attached = 0;
+    let detached = 0;
+    let cursor: number | undefined;
+
+    for (;;) {
+      const batch: {
+        id: number;
+        latitude: number | null;
+        longitude: number | null;
+        zoneId: number | null;
+      }[] = await client.immeuble.findMany({
+        where: { latitude: { not: null }, longitude: { not: null } },
+        select: { id: true, latitude: true, longitude: true, zoneId: true },
+        orderBy: { id: 'asc' },
+        take: BATCH_SIZE,
+        ...(cursor !== undefined ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      for (const immeuble of batch) {
+        scanned++;
+        const newZoneId = resolveContainingZoneId(
+          immeuble.longitude!,
+          immeuble.latitude!,
+          zones,
+        );
+        if (newZoneId !== immeuble.zoneId) {
+          await client.immeuble.update({
+            where: { id: immeuble.id },
+            data: { zoneId: newZoneId },
+          });
+          updated++;
+          if (newZoneId != null) {
+            attached++;
+          } else {
+            detached++;
+          }
+        }
+      }
+
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < BATCH_SIZE) {
+        break;
+      }
+    }
+
+    return { scanned, updated, attached, detached };
+  }
+
+  /**
+   * Backfill admin (idempotent, relançable) : ré-applique la résolution
+   * géométrique à TOUS les immeubles géolocalisés. À déclencher après
+   * déploiement du correctif de rattachement zone <-> immeuble, ou pour
+   * réparer manuellement les données existantes.
+   */
+  async backfillImmeubleZones() {
+    return this.reresolveAllImmeubleZones();
   }
 
   private async ensureImmeubleAccess(
@@ -924,14 +967,13 @@ export class ImmeubleService {
   async update(data: UpdateImmeubleInput, userId: number, userRole: string) {
     const { id, ...updateData } = data;
 
-    await this.ensureImmeubleAccess(id, userId, userRole);
+    const immeuble = await this.ensureImmeubleAccess(id, userId, userRole);
 
     // Anti mass-assignment (IDOR) : un commercial/manager ne peut PAS réassigner
     // l'immeuble vers un tiers. On retire ces champs d'ownership du payload.
     if (userRole === 'commercial' || userRole === 'manager') {
       delete (updateData as Record<string, unknown>).commercialId;
       delete (updateData as Record<string, unknown>).managerId;
-      delete (updateData as Record<string, unknown>).zoneId;
     } else if (userRole === 'directeur') {
       // Le directeur ne peut réassigner que dans son périmètre : valide la cible.
       await this.assertDirecteurOwnsTarget(userId, {
@@ -939,7 +981,20 @@ export class ImmeubleService {
         managerId: updateData.managerId,
       });
     }
-    // admin : aucune restriction de réassignation.
+    // admin : aucune restriction de réassignation commercial/manager.
+
+    // zoneId est PUREMENT géométrique : jamais de confiance dans la valeur
+    // envoyée par le client, quel que soit le rôle (y compris admin). Si la
+    // mise à jour déplace le bâtiment (latitude et/ou longitude fournies), on
+    // recalcule le zoneId depuis les nouvelles coordonnées ; sinon on ne
+    // touche pas au zoneId existant.
+    delete (updateData as Record<string, unknown>).zoneId;
+    if (updateData.latitude !== undefined || updateData.longitude !== undefined) {
+      const latitude = updateData.latitude ?? immeuble.latitude ?? undefined;
+      const longitude = updateData.longitude ?? immeuble.longitude ?? undefined;
+      (updateData as Record<string, unknown>).zoneId =
+        await this.resolveZoneIdByGeometry({ latitude, longitude });
+    }
 
     return this.prisma.immeuble.update({
       where: { id },
