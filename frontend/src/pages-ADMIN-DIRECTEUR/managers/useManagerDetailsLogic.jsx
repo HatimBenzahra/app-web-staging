@@ -15,6 +15,7 @@ import {
   useImmeublesTableData,
   useFilteredPortes,
 } from '@/hooks/utils/filters/useStatisticsFilter'
+import { buildingDoorCount } from '@/constants/domain/habitat'
 import { useEffect, useMemo, useState } from 'react'
 import { Mic } from 'lucide-react'
 import { calculateRank, calculateRankFromStats, aggregateStats } from '@/utils/business/ranks'
@@ -461,6 +462,11 @@ export function useManagerDetailsLogic() {
 
   // Données des portes
   const allPortes = useFilteredPortes(manager?.immeubles, appliedStartDate, appliedEndDate)
+  // Capacité déclarée (grille) = dénominateur de la couverture (Option A).
+  const totalDoorsGrid = (manager?.immeubles || []).reduce(
+    (sum, immeuble) => sum + buildingDoorCount(immeuble),
+    0
+  )
 
   const porteSegmentCounts = useMemo(() => {
     const counts = new Map()
@@ -716,6 +722,7 @@ export function useManagerDetailsLogic() {
       type: 'custom',
       component: 'ChartsSection',
       data: {
+        totalDoors: totalDoorsGrid,
         charts: [
           { type: 'PortesStatusChart', props: { portes: allPortes || [], title: 'Répartition des statuts', description: 'État actuel de toutes les portes', showNonVisited: true } },
           { type: 'PortesProspectionChart', props: { portes: allPortes || [], title: 'Portes prospectées par jour', description: 'Activité quotidienne des 7 derniers jours', daysToShow: 7 } },

@@ -470,10 +470,11 @@ export default function AssignedZoneCard({
           {/* Immeubles sur la carte */}
           {immeublesWithCoordinates.map(immeuble => {
             const portes = immeuble.portes || []
-            const totalPortes = portes.length > 0 ? portes.length : buildingDoorCount(immeuble)
+            // Couverture = prospectées / total de portes PRÉVUES (grille déclarée), jamais / portes créées.
+            const totalPortes = buildingDoorCount(immeuble)
             const prospectees = portes.filter(p => p.statut !== 'NON_VISITE').length
             const couverture =
-              portes.length > 0 ? Math.round((prospectees / portes.length) * 100) : 0
+              totalPortes > 0 ? Math.round((prospectees / totalPortes) * 100) : 0
             const contrats = portes
               .filter(p => p.statut === 'CONTRAT_SIGNE')
               .reduce((s, p) => s + (p.nbContrats ?? 0), 0)

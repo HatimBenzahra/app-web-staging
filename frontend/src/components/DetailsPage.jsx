@@ -109,15 +109,16 @@ function ProspectionMetric({ label, value, detail, icon }) {
   )
 }
 
-function ProspectionChartsSection({ charts = [] }) {
+function ProspectionChartsSection({ charts = [], totalDoors }) {
   const portes = charts.find(chart => chart.props?.portes)?.props?.portes || []
 
   const summary = useMemo(() => {
     const normalizeStatus = status => String(status || '').toUpperCase()
-    const totalPortes = portes.length
     const portesProspectees = portes.filter(
       porte => normalizeStatus(porte.statut) !== 'NON_VISITE'
     ).length
+    // Couverture = prospectées / total de portes PRÉVUES (grille déclarée), jamais / portes créées.
+    const totalPortes = totalDoors > 0 ? totalDoors : 0
     const contrats = portes
       .filter(porte => normalizeStatus(porte.statut) === 'CONTRAT_SIGNE')
       .reduce((sum, porte) => sum + (porte.nbContrats || 1), 0)
@@ -156,7 +157,7 @@ function ProspectionChartsSection({ charts = [] }) {
         },
       ],
     }
-  }, [portes])
+  }, [portes, totalDoors])
 
   const renderChart = (chart, index) => {
     if (chart.type === 'PortesStatusChart') {
@@ -1212,7 +1213,10 @@ export default function DetailsPage({
           {/* Afficher le filtre personnalisé si présent */}
           {section.customFilter && <div className="mb-5">{section.customFilter}</div>}
           {section.type === 'custom' && section.component === 'ChartsSection' ? (
-            <ProspectionChartsSection charts={section.data.charts} />
+            <ProspectionChartsSection
+              charts={section.data.charts}
+              totalDoors={section.data.totalDoors}
+            />
           ) : section.type === 'custom' && section.bare && section.render ? (
             // Section auto-encadrée (ex. carte trajet) → pas de Card externe pour
             // éviter une carte dans une carte.

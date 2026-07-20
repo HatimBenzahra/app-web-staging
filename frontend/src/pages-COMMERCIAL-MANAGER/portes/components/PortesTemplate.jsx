@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Building2, ArrowLeft, Eye, CheckCircle2, RotateCcw, MapPin, Plus, Minus } from 'lucide-react'
 import { useCommercialTheme } from '@/hooks/ui/use-commercial-theme'
 import { useImmeuble } from '@/hooks/metier/use-api'
+import { buildingDoorCount } from '@/constants/domain/habitat'
 import PorteCardOriginal from './PorteCardOriginal'
 import ScrollToTopButton from './ScrollToTopButton'
 import StatusFilters from './StatusFilters'
@@ -140,7 +141,13 @@ export default function PortesTemplate({
 
   // Statistiques des portes (Backend ou calculé)
   const stats = useMemo(() => {
+    // Couverture = portes prospectées / total de portes PRÉVUES (grille déclarée
+    // nbEtages × nbPortesParEtage), et NON le nombre de portes créées — sinon la
+    // 1re porte prospectée afficherait 100 %.
+    const totalPrevues = buildingDoorCount(immeuble)
+
     if (statsData) {
+      const prospectees = (statsData.totalPortes || 0) - (statsData.nonVisitees || 0)
       return {
         total: statsData.totalPortes,
         nonVisitees: statsData.nonVisitees,
@@ -150,7 +157,8 @@ export default function PortesTemplate({
         argumente: statsData.argumente,
         refus: statsData.refus,
         repassages: statsData.necessiteRepassage,
-        tauxVisite: statsData.tauxConversion || '0',
+        tauxVisite:
+          totalPrevues > 0 ? ((prospectees / totalPrevues) * 100).toFixed(1) : '0',
       }
     }
     const total = portes.length
@@ -163,7 +171,9 @@ export default function PortesTemplate({
     const argumente = portes.filter(p => p.statut === 'ARGUMENTE').length
     const refus = portes.filter(p => p.statut === 'REFUS').length
     const repassages = portes.filter(p => p.statut === 'NECESSITE_REPASSAGE').length
-    const tauxVisite = total > 0 ? (((total - nonVisitees) / total) * 100).toFixed(1) : '0'
+    const prospectees = total - nonVisitees
+    const tauxVisite =
+      totalPrevues > 0 ? ((prospectees / totalPrevues) * 100).toFixed(1) : '0'
     return {
       total,
       nonVisitees,
@@ -175,7 +185,7 @@ export default function PortesTemplate({
       repassages,
       tauxVisite,
     }
-  }, [portes, statsData])
+  }, [portes, statsData, immeuble])
 
   // Compteurs par statut pour les filtres (sur TOUTES les portes, pas juste visible)
   const portesCountByStatus = useMemo(() => {

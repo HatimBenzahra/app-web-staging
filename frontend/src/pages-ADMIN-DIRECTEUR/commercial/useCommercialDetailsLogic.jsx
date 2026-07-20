@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import { useDateFilter } from '@/hooks/utils/filters/useDateFilter'
+import { buildingDoorCount } from '@/constants/domain/habitat'
 import { porteApi } from '@/services/api/portes/porte.service'
 import { buildFacadeFloors } from '@/pages-ADMIN-DIRECTEUR/immeubles/facade-data'
 import CommercialTrajetsSection from './components/CommercialTrajetsSection'
@@ -238,6 +239,11 @@ export function useCommercialDetailsLogic() {
 
   // Données des portes
   const allPortes = useFilteredPortes(commercial?.immeubles, appliedStartDate, appliedEndDate)
+  // Capacité déclarée (grille) = dénominateur de la couverture (Option A).
+  const totalDoorsGrid = (commercial?.immeubles || []).reduce(
+    (sum, immeuble) => sum + buildingDoorCount(immeuble),
+    0
+  )
 
   // 1 enregistrement par porte : on garde le segment le plus long si plusieurs
   // remontent (robustesse), c'est celui qui porte le vrai signal.
@@ -478,6 +484,7 @@ export function useCommercialDetailsLogic() {
       type: 'custom',
       component: 'ChartsSection',
       data: {
+        totalDoors: totalDoorsGrid,
         charts: [
           {
             type: 'PortesStatusChart',

@@ -14,7 +14,7 @@ import {
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
 import { Badge } from '@/components/ui/badge'
 import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
-import { habitatBreakdown } from '@/constants/domain/habitat'
+import { habitatBreakdown, buildingDoorCount } from '@/constants/domain/habitat'
 
 // Valeur de filtre/groupe pour les bâtiments sans quartier
 export const AUTONOMES_KEY = 'autonomes'
@@ -309,7 +309,8 @@ export function useImmeublesLogic() {
       const commercial = commercials?.find(c => c.id === immeuble.commercialId)
       const manager = managers?.find(m => m.id === immeuble.managerId)
       const portesImmeuble = immeuble.portes || []
-      const totalDoors = portesImmeuble.length
+      // Total de portes PRÉVUES (grille déclarée) — jamais le nombre de portes créées.
+      const totalDoors = buildingDoorCount(immeuble)
       const portesProspectees = portesImmeuble.filter(p => p.statut !== 'NON_VISITE').length
       const couverture =
         totalDoors > 0 ? parseFloat(((portesProspectees / totalDoors) * 100).toFixed(1)) : 0
@@ -351,7 +352,7 @@ export function useImmeublesLogic() {
         ? (
             sortedImmeubles.reduce((acc, curr) => {
               const portesImmeuble = curr.portes || []
-              const totalDoors = portesImmeuble.length
+              const totalDoors = buildingDoorCount(curr)
               const portesProspectees = portesImmeuble.filter(p => p.statut !== 'NON_VISITE').length
               const couverture = totalDoors > 0 ? (portesProspectees / totalDoors) * 100 : 0
               return acc + couverture

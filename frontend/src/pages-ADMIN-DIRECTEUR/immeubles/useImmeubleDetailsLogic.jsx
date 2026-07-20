@@ -66,7 +66,8 @@ export function useImmeubleDetailsLogic() {
     const meta = getHabitatMeta(type)
     const commercial = commercials?.find(c => c.id === immeuble.commercialId)
     const manager = managers?.find(m => m.id === immeuble.managerId)
-    const totalDoors = portes?.length || buildingDoorCount(immeuble)
+    // Total de portes prévues = capacité déclarée (grille), jamais le compte de portes créées.
+    const totalDoors = buildingDoorCount(immeuble)
 
     // Déterminer le responsable (commercial ou manager)
     let commercialName = 'Non assigné'
