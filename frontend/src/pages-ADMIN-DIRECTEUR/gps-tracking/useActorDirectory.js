@@ -24,11 +24,11 @@ export function useActorDirectory() {
     const byName = new Map()
     for (const device of kioskDevices ?? []) {
       if (device?.batteryLevel == null || device.batteryLevel < 0) continue
-      const level = device.batteryLevel
+      const entry = { level: device.batteryLevel, charging: Boolean(device.batteryCharging) }
       const id = device.commercialId != null ? Number(device.commercialId) : NaN
-      if (Number.isFinite(id) && !byId.has(id)) byId.set(id, level)
+      if (Number.isFinite(id) && !byId.has(id)) byId.set(id, entry)
       const name = (device.commercialName ?? '').trim()
-      if (name && !byName.has(name)) byName.set(name, level)
+      if (name && !byName.has(name)) byName.set(name, entry)
     }
     return { byId, byName }
   }, [kioskDevices])
@@ -58,12 +58,17 @@ export function useActorDirectory() {
         const name = resolveActorName(userId, userType)
         // Pour un commercial, la batterie fiable vient de sa tablette kiosk
         // (identique aux pages Kiosk) ; sinon on garde la valeur de la position GPS.
+        // L'état de charge (batteryCharging) n'existe que côté kiosk : il reste
+        // undefined pour un manager ou un commercial sans tablette associée.
         let batteryLevel = pos.batteryLevel
+        let batteryCharging
         if (userType === 'COMMERCIAL') {
-          const kioskLevel =
-            kioskBatteryByCommercial.byId.get(userId) ??
-            kioskBatteryByCommercial.byName.get(name)
-          if (kioskLevel != null) batteryLevel = kioskLevel
+          const kioskEntry =
+            kioskBatteryByCommercial.byId.get(userId) ?? kioskBatteryByCommercial.byName.get(name)
+          if (kioskEntry != null) {
+            batteryLevel = kioskEntry.level
+            batteryCharging = kioskEntry.charging
+          }
         }
         result.push({
           key,
@@ -74,6 +79,7 @@ export function useActorDirectory() {
           longitude: pos.longitude,
           accuracy: pos.accuracy,
           batteryLevel,
+          batteryCharging,
           online: Boolean(pos.isOnline),
           lastSeen: pos.recordedAt,
         })

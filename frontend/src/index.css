@@ -441,5 +441,41 @@ body {
     opacity: 0.9;
   }
 
+  /*
+   * Thème des popups Mapbox (react-map-gl <Popup>) : la bibliothèque rend un
+   * conteneur blanc par défaut, illisible en dark mode. On aligne sur les
+   * tokens sémantiques popover/popover-foreground utilisés par le reste de
+   * l'UI (cf. components/ui/popover.jsx) pour que la popup s'adapte au thème.
+   * Seuls deux écrans utilisent <Popup> (suivi GPS et adresses Acquiscan) :
+   * un thème global cohérent est donc sans risque pour le reste de l'app.
+   */
+  .mapboxgl-popup-content {
+    background: var(--popover) !important;
+    color: var(--popover-foreground) !important;
+    padding: 0 !important;
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent) !important;
+    box-shadow: 0 12px 30px rgb(15 23 42 / 18%) !important;
+    overflow: hidden;
+  }
 
+  .mapboxgl-popup-tip {
+    border-top-color: var(--popover) !important;
+    border-bottom-color: var(--popover) !important;
+    border-left-color: var(--popover) !important;
+    border-right-color: var(--popover) !important;
+  }
+
+  .mapboxgl-popup-close-button {
+    color: var(--popover-foreground);
+    opacity: 0.6;
+    font-size: 15px;
+    padding: 3px 7px;
+    border-radius: 0 var(--radius-lg) 0 var(--radius-sm);
+  }
+
+  .mapboxgl-popup-close-button:hover {
+    opacity: 1;
+    background-color: color-mix(in oklch, var(--muted) 60%, transparent) !important;
+  }
 }

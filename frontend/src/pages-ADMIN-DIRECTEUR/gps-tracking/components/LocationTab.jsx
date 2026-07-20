@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import MapboxMap, { Marker, NavigationControl, Popup, Source, Layer } from 'react-map-gl/mapbox'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -15,6 +15,9 @@ import {
   Navigation2,
   Flag,
   Users,
+  Zap,
+  Crosshair,
+  X,
 } from 'lucide-react'
 import MapToolbar from './MapToolbar'
 import {
@@ -205,6 +208,26 @@ const getActorRoleLabel = actor => (actor?.userType === 'MANAGER' ? 'Manager' : 
 
 const getActorInitial = actor => getActorRoleLabel(actor).charAt(0).toUpperCase()
 
+// Initiales de la personne (ex. « Jean Dupont » → « JD ») pour l'en-tête du popup
+// live. Repli sur getActorInitial (lettre du rôle) quand le nom n'a pas pu être
+// résolu (cf. useActorDirectory#resolveActorName → `#${userId}`).
+const getActorNameInitials = actor => {
+  const trimmed = (actor?.name || '').trim()
+  if (!trimmed || trimmed.startsWith('#')) return getActorInitial(actor)
+  const initials = trimmed
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('')
+  return initials || getActorInitial(actor)
+}
+
+// Couleur d'avatar dérivée du rôle (commercial vs manager), via les tokens
+// sémantiques déjà utilisés par AVATAR_COLORS ci-dessous.
+const getActorRoleAvatarColor = actor =>
+  actor?.userType === 'MANAGER' ? 'bg-chart-5/15 text-chart-5' : 'bg-primary/15 text-primary'
+
 const AVATAR_COLORS = [
   'bg-chart-2/15 text-chart-2',
   'bg-primary/15 text-primary',
@@ -240,6 +263,7 @@ export default function LocationTab({
   routeTotal,
   embedded = false,
 }) {
+  const navigate = useNavigate()
   const [viewState, setViewState] = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [is3DTerrain, setIs3DTerrain] = useState(false)
@@ -1245,58 +1269,145 @@ export default function LocationTab({
               latitude={Number(selectedLiveActor.latitude)}
               longitude={Number(selectedLiveActor.longitude)}
               anchor="top"
+              offset={18}
               onClose={() => setSelectedActorKey(null)}
-              closeButton
-              maxWidth="260px"
+              closeButton={false}
+              maxWidth="270px"
             >
-              <div className="p-3 space-y-3 min-w-[220px]">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+              <div className="relative w-[236px]">
+                {/* Bouton fermer custom (le × natif Mapbox est peu soigné) */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedActorKey(null)}
+                  aria-label="Fermer"
+                  className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                {/* En-tête : avatar (initiales, coloré par rôle) + nom/rôle + statut */}
+                <div className="flex items-center gap-2.5 p-3 pb-2.5 pr-9 border-b border-border/60">
+                  <div
+                    className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${getActorRoleAvatarColor(selectedLiveActor)}`}
+                  >
+                    {getActorNameInitials(selectedLiveActor)}
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-sm truncate leading-tight">
                       {selectedLiveActor.name || 'Non assigné'}
                     </p>
-                    <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
-                      {getActorRoleLabel(selectedLiveActor)}
-                    </p>
-                  </div>
-                  <Badge
-                    className={`shrink-0 text-[10px] px-1.5 py-0.5 ${
-                      selectedLiveActor.online
-                        ? 'bg-chart-2/15 text-chart-2 border-chart-2/30'
-                        : 'bg-destructive/15 text-destructive border-destructive/30'
-                    }`}
-                  >
-                    {selectedLiveActor.online ? 'En ligne' : 'Hors ligne'}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-muted-foreground">Batterie</span>
-                    <div className="flex items-center gap-1.5 flex-1 justify-end">
-                      <div className="flex-1 max-w-[80px] bg-muted/50 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${clampBattery(selectedLiveActor.batteryLevel)}%`,
-                            backgroundColor: isBatteryKnown(selectedLiveActor.batteryLevel)
-                              ? getBatteryHexColor(selectedLiveActor.batteryLevel)
-                              : 'transparent',
-                          }}
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] leading-tight min-w-0">
+                      <span className="text-muted-foreground truncate">
+                        {getActorRoleLabel(selectedLiveActor)}
+                      </span>
+                      <span className="text-muted-foreground/40 shrink-0">·</span>
+                      <span className="flex items-center gap-1 shrink-0">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            selectedLiveActor.online ? 'bg-chart-2' : 'bg-muted-foreground/40'
+                          }`}
                         />
-                      </div>
-                      <span className="text-[11px] font-medium tabular-nums">
-                        {formatBattery(selectedLiveActor.batteryLevel)}
+                        <span
+                          className={`font-medium ${
+                            selectedLiveActor.online ? 'text-chart-2' : 'text-muted-foreground'
+                          }`}
+                        >
+                          {selectedLiveActor.online ? 'En ligne' : 'Hors ligne'}
+                        </span>
                       </span>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-muted-foreground">Dernière vue</span>
-                    <span className="text-[11px] font-medium">
+                {/* Corps : batterie, précision GPS, dernière position */}
+                <div className="p-3 space-y-2">
+                  {(() => {
+                    const BattIcon = getBatteryIcon(selectedLiveActor.batteryLevel)
+                    const battColor = getBatteryColor(selectedLiveActor.batteryLevel)
+                    const isCharging =
+                      Boolean(selectedLiveActor.batteryCharging) &&
+                      isBatteryKnown(selectedLiveActor.batteryLevel)
+                    return (
+                      <div className="flex items-center gap-2">
+                        <BattIcon className={`h-3.5 w-3.5 shrink-0 ${battColor}`} />
+                        <span className="text-[11px] text-muted-foreground w-[78px] shrink-0">
+                          Batterie
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                          <div className="flex-1 max-w-[64px] bg-muted/50 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${clampBattery(selectedLiveActor.batteryLevel)}%`,
+                                backgroundColor: isBatteryKnown(selectedLiveActor.batteryLevel)
+                                  ? getBatteryHexColor(selectedLiveActor.batteryLevel)
+                                  : 'transparent',
+                              }}
+                            />
+                          </div>
+                          {isCharging && (
+                            <Zap className="h-3 w-3 text-chart-5 shrink-0" fill="currentColor" />
+                          )}
+                          <span className="text-[11px] font-medium tabular-nums shrink-0">
+                            {formatBattery(selectedLiveActor.batteryLevel)}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {selectedLiveActor.accuracy != null &&
+                    Number.isFinite(Number(selectedLiveActor.accuracy)) && (
+                      <div className="flex items-center gap-2">
+                        <Crosshair className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-[11px] text-muted-foreground w-[78px] shrink-0">
+                          Précision
+                        </span>
+                        <span className="text-[11px] font-medium ml-auto">
+                          ± {Math.round(Number(selectedLiveActor.accuracy))} m
+                        </span>
+                      </div>
+                    )}
+
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-[11px] text-muted-foreground w-[78px] shrink-0">
+                      Dernière vue
+                    </span>
+                    <span className="text-[11px] font-medium ml-auto">
                       {formatRelativeTime(selectedLiveActor.lastSeen)}
                     </span>
                   </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 p-3 pt-2 border-t border-border/60">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-7 px-2 text-[11px]"
+                    onClick={() => {
+                      setSelectedActorKey(selectedLiveActor.key)
+                      setMode('trajet')
+                    }}
+                  >
+                    <Route className="h-3 w-3" />
+                    Trajet
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1 h-7 px-2 text-[11px]"
+                    onClick={() =>
+                      navigate(
+                        selectedLiveActor.userType === 'MANAGER'
+                          ? `/managers/${selectedLiveActor.userId}`
+                          : `/commerciaux/${selectedLiveActor.userId}`
+                      )
+                    }
+                  >
+                    Voir le détail
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
             </Popup>
