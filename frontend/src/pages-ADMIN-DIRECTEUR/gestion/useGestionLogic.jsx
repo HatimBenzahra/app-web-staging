@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRole } from '@/contexts/userole'
 import {
   useDirecteursQuery,
@@ -8,14 +8,42 @@ import {
   useUpdateCommercialMutation,
 } from '@/hooks/metier/react-query'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
-import {
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+
+// Identifiant de la zone de dépôt « Non assignés » (désassignation).
+export const UNASSIGN_DROPZONE_ID = 'dropzone-unassigned'
+
+/**
+ * Parse la cible d'un drop et renvoie { type, id } normalisé.
+ * Formats gérés :
+ *  - "directeur-5" / "manager-3" / "commercial-7"  (drop sur une carte)
+ *  - "dropzone-manager-5"          → directeur 5   (manager déposé sur directeur)
+ *  - "dropzone-commercial-3"       → manager 3     (commercial déposé sur manager)
+ *  - "dropzone-direct-commercial-5"→ directeur 5   (commercial direct)
+ *  - "dropzone-unassigned"         → { type: 'unassign' }
+ */
+function parseDropTarget(overId) {
+  if (overId === UNASSIGN_DROPZONE_ID) return { type: 'unassign', id: null }
+
+  if (overId.startsWith('dropzone-')) {
+    const parts = overId.split('-')
+    if (parts[1] === 'direct') return { type: 'directeur', id: parseInt(parts[3], 10) }
+    if (parts[1] === 'manager') return { type: 'directeur', id: parseInt(parts[2], 10) }
+    if (parts[1] === 'commercial') return { type: 'manager', id: parseInt(parts[2], 10) }
+    return { type: null, id: null }
+  }
+
+  const [type, idStr] = overId.split('-')
+  return { type, id: parseInt(idStr, 10) }
+}
+
+function parseDraggable(activeId) {
+  const [type, idStr] = activeId.split('-')
+  return { type, id: parseInt(idStr, 10) }
+}
 
 export function useGestionLogic() {
-  const { isDirecteur, currentUserId } = useRole()
+  const { isAdmin, isDirecteur, currentUserId } = useRole()
   const { showError, showSuccess } = useErrorToast()
 
   // Récupérer les données avec React Query
@@ -47,6 +75,25 @@ export function useGestionLogic() {
   // État local
   const [activeId, setActiveId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('ACTIF')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [addModal, setAddModal] = useState({
+    isOpen: false,
+    userType: null,
+    parentId: null,
+    parentType: null,
+  })
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    userType: null,
+    user: null,
+  })
+
+  // Sélection master-détail : directeur → manager (ou 'direct') → commerciaux
+  const [selectedDirecteurId, setSelectedDirecteurId] = useState(null)
+  const [selectedManagerId, setSelectedManagerId] = useState(null)
+
+  // Le filtre par statut (Actifs / Utilisateurs test) est réservé aux admins.
+  const showStatusFilter = isAdmin
 
   const statusFilterOptions = useMemo(
     () => [
@@ -68,9 +115,10 @@ export function useGestionLogic() {
   const matchesStatusFilter = useCallback(
     status => {
       if (!status) return false
-      return status === statusFilter
+      // Seuls les admins basculent le filtre ; les autres ne voient que les actifs.
+      return status === (showStatusFilter ? statusFilter : 'ACTIF')
     },
-    [statusFilter]
+    [statusFilter, showStatusFilter]
   )
 
   const filteredManagers = useMemo(
@@ -123,8 +171,7 @@ export function useGestionLogic() {
       directCommercials: filteredCommercials
         .filter(
           c =>
-            c.directeurId === directeur.id &&
-            (!c.managerId || !filteredManagerIds.has(c.managerId))
+            c.directeurId === directeur.id && (!c.managerId || !filteredManagerIds.has(c.managerId))
         )
         .map(commercial => ({
           ...commercial,
@@ -148,7 +195,133 @@ export function useGestionLogic() {
         commercials: unassignedCommercials,
       },
     }
-  }, [filteredDirecteurs, filteredManagers, filteredCommercials, filteredDirecteurIds, filteredManagerIds])
+  }, [
+    filteredDirecteurs,
+    filteredManagers,
+    filteredCommercials,
+    filteredDirecteurIds,
+    filteredManagerIds,
+  ])
+
+  // Filtrage par recherche : garde les correspondances + leurs parents (contexte).
+  const organizationView = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return organizationData
+
+    const matchUser = user =>
+      `${user.prenom ?? ''} ${user.nom ?? ''} ${user.email ?? ''}`.toLowerCase().includes(query)
+
+    const trees = organizationData.trees
+      .map(directeur => {
+        const directeurMatches = matchUser(directeur)
+
+        const managersView = directeur.managers
+          .map(manager => {
+            const managerMatches = matchUser(manager)
+            const commercials =
+              directeurMatches || managerMatches
+                ? manager.commercials
+                : manager.commercials.filter(matchUser)
+            return { manager, managerMatches, commercials }
+          })
+          .filter(
+            ({ managerMatches, commercials }) =>
+              directeurMatches || managerMatches || commercials.length > 0
+          )
+          .map(({ manager, commercials }) => ({ ...manager, commercials }))
+
+        const directCommercials = directeurMatches
+          ? directeur.directCommercials
+          : directeur.directCommercials.filter(matchUser)
+
+        return { directeur, directeurMatches, managersView, directCommercials }
+      })
+      .filter(
+        ({ directeurMatches, managersView, directCommercials }) =>
+          directeurMatches || managersView.length > 0 || directCommercials.length > 0
+      )
+      .map(({ directeur, managersView, directCommercials }) => ({
+        ...directeur,
+        managers: managersView,
+        directCommercials,
+      }))
+
+    return {
+      trees,
+      unassigned: {
+        managers: organizationData.unassigned.managers.filter(matchUser),
+        commercials: organizationData.unassigned.commercials.filter(matchUser),
+      },
+    }
+  }, [organizationData, searchQuery])
+
+  // Compteurs récapitulatifs (sur les données filtrées par statut, hors recherche)
+  const counts = useMemo(
+    () => ({
+      directeurs: filteredDirecteurs.length,
+      managers: filteredManagers.length,
+      commercials: filteredCommercials.length,
+      unassigned:
+        organizationData.unassigned.managers.length +
+        organizationData.unassigned.commercials.length,
+    }),
+    [filteredDirecteurs, filteredManagers, filteredCommercials, organizationData]
+  )
+
+  // Arbres visibles selon les permissions (un directeur ne voit que le sien)
+  const visibleTrees = useMemo(
+    () =>
+      isDirecteur
+        ? organizationView.trees.filter(t => t.id === parseInt(currentUserId, 10))
+        : organizationView.trees,
+    [organizationView.trees, isDirecteur, currentUserId]
+  )
+
+  // Valider / auto-sélectionner le directeur courant
+  useEffect(() => {
+    if (!visibleTrees.length) {
+      if (selectedDirecteurId !== null) setSelectedDirecteurId(null)
+      return
+    }
+    if (!visibleTrees.some(t => t.id === selectedDirecteurId)) {
+      setSelectedDirecteurId(visibleTrees[0].id)
+    }
+  }, [visibleTrees, selectedDirecteurId])
+
+  const selectedDirecteur = useMemo(
+    () => visibleTrees.find(t => t.id === selectedDirecteurId) || null,
+    [visibleTrees, selectedDirecteurId]
+  )
+
+  // Valider / auto-sélectionner le manager (ou le groupe « commerciaux directs »)
+  useEffect(() => {
+    if (!selectedDirecteur) return
+    const managerIds = selectedDirecteur.managers.map(m => m.id)
+    const hasDirect = (selectedDirecteur.directCommercials?.length ?? 0) > 0
+    const valid =
+      (selectedManagerId === 'direct' && hasDirect) ||
+      (typeof selectedManagerId === 'number' && managerIds.includes(selectedManagerId))
+    if (!valid) {
+      setSelectedManagerId(managerIds.length ? managerIds[0] : hasDirect ? 'direct' : null)
+    }
+  }, [selectedDirecteur, selectedManagerId])
+
+  // Colonnes dérivées
+  const columnManagers = selectedDirecteur?.managers ?? []
+  const columnHasDirect = (selectedDirecteur?.directCommercials?.length ?? 0) > 0
+  const columnCommercials = useMemo(() => {
+    if (!selectedDirecteur) return []
+    if (selectedManagerId === 'direct') return selectedDirecteur.directCommercials ?? []
+    const manager = selectedDirecteur.managers.find(m => m.id === selectedManagerId)
+    return manager?.commercials ?? []
+  }, [selectedDirecteur, selectedManagerId])
+
+  const selectDirecteur = useCallback(id => {
+    setSelectedDirecteurId(id)
+    setSelectedManagerId(null) // sera auto-résolu par l'effet
+  }, [])
+
+  const selectManager = useCallback(id => setSelectedManagerId(id), [])
 
   // Trouver un utilisateur par ID et type
   const findUser = useCallback(
@@ -168,6 +341,63 @@ export function useGestionLogic() {
     [filteredDirecteurs, filteredManagers, filteredCommercials]
   )
 
+  // Désassignation : ramener un utilisateur vers « Non assignés »
+  const unassignCommercial = useCallback(
+    commercialId => {
+      updateCommercial(
+        { id: commercialId, managerId: null, directeurId: null },
+        { onSuccess: () => showSuccess('Commercial désassigné') }
+      )
+    },
+    [updateCommercial, showSuccess]
+  )
+
+  const unassignManager = useCallback(
+    managerId => {
+      // On détache le manager de son directeur ; son équipe reste rattachée au manager.
+      updateManager(
+        { id: managerId, directeurId: null },
+        { onSuccess: () => showSuccess('Manager désassigné') }
+      )
+    },
+    [updateManager, showSuccess]
+  )
+
+  const unassignUser = useCallback(
+    (type, id) => {
+      if (type === 'commercial') unassignCommercial(id)
+      else if (type === 'manager') unassignManager(id)
+    },
+    [unassignCommercial, unassignManager]
+  )
+
+  // Réassignation via le menu d'action (cibles arbitraires, hors colonnes visibles).
+  // `null` = « Aucun » (désassignation partielle).
+  const reassignCommercial = useCallback(
+    (id, { directeurId, managerId }) => {
+      updateCommercial(
+        { id, directeurId, managerId },
+        { onSuccess: () => showSuccess('Commercial réassigné') }
+      )
+    },
+    [updateCommercial, showSuccess]
+  )
+
+  const reassignManager = useCallback(
+    (id, { directeurId }) => {
+      updateManager({ id, directeurId }, { onSuccess: () => showSuccess('Manager réassigné') })
+    },
+    [updateManager, showSuccess]
+  )
+
+  const openReassign = useCallback((userType, user) => {
+    setReassignModal({ isOpen: true, userType, user })
+  }, [])
+
+  const closeReassign = useCallback(() => {
+    setReassignModal(prev => ({ ...prev, isOpen: false }))
+  }, [])
+
   // Gérer le début du drag
   const handleDragStart = event => {
     setActiveId(event.active.id)
@@ -181,33 +411,13 @@ export function useGestionLogic() {
     if (!over || active.id === over.id) return
 
     try {
-      // Parser les IDs (format: "type-id" ou "dropzone-type-id")
-      const [activeType, activeIdStr] = active.id.split('-')
-      const activeUserId = parseInt(activeIdStr)
+      const { type: activeType, id: activeUserId } = parseDraggable(active.id)
+      const { type: overType, id: overUserId } = parseDropTarget(over.id)
 
-      // Vérifier si on drop sur une dropzone ou sur une carte
-      let overType, overUserId, overIdStr
-      if (over.id.startsWith('dropzone-')) {
-        // Drop sur une dropzone: "dropzone-manager-5" ou "dropzone-commercial-3" ou "dropzone-direct-commercial-5"
-        const parts = over.id.split('-')
-
-        if (parts[1] === 'direct') {
-          // dropzone-direct-commercial-5 → directeur avec id 5
-          overType = 'directeur'
-          overUserId = parseInt(parts[3])
-        } else if (parts[1] === 'manager') {
-          // dropzone-manager-5 → directeur avec id 5 (drop de manager sur directeur)
-          overType = 'directeur'
-          overUserId = parseInt(parts[2])
-        } else if (parts[1] === 'commercial') {
-          // dropzone-commercial-3 → manager avec id 3
-          overType = 'manager'
-          overUserId = parseInt(parts[2])
-        }
-      } else {
-        // Drop sur une carte d'utilisateur
-        ;[overType, overIdStr] = over.id.split('-')
-        overUserId = parseInt(overIdStr)
+      // Désassignation : dépôt sur le panneau « Non assignés »
+      if (overType === 'unassign') {
+        unassignUser(activeType, activeUserId)
+        return
       }
 
       // Règles de déplacement:
@@ -217,67 +427,44 @@ export function useGestionLogic() {
 
       if (activeType === 'commercial') {
         if (overType === 'manager') {
-          // Assigner commercial à un manager
-          // React Query va mettre à jour l'UI instantanément avec optimistic update
+          // Assigner commercial à un manager (optimistic update React Query).
           updateCommercial(
-            {
-              id: activeUserId,
-              managerId: overUserId,
-            },
-            {
-              onSuccess: () => {
-                showSuccess('Commercial assigné au manager avec succès')
-              },
-            }
+            { id: activeUserId, managerId: overUserId },
+            { onSuccess: () => showSuccess('Commercial assigné au manager avec succès') }
           )
         } else if (overType === 'directeur') {
           // Assigner commercial directement à un directeur (sans manager)
           updateCommercial(
-            {
-              id: activeUserId,
-              directeurId: overUserId,
-              managerId: null,
-            },
-            {
-              onSuccess: () => {
-                showSuccess('Commercial assigné au directeur avec succès')
-              },
-            }
+            { id: activeUserId, directeurId: overUserId, managerId: null },
+            { onSuccess: () => showSuccess('Commercial assigné au directeur avec succès') }
           )
         }
       } else if (activeType === 'manager') {
         if (overType === 'directeur') {
-          // Assigner manager à un directeur
           // Avant de déplacer le manager, récupérer tous ses commerciaux
           const managerCommercials = commercials?.filter(c => c.managerId === activeUserId)
 
           // Mettre à jour le directeur du manager
           updateManager(
-            {
-              id: activeUserId,
-              directeurId: overUserId,
-            },
+            { id: activeUserId, directeurId: overUserId },
             {
               onSuccess: () => {
-                // Mettre à jour tous les commerciaux du manager pour enlever leur managerId
-                // Ils deviendront "sans manager" mais resteront à leur place
+                // Détacher les commerciaux du manager (ils deviennent directs mais
+                // restent visibles sous le directeur).
                 if (managerCommercials && managerCommercials.length > 0) {
                   managerCommercials.forEach(commercial => {
                     updateCommercial({
                       id: commercial.id,
                       managerId: null,
-                      // Garder le directeurId s'il existe, sinon le mettre à null aussi
                       directeurId: commercial.directeurId || null,
                     })
                   })
                 }
-
                 showSuccess('Manager assigné au directeur avec succès')
               },
             }
           )
         } else {
-          // Empêcher le drop de manager sur autre chose qu'un directeur
           showError(
             new Error("Un manager ne peut être assigné qu'à un directeur"),
             'Gestion.handleDragEnd'
@@ -290,29 +477,77 @@ export function useGestionLogic() {
     }
   }
 
+  // Création d'utilisateurs
+  const openAddModal = useCallback((userType, parentId = null, parentType = null) => {
+    setAddModal({ isOpen: true, userType, parentId, parentType })
+  }, [])
+
+  const closeAddModal = useCallback(() => {
+    setAddModal(prev => ({ ...prev, isOpen: false }))
+  }, [])
+
   const loading = loadingDirecteurs || loadingManagers || loadingCommercials
   const error = errorDirecteurs?.message || errorManagers?.message || errorCommercials?.message
 
-  const refetchAll = () => {
+  const refetchAll = useCallback(() => {
     refetchDirecteurs()
     refetchManagers()
     refetchCommercials()
-  }
+  }, [refetchDirecteurs, refetchManagers, refetchCommercials])
+
+  // Après création : le cache React Query est déjà invalidé par la mutation ;
+  // on ferme le modal et on force un refetch pour un affichage immédiat.
+  const handleAddSuccess = useCallback(() => {
+    closeAddModal()
+    refetchAll()
+  }, [closeAddModal, refetchAll])
 
   return {
+    isAdmin,
     isDirecteur,
     currentUserId,
     loading,
     error,
-    organizationData,
+    organizationData: organizationView,
+    counts,
     sensors,
     activeId,
     findUser,
     handleDragStart,
     handleDragEnd,
     refetchAll,
+    // Recherche
+    searchQuery,
+    setSearchQuery,
+    // Filtre statut
     statusFilter,
     setStatusFilter,
     statusFilterOptions,
+    showStatusFilter,
+    // Sélection master-détail
+    visibleTrees,
+    selectedDirecteurId,
+    selectedDirecteur,
+    selectDirecteur,
+    selectedManagerId,
+    selectManager,
+    columnManagers,
+    columnHasDirect,
+    columnCommercials,
+    // Désassignation
+    unassignUser,
+    // Réassignation
+    reassignModal,
+    openReassign,
+    closeReassign,
+    reassignCommercial,
+    reassignManager,
+    // Création
+    directeurs,
+    managers,
+    addModal,
+    openAddModal,
+    closeAddModal,
+    handleAddSuccess,
   }
 }

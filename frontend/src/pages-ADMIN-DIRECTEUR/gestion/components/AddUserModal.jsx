@@ -30,6 +30,7 @@ export default function AddUserModal({
   onSuccess,
   userType,
   parentId,
+  parentType, // 'directeur' | 'manager' — nature du parent pré-rempli
   directeurs,
   managers,
 }) {
@@ -40,6 +41,14 @@ export default function AddUserModal({
   const { mutate: createManager, loading: creatingManager } = useCreateManager()
   const { mutate: createCommercial, loading: creatingCommercial } = useCreateCommercial()
 
+  // Pré-remplissage du parent selon sa nature.
+  const prefillParent = () => {
+    if (!parentId) return { directeurId: 'none', managerId: 'none' }
+    if (parentType === 'directeur') return { directeurId: parentId.toString(), managerId: 'none' }
+    if (parentType === 'manager') return { directeurId: 'none', managerId: parentId.toString() }
+    return { directeurId: 'none', managerId: 'none' }
+  }
+
   // État du formulaire
   const [formData, setFormData] = useState({
     nom: '',
@@ -49,22 +58,18 @@ export default function AddUserModal({
     numTel: '',
     age: '',
     adresse: '',
-    directeurId: parentId ? parentId.toString() : 'none',
-    managerId: parentId && userType === 'commercial' ? parentId.toString() : 'none',
+    ...prefillParent(),
   })
 
   const [errors, setErrors] = useState({})
 
-  // Mettre à jour le formulaire quand parentId ou userType changent
+  // Mettre à jour le parent pré-rempli quand on (ré)ouvre le modal.
   useEffect(() => {
-    if (isOpen && parentId) {
-      setFormData(prev => ({
-        ...prev,
-        directeurId: userType === 'manager' ? parentId.toString() : prev.directeurId,
-        managerId: userType === 'commercial' ? parentId.toString() : prev.managerId,
-      }))
+    if (isOpen) {
+      setFormData(prev => ({ ...prev, ...prefillParent() }))
     }
-  }, [isOpen, parentId, userType])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, parentId, parentType, userType])
 
   // Réinitialiser le formulaire quand on ouvre/ferme le modal
   const handleOpenChange = open => {
@@ -85,9 +90,10 @@ export default function AddUserModal({
     }
   }
 
-  // Valider le formulaire
+  // Valider le formulaire (règles alignées sur les contraintes backend)
   const validateForm = () => {
     const newErrors = {}
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
     if (!formData.nom.trim()) {
       newErrors.nom = 'Le nom est requis'
@@ -97,19 +103,33 @@ export default function AddUserModal({
       newErrors.prenom = 'Le prénom est requis'
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    // Email requis pour les 3 rôles côté backend.
+    if (!formData.email.trim()) {
+      newErrors.email = "L'email est requis"
+    } else if (!emailRegex.test(formData.email)) {
       newErrors.email = 'Email invalide'
     }
 
-    if (userType === 'commercial') {
-      if (!formData.age || parseInt(formData.age) < 18 || parseInt(formData.age) > 65) {
-        newErrors.age = "L'âge doit être entre 18 et 65 ans"
+    if (userType === 'directeur') {
+      if (!formData.adresse.trim()) {
+        newErrors.adresse = "L'adresse est requise"
+      }
+      if (!formData.numTelephone.trim()) {
+        newErrors.numTelephone = 'Le téléphone est requis'
       }
     }
 
-    if (userType === 'manager' && (!formData.directeurId || formData.directeurId === 'none')) {
-      newErrors.directeurId = 'Un directeur doit être sélectionné'
+    if (userType === 'commercial') {
+      if (!formData.numTel.trim()) {
+        newErrors.numTel = 'Le téléphone est requis'
+      }
+      const age = parseInt(formData.age, 10)
+      if (!formData.age || Number.isNaN(age) || age < 16 || age > 70) {
+        newErrors.age = "L'âge doit être entre 16 et 70 ans"
+      }
     }
+
+    // directeurId est optionnel côté backend pour un manager : pas de validation.
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -125,30 +145,35 @@ export default function AddUserModal({
 
     try {
       if (userType === 'directeur') {
+        // Backend : nom, prenom, adresse, email, numTelephone tous requis.
         await createDirecteur({
           nom: formData.nom,
           prenom: formData.prenom,
-          email: formData.email || undefined,
-          numTelephone: formData.numTelephone || undefined,
-          adresse: formData.adresse || undefined,
+          email: formData.email,
+          numTelephone: formData.numTelephone,
+          adresse: formData.adresse,
         })
         showSuccess('Directeur créé avec succès')
       } else if (userType === 'manager') {
-        await createManager({
+        // directeurId est optionnel côté backend : on ne l'envoie que s'il est choisi.
+        const managerData = {
           nom: formData.nom,
           prenom: formData.prenom,
-          email: formData.email || undefined,
+          email: formData.email,
           numTelephone: formData.numTelephone || undefined,
-          directeurId: parseInt(formData.directeurId),
-        })
+        }
+        if (formData.directeurId && formData.directeurId !== 'none') {
+          managerData.directeurId = parseInt(formData.directeurId, 10)
+        }
+        await createManager(managerData)
         showSuccess('Manager créé avec succès')
       } else if (userType === 'commercial') {
         const commercialData = {
           nom: formData.nom,
           prenom: formData.prenom,
-          email: formData.email || undefined,
-          numTel: formData.numTel || undefined,
-          age: parseInt(formData.age),
+          email: formData.email,
+          numTel: formData.numTel,
+          age: parseInt(formData.age, 10),
         }
 
         // Ajouter managerId seulement s'il est défini et pas "none"
@@ -261,7 +286,7 @@ export default function AddUserModal({
 
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Email *</Label>
             <Input
               id="email"
               type="email"
@@ -275,7 +300,10 @@ export default function AddUserModal({
 
           {/* Téléphone */}
           <div className="space-y-2">
-            <Label htmlFor="telephone">Téléphone</Label>
+            <Label htmlFor="telephone">
+              Téléphone{' '}
+              {userType === 'directeur' ? '*' : userType === 'manager' ? '(optionnel)' : '*'}
+            </Label>
             <Input
               id="telephone"
               type="tel"
@@ -287,19 +315,25 @@ export default function AddUserModal({
                 })
               }
               placeholder="+33 XX XXX XXX"
+              className={errors.numTel || errors.numTelephone ? 'border-red-500' : ''}
             />
+            {(errors.numTel || errors.numTelephone) && (
+              <p className="text-sm text-red-500">{errors.numTel || errors.numTelephone}</p>
+            )}
           </div>
 
           {/* Adresse (directeur seulement) */}
           {userType === 'directeur' && (
             <div className="space-y-2">
-              <Label htmlFor="adresse">Adresse</Label>
+              <Label htmlFor="adresse">Adresse *</Label>
               <Input
                 id="adresse"
                 value={formData.adresse}
                 onChange={e => setFormData({ ...formData, adresse: e.target.value })}
                 placeholder="Adresse complète"
+                className={errors.adresse ? 'border-red-500' : ''}
               />
+              {errors.adresse && <p className="text-sm text-red-500">{errors.adresse}</p>}
             </div>
           )}
 
@@ -310,8 +344,8 @@ export default function AddUserModal({
               <Input
                 id="age"
                 type="number"
-                min="18"
-                max="65"
+                min="16"
+                max="70"
                 value={formData.age}
                 onChange={e => setFormData({ ...formData, age: e.target.value })}
                 placeholder="25"
@@ -321,28 +355,27 @@ export default function AddUserModal({
             </div>
           )}
 
-          {/* Directeur (manager et commercial) */}
+          {/* Directeur (manager et commercial) — optionnel dans les deux cas */}
           {(userType === 'manager' || userType === 'commercial') && (
             <div className="space-y-2">
-              <Label htmlFor="directeur">
-                Directeur {userType === 'manager' ? '*' : '(optionnel)'}
-              </Label>
+              <Label htmlFor="directeur">Directeur (optionnel)</Label>
               <Select
                 value={formData.directeurId.toString()}
                 onValueChange={value => {
                   setFormData({
                     ...formData,
                     directeurId: value,
-                    managerId: value ? '' : formData.managerId,
+                    // Réinitialiser le manager si le directeur change (commercial).
+                    managerId: 'none',
                   })
                 }}
-                disabled={!!parentId && userType !== 'commercial'}
+                disabled={!!parentId && userType === 'manager'}
               >
                 <SelectTrigger className={errors.directeurId ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Sélectionner un directeur" />
                 </SelectTrigger>
                 <SelectContent>
-                  {userType === 'commercial' && <SelectItem value="none">Aucun</SelectItem>}
+                  <SelectItem value="none">Aucun</SelectItem>
                   {directeurOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -361,7 +394,11 @@ export default function AddUserModal({
               <Select
                 value={formData.managerId.toString()}
                 onValueChange={value => setFormData({ ...formData, managerId: value })}
-                disabled={!formData.directeurId || formData.directeurId === 'none' || !!parentId}
+                disabled={
+                  parentType === 'manager'
+                    ? true
+                    : !formData.directeurId || formData.directeurId === 'none'
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un manager" />
