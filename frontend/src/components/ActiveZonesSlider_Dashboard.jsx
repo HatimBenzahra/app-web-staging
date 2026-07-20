@@ -26,7 +26,6 @@ export default function ActiveZonesSlider({
   isSliding = true,
 }) {
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [showMap, setShowMap] = useState(false)
 
   // Charger les données utilisateurs pour enrichir les assignations
   const { data: commercials } = useCommercials()
@@ -158,32 +157,16 @@ export default function ActiveZonesSlider({
         </CardHeader>
       </Card>
 
-      {/* Carte de la zone actuelle */}
+      {/* Carte de la zone actuelle (affichée directement) */}
       {zone && (
-        showMap ? (
-          <Suspense fallback={<MapSkeleton />}>
-            <AssignedZoneCard
-              zone={zone}
-              assignmentDate={currentAssignment?.assignedAt || currentAssignment?.dateDebut}
-              fullWidth={true}
-              className="transition-all duration-300"
-            />
-          </Suspense>
-        ) : (
-          <Card className="border-2">
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Carte masquee pour accelerer le chargement initial.
-                </p>
-                <Button onClick={() => setShowMap(true)} size="sm" className="gap-2">
-                  <MapPin className="h-4 w-4" />
-                  Afficher la carte
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )
+        <Suspense fallback={<MapSkeleton />}>
+          <AssignedZoneCard
+            zone={zone}
+            assignmentDate={currentAssignment?.assignedAt || currentAssignment?.dateDebut}
+            fullWidth={true}
+            className="transition-all duration-300"
+          />
+        </Suspense>
       )}
 
       {/* Navigation du slider */}

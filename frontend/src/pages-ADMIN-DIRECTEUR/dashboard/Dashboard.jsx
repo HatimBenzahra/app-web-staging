@@ -16,14 +16,11 @@ import { getStatusLabel, getStatusColor } from '@/constants/domain/porte-status'
 import {
   Building2,
   Trophy,
-  Medal,
-  Award,
   TrendingUp,
   Calendar,
   ArrowRight,
   DoorOpen,
   Loader2,
-  Star,
   FileText,
   Mic,
   UserX,
@@ -80,36 +77,6 @@ function buildMonthOptions() {
 
 const MONTH_OPTIONS = buildMonthOptions()
 
-const PODIUM_STYLES = [
-  {
-    ring: 'ring-yellow-400/50',
-    bg: 'bg-yellow-50 dark:bg-yellow-950/30',
-    border: 'border-yellow-300 dark:border-yellow-700',
-    text: 'text-yellow-600 dark:text-yellow-400',
-    icon: Trophy,
-    size: 'h-16 w-16',
-    badge: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  },
-  {
-    ring: 'ring-slate-300/50',
-    bg: 'bg-slate-50 dark:bg-slate-800/40',
-    border: 'border-slate-300 dark:border-slate-600',
-    text: 'text-slate-500 dark:text-slate-400',
-    icon: Medal,
-    size: 'h-13 w-13',
-    badge: 'bg-slate-100 text-slate-700 border-slate-300',
-  },
-  {
-    ring: 'ring-orange-300/50',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    border: 'border-orange-300 dark:border-orange-700',
-    text: 'text-orange-600 dark:text-orange-400',
-    icon: Award,
-    size: 'h-13 w-13',
-    badge: 'bg-orange-100 text-orange-800 border-orange-300',
-  },
-]
-
 const AVATAR_COLORS = [
   'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
   'bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400',
@@ -124,122 +91,6 @@ const AVATAR_COLORS = [
 function getAvatarColor(name) {
   const index = (name || 'A').charCodeAt(0) % AVATAR_COLORS.length
   return AVATAR_COLORS[index]
-}
-
-const PERF_MODES = [
-  { value: 'DAILY', label: 'Du jour' },
-  { value: 'MONTHLY', label: 'Du mois' },
-]
-
-function Top3PerfCard({ mode, setMode, top3, loading }) {
-  const modeLabel = mode === 'DAILY' ? 'du jour' : 'du mois'
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
-              <Trophy className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <div className="min-w-0">
-              <CardTitle className="text-sm font-semibold">Meilleures performances</CardTitle>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Top commerciaux & managers {modeLabel}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center shrink-0">
-            <div className="flex items-center rounded-lg border border-border/70 p-0.5 bg-muted/30">
-              {PERF_MODES.map(m => (
-                <button
-                  type="button"
-                  key={m.value}
-                  onClick={() => setMode(m.value)}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    mode === m.value
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-1">
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : top3.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-            <div className="p-3 rounded-full bg-muted/50 mb-3">
-              <Trophy className="h-6 w-6 opacity-30" />
-            </div>
-            <p className="text-sm font-medium">Aucune performance {modeLabel}</p>
-            <p className="text-xs mt-0.5">
-              Les donn{'é'}es apparaîtront apr{'è'}s la synchronisation
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {top3.map((entry, i) => {
-              const style = PODIUM_STYLES[i]
-              const PodiumIcon = style.icon
-              const nom = entry.commercialNom || entry.managerNom || ''
-              const prenom = entry.commercialPrenom || entry.managerPrenom || ''
-              const isManager = !!entry.managerId && !entry.commercialId
-              const initials = `${prenom.charAt(0)}${nom.charAt(0)}`.toUpperCase()
-
-              return (
-                <div
-                  key={entry.id}
-                  className={`relative flex flex-col items-center rounded-xl border ${style.border} p-4 hover:shadow-md transition-all duration-200 ${i === 0 ? 'sm:-mt-1 sm:pb-5 bg-linear-to-b from-yellow-50/50 to-transparent dark:from-yellow-950/10' : 'bg-muted/20'}`}
-                >
-                  <div
-                    className={`absolute -top-2.5 right-2.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${style.badge}`}
-                  >
-                    <PodiumIcon className="h-3 w-3" />#{i + 1}
-                  </div>
-
-                  <div
-                    className={`${style.size} rounded-full border-2 ${style.border} ring-4 ${style.ring} flex items-center justify-center text-sm font-bold shrink-0 mb-2.5 ${getAvatarColor(prenom)}`}
-                  >
-                    {initials}
-                  </div>
-
-                  <p className="text-xs font-semibold text-center truncate max-w-full">
-                    {prenom} {nom}
-                  </p>
-                  {isManager && (
-                    <Badge variant="outline" className="text-[9px] mt-1">
-                      Manager
-                    </Badge>
-                  )}
-
-                  <div className="flex items-center gap-2.5 mt-2.5 pt-2.5 border-t border-border/40 w-full justify-center">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-3 w-3 text-sky-500" />
-                      <span className="text-xs font-bold tabular-nums">{entry.points}</span>
-                      <span className="text-[9px] text-muted-foreground">pts</span>
-                    </div>
-                    <div className="w-px h-3.5 bg-border/40" />
-                    <div className="flex items-center gap-1">
-                      <FileText className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs font-bold tabular-nums">{entry.contratsSignes}</span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
 }
 
 function getOffreLogoUrl(logoUrl) {
@@ -690,10 +541,6 @@ export default function Dashboard() {
     selectedPorteId,
     setSelectedPorteId,
     isLoading,
-    perfMode,
-    setPerfMode,
-    top3,
-    rankingLoading,
     offreMonth,
     setOffreMonth,
     offreDistribution,
@@ -882,7 +729,7 @@ export default function Dashboard() {
 
       {/* ── Map : pleine largeur ── */}
       <div className="dash-stagger" style={{ animationDelay: '160ms' }}>
-        <FleetTerrainWidget todayImmeubles={todayImmeubles} />
+        <FleetTerrainWidget todayImmeubles={todayImmeubles} assignments={assignments} />
       </div>
 
       {/* ── Enregistrements du jour : pleine largeur ── */}
@@ -890,10 +737,15 @@ export default function Dashboard() {
         <TodaysRecordingsCard segments={segments} loading={segmentsLoading} navigate={navigate} />
       </div>
 
-      {/* ── RDV du jour (pleine largeur si présents) ── */}
-      {rdvToday && rdvToday.length > 0 && (
-        <div className="dash-stagger" style={{ animationDelay: '240ms' }}>
-          <Card>
+      {/* ── RDV du jour + WinLead+ Stats sur une seule ligne ── */}
+      <div className="dash-stagger" style={{ animationDelay: '240ms' }}>
+        <div
+          className={`grid gap-6 items-start ${
+            rdvToday && rdvToday.length > 0 ? 'lg:grid-cols-2' : 'grid-cols-1'
+          }`}
+        >
+          {rdvToday && rdvToday.length > 0 && (
+            <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -973,12 +825,9 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
-        </div>
-      )}
+          )}
 
-      {/* ── WinLead+ Stats : Performances + Offres ── */}
-      <div className="dash-stagger" style={{ animationDelay: '320ms' }}>
-        <div className="space-y-4">
+          <div className="space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-sky-100 dark:bg-sky-900/30">
               <TrendingUp className="h-4 w-4 text-sky-600 dark:text-sky-400" />
@@ -990,21 +839,14 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Top3PerfCard
-              mode={perfMode}
-              setMode={setPerfMode}
-              top3={top3}
-              loading={rankingLoading}
-            />
-            <TopOffresCard
-              selectedMonth={offreMonth}
-              setSelectedMonth={setOffreMonth}
-              distribution={offreDistribution}
-              loading={offreDistributionLoading}
-              totalContrats={offreTotalContrats}
-              maxCount={offreMaxCount}
-            />
+          <TopOffresCard
+            selectedMonth={offreMonth}
+            setSelectedMonth={setOffreMonth}
+            distribution={offreDistribution}
+            loading={offreDistributionLoading}
+            totalContrats={offreTotalContrats}
+            maxCount={offreMaxCount}
+          />
           </div>
         </div>
       </div>

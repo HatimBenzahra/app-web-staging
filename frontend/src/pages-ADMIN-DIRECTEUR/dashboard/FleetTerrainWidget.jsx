@@ -13,6 +13,7 @@ import {
 } from '@/hooks/metier/api/gps-tracking'
 import { Layer, Source } from 'react-map-gl/mapbox'
 import { useActorDirectory } from '../gps-tracking/useActorDirectory'
+import { zoneToGeoJSON } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
@@ -108,10 +109,20 @@ function BuildingMarker({ onClick, color, dimmed }) {
   )
 }
 
-export default function FleetTerrainWidget({ todayImmeubles }) {
+export default function FleetTerrainWidget({ todayImmeubles, assignments = [] }) {
   const navigate = useNavigate()
   const { data: gpsPositions, isLoading: gpsLoading } = useGpsLatestActorPositions()
   const { buildActors } = useActorDirectory()
+
+  // Zone actuellement assignée (ZoneEnCours) par acteur, clé "USERTYPE-userId".
+  const zoneByActorKey = useMemo(() => {
+    const map = new Map()
+    for (const a of assignments ?? []) {
+      if (!a?.zone) continue
+      map.set(`${String(a.userType).toUpperCase()}-${a.userId}`, a.zone)
+    }
+    return map
+  }, [assignments])
   const [locationNames, setLocationNames] = useState({})
   const [selectedKey, setSelectedKey] = useState(null)
   const mapRef = useRef(null)
@@ -267,8 +278,8 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
         </CardHeader>
         <CardContent className="pt-0 space-y-3">
           <div className="flex gap-4">
-            <Skeleton className="flex-3 h-[380px] rounded-lg" />
-            <div className="flex-2 space-y-2">
+            <Skeleton className="flex-1 h-[380px] rounded-lg" />
+            <div className="w-52 shrink-0 space-y-2">
               {[0, 1, 2, 3, 4, 5].map(i => (
                 <Skeleton key={i} className="h-14 w-full rounded-lg" />
               ))}
@@ -308,7 +319,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
 
       <CardContent className="pt-0 space-y-3 flex-1 flex flex-col">
         <div className="flex gap-4 flex-1 min-h-[380px]">
-          <div className="flex-3 relative rounded-lg overflow-hidden border border-border/60">
+          <div className="flex-1 relative rounded-lg overflow-hidden border border-border/60">
             {!MAPBOX_TOKEN ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/50 gap-2">
                 <MapPin className="h-6 w-6 text-muted-foreground/40" />
@@ -341,6 +352,37 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
                 keyboard={false}
                 attributionControl={false}
               >
+                {/* Zones actuellement assignées (ZoneEnCours) des commerciaux localisés */}
+                {onlineWithPosition.map(c => {
+                  const zone = zoneByActorKey.get(c.key)
+                  const geojson = zone ? zoneToGeoJSON(zone) : null
+                  if (!geojson) return null
+                  const color = getMarkerColor(c.key)
+                  const selected = selectedKey === c.key
+                  return (
+                    <Source
+                      key={`zone-${c.key}`}
+                      id={`zone-${c.key}`}
+                      type="geojson"
+                      data={geojson}
+                    >
+                      <Layer
+                        id={`zone-fill-${c.key}`}
+                        type="fill"
+                        paint={{ 'fill-color': color, 'fill-opacity': selected ? 0.25 : 0.12 }}
+                      />
+                      <Layer
+                        id={`zone-line-${c.key}`}
+                        type="line"
+                        paint={{
+                          'line-color': color,
+                          'line-width': selected ? 3 : 2,
+                          'line-opacity': 0.85,
+                        }}
+                      />
+                    </Source>
+                  )
+                })}
                 {onlineWithPosition.map(c => {
                   const isSelected = selectedKey === c.key
                   return (
@@ -395,7 +437,7 @@ export default function FleetTerrainWidget({ todayImmeubles }) {
             )}
           </div>
 
-          <div className="flex-2 overflow-y-auto space-y-1.5 pr-0.5">
+          <div className="w-52 shrink-0 overflow-y-auto space-y-1.5 pr-0.5">
             {onlineWithPosition.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-center py-10">
                 <Navigation2 className="h-5 w-5 text-muted-foreground/30" />
