@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import MapboxMap, {
   Marker,
@@ -14,12 +14,27 @@ import mapboxgl from 'mapbox-gl'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MapPin, Calendar, Maximize2, X, Lock, Unlock, Building2 } from 'lucide-react'
+import {
+  MapPin,
+  Calendar,
+  Maximize2,
+  X,
+  Building2,
+  FileText,
+  Percent,
+  DoorOpen,
+} from 'lucide-react'
 import { MapSkeleton } from '@/components/LoadingSkeletons'
 import { mapboxCache } from '@/services/core'
 import { logError } from '@/services/core'
 import { zoneToGeoJSON, polygonAreaKm2 } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
-import { buildingDoorCount, habitatBreakdown } from '@/constants/domain/habitat'
+import {
+  buildingDoorCount,
+  habitatBreakdown,
+  getHabitatMeta,
+  effectiveTypeHabitat,
+} from '@/constants/domain/habitat'
+import { BuildingTypeBadge } from '@/components/BuildingTypeBadge'
 
 // Set Mapbox access token
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
@@ -40,6 +55,95 @@ function GeocoderControl() {
     { position: 'top-left' }
   )
   return null
+}
+
+// Seuils de couverture partagés par les marqueurs et la légende de la carte.
+const COVERAGE_LEVELS = [
+  { max: 0, dotClass: 'bg-gray-500', markerClass: 'bg-gray-500', label: 'Non prospecté' },
+  { max: 50, dotClass: 'bg-amber-500', markerClass: 'bg-amber-500', label: 'En cours' },
+  { max: 100, dotClass: 'bg-blue-600', markerClass: 'bg-blue-600', label: 'Avancé' },
+  { max: Infinity, dotClass: 'bg-emerald-500', markerClass: 'bg-emerald-500', label: 'Terminé' },
+]
+
+function getCoverageLevel(couverture) {
+  if (couverture <= 0) return COVERAGE_LEVELS[0]
+  if (couverture < 50) return COVERAGE_LEVELS[1]
+  if (couverture < 100) return COVERAGE_LEVELS[2]
+  return COVERAGE_LEVELS[3]
+}
+
+// Légende discrète des seuils de couverture, alignée sur les mêmes couleurs
+// que les marqueurs (voir getCoverageLevel). Lisible en thème clair et sombre
+// via les tokens sémantiques (bg-background/border-border/text-muted-foreground).
+function CoverageLegend({ className = '' }) {
+  return (
+    <div
+      className={`rounded-lg border border-border/60 bg-background/90 px-2.5 py-2 shadow-md backdrop-blur-sm ${className}`}
+    >
+      <div className="flex flex-col gap-1">
+        {COVERAGE_LEVELS.map(level => (
+          <div key={level.label} className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${level.dotClass}`} />
+            <span className="text-[10px] font-medium leading-none whitespace-nowrap text-muted-foreground">
+              {level.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// KPI compacts de la zone. Source UNIQUE : l'agrégat backend (useZoneStatistics), passé
+// en prop `stats` — jamais recalculé depuis les immeubles, pour rester cohérent avec les
+// cartes de stats de la page (même divergence à éviter que celle déjà corrigée). Seule la
+// couverture % combine le compteur backend `nbImmeublesProspectes` avec le nombre total de
+// bâtiments de la zone (`totalImmeubles`, une donnée structurelle déjà utilisée telle quelle
+// ailleurs sur cette page, pas une statistique de prospection recalculée).
+function ZoneKpiStrip({ stats, totalImmeubles }) {
+  const hasStats = stats != null
+  const couverturePct =
+    hasStats && totalImmeubles > 0 && stats.nbImmeublesProspectes != null
+      ? Math.round((stats.nbImmeublesProspectes / totalImmeubles) * 100)
+      : null
+
+  const items = [
+    { label: 'Contrats', value: hasStats ? stats.contratsSignes : '—', icon: FileText },
+    { label: 'RDV', value: hasStats ? stats.rendezVousPris : '—', icon: Calendar },
+    {
+      label: 'Couverture',
+      value: couverturePct != null ? `${couverturePct}%` : '—',
+      icon: Percent,
+    },
+    {
+      label: 'Portes prospectées',
+      value: hasStats ? stats.nbPortesProspectes : '—',
+      icon: DoorOpen,
+    },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {items.map(item => {
+        const Icon = item.icon
+        return (
+          <div key={item.label} className="rounded-lg border border-border/60 bg-card p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {item.label}
+              </p>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/60 text-primary">
+                <Icon className="h-3.5 w-3.5" />
+              </div>
+            </div>
+            <div className="mt-1 truncate text-lg font-bold tracking-tight text-foreground tabular-nums">
+              {item.value}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 // Generate a deterministic color from zone ID
@@ -107,6 +211,10 @@ const fetchLocationName = async (longitude, latitude) => {
  * @param {string} props.className - Classes CSS supplémentaires
  * @param {boolean} props.showAllImmeubles - Mode "tous les immeubles" sans zone spécifique
  * @param {Array} props.allImmeubles - Liste de tous les immeubles (si showAllImmeubles = true)
+ * @param {Object|null} [props.stats] - Agrégat backend de la zone (useZoneStatistics). `null` =
+ *   zone sans agrégat (affiche « — »). Omis = KPI strip masquée (compat. autres call sites).
+ * @param {Array} [props.commercials] - Commerciaux connus (id, nom, prenom), pour résoudre le nom
+ *   du commercial affecté à un immeuble (via immeuble.commercialId) dans le popup de la carte.
  */
 export default function AssignedZoneCard({
   zone,
@@ -115,12 +223,13 @@ export default function AssignedZoneCard({
   fullWidth = false,
   showAllImmeubles = false,
   allImmeubles = [],
+  stats,
+  commercials = [],
 }) {
   const mapRef = useRef(null)
   const navigate = useNavigate()
   const [mapLoading, setMapLoading] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isMapLocked, setIsMapLocked] = useState(true) // Map verrouillée par défaut
   const [locationName, setLocationName] = useState('Chargement...')
   const [isMounted, setIsMounted] = useState(false) // ← AJOUT
 
@@ -179,43 +288,70 @@ export default function AssignedZoneCard({
     )
   }, [zone?.immeubles, allImmeubles, showAllImmeubles])
 
-  // Calculer le centre de la carte basé sur la zone ou sur tous les immeubles
+  // Index commercial (id -> {nom, prenom, ...}) pour résoudre le nom affiché dans le popup
+  // d'un immeuble à partir de son commercialId (le type GraphQL Immeuble n'expose pas de
+  // champ `commercial` résolu, seulement `commercialId` — cf. schema.gql).
+  const commercialsById = useMemo(() => {
+    const map = new Map()
+    for (const commercial of commercials) {
+      if (commercial?.id != null) map.set(commercial.id, commercial)
+    }
+    return map
+  }, [commercials])
+
+  // Ensemble des points [lng, lat] à englober : géométrie de la zone (polygone ou cercle
+  // généré) + tous les immeubles géolocalisés. Sert de base à un vrai fitBounds (plutôt
+  // qu'une heuristique de zoom approximative) et au centre de secours en cas d'absence
+  // totale de coordonnées.
+  const boundsPoints = useMemo(() => {
+    const points = []
+    if (zoneGeoJSON && !showAllImmeubles) {
+      for (const point of zoneGeoJSON.geometry.coordinates[0]) points.push(point)
+    }
+    for (const immeuble of immeublesWithCoordinates) {
+      points.push([immeuble.longitude, immeuble.latitude])
+    }
+    return points
+  }, [zoneGeoJSON, immeublesWithCoordinates, showAllImmeubles])
+
+  // Position initiale (avant que fitBounds ne cadre précisément au chargement) : le premier
+  // point disponible, sinon repli sur Paris. Le cadrage définitif vient de fitMapToBounds.
   const mapCenter = useMemo(() => {
-    if (zone?.xOrigin && zone?.yOrigin && !showAllImmeubles) {
-      return {
-        longitude: zone.xOrigin,
-        latitude: zone.yOrigin,
-        zoom: 11,
+    if (boundsPoints.length > 0) {
+      const [longitude, latitude] = boundsPoints[0]
+      return { longitude, latitude, zoom: 12 }
+    }
+    return { longitude: 2.3522, latitude: 48.8566, zoom: 5 }
+  }, [boundsPoints])
+
+  // Cadre la carte sur boundsPoints (zone + immeubles). Cas particulier 1 seul point :
+  // fitBounds sur une bbox nulle donne un zoom incohérent, on centre donc directement.
+  const fitMapToBounds = useCallback(
+    (map, { animate = true } = {}) => {
+      if (!map || boundsPoints.length === 0) return
+      try {
+        if (boundsPoints.length === 1) {
+          map.easeTo({ center: boundsPoints[0], zoom: 15, duration: animate ? 500 : 0 })
+          return
+        }
+        const bounds = boundsPoints.reduce(
+          (acc, point) => acc.extend(point),
+          new mapboxgl.LngLatBounds(boundsPoints[0], boundsPoints[0])
+        )
+        map.fitBounds(bounds, { padding: 40, maxZoom: 16, duration: animate ? 500 : 0 })
+      } catch (error) {
+        logError(error, 'AssignedZoneCard.fitMapToBounds', { zoneId: zone?.id })
       }
-    }
+    },
+    [boundsPoints, zone?.id]
+  )
 
-    // Si pas de zone ou mode "tous les immeubles", calculer le centre basé sur les immeubles
-    if (immeublesWithCoordinates.length === 0) {
-      return { longitude: 2.3522, latitude: 48.8566, zoom: 5 }
-    }
-
-    const avgLat =
-      immeublesWithCoordinates.reduce((sum, imm) => sum + imm.latitude, 0) /
-      immeublesWithCoordinates.length
-    const avgLng =
-      immeublesWithCoordinates.reduce((sum, imm) => sum + imm.longitude, 0) /
-      immeublesWithCoordinates.length
-
-    const lats = immeublesWithCoordinates.map(i => i.latitude)
-    const lngs = immeublesWithCoordinates.map(i => i.longitude)
-    const latRange = Math.max(...lats) - Math.min(...lats)
-    const lngRange = Math.max(...lngs) - Math.min(...lngs)
-    const maxRange = Math.max(latRange, lngRange)
-
-    let zoom = 10
-    if (maxRange > 10) zoom = 5
-    else if (maxRange > 5) zoom = 6
-    else if (maxRange > 2) zoom = 7
-    else if (maxRange > 1) zoom = 8
-    else if (maxRange > 0.5) zoom = 9
-
-    return { longitude: avgLng, latitude: avgLat, zoom }
-  }, [zone, immeublesWithCoordinates, showAllImmeubles])
+  // Recadre si la géométrie change pendant que la carte reste montée (ex. navigation
+  // interne). Au premier montage, mapRef.current est encore null : c'est onLoad qui
+  // effectue le cadrage initial (sans animation).
+  useEffect(() => {
+    fitMapToBounds(mapRef.current, { animate: true })
+  }, [fitMapToBounds])
 
   // Fonction pour gérer le clic sur un immeuble
   const handleImmeubleClick = immeubleId => {
@@ -307,34 +443,15 @@ export default function AssignedZoneCard({
           </div>
         )}
 
-        {/* Overlay de verrouillage */}
-        {isMapLocked && !isFullscreen && (
-          <button
-            type="button"
-            className="absolute inset-0 z-20 bg-transparent cursor-pointer flex items-center justify-center group"
-            onClick={() => setIsMapLocked(false)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                setIsMapLocked(false)
-              }
-            }}
-          >
-            <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border-2 border-primary/20 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Unlock className="h-4 w-4" />
-                <span>Cliquez pour déverrouiller la carte</span>
-              </div>
-            </div>
-          </button>
-        )}
-
         <MapboxMap
           ref={mapRef}
           initialViewState={mapCenter}
           style={{ height: actualHeight, width: '100%', borderRadius: '0.5rem' }}
           mapStyle="mapbox://styles/mapbox/streets-v12"
-          onLoad={() => setMapLoading(false)}
+          onLoad={evt => {
+            setMapLoading(false)
+            fitMapToBounds(evt.target, { animate: false })
+          }}
           onError={error => {
             logError(error, 'AssignedZoneCard.Map.onError', {
               zoneId: zone?.id,
@@ -343,11 +460,6 @@ export default function AssignedZoneCard({
             setMapLoading(false)
           }}
           attributionControl={false}
-          scrollZoom={!isMapLocked || isFullscreen}
-          dragPan={!isMapLocked || isFullscreen}
-          dragRotate={!isMapLocked || isFullscreen}
-          doubleClickZoom={!isMapLocked || isFullscreen}
-          touchZoomRotate={!isMapLocked || isFullscreen}
         >
           {showControls && <NavigationControl position="top-right" />}
           <GeocoderControl />
@@ -358,20 +470,18 @@ export default function AssignedZoneCard({
           {/* Immeubles sur la carte */}
           {immeublesWithCoordinates.map(immeuble => {
             const portes = immeuble.portes || []
-            const totalPortes = portes.length
+            const totalPortes = portes.length > 0 ? portes.length : buildingDoorCount(immeuble)
             const prospectees = portes.filter(p => p.statut !== 'NON_VISITE').length
-            const couverture = totalPortes > 0 ? Math.round((prospectees / totalPortes) * 100) : 0
+            const couverture =
+              portes.length > 0 ? Math.round((prospectees / portes.length) * 100) : 0
             const contrats = portes
               .filter(p => p.statut === 'CONTRAT_SIGNE')
-              .reduce((s, p) => s + (p.nbContrats || 1), 0)
-            const markerBg =
-              couverture === 0
-                ? 'bg-gray-500'
-                : couverture < 50
-                  ? 'bg-amber-500'
-                  : couverture < 100
-                    ? 'bg-blue-600'
-                    : 'bg-emerald-500'
+              .reduce((s, p) => s + (p.nbContrats ?? 0), 0)
+            const coverageLevel = getCoverageLevel(couverture)
+            const habitatMeta = getHabitatMeta(effectiveTypeHabitat(immeuble))
+            const HabitatIcon = habitatMeta.Icon
+            const assignedCommercial =
+              immeuble.commercialId != null ? commercialsById.get(immeuble.commercialId) : null
 
             return (
               <Marker
@@ -395,37 +505,35 @@ export default function AssignedZoneCard({
                   }}
                 >
                   <div
-                    className={`${markerBg} text-white p-2 rounded-lg shadow-lg border-2 border-white hover:scale-110 transition-all duration-200 active:scale-95`}
+                    className={`${coverageLevel.markerClass} text-white p-2 rounded-lg shadow-lg border-2 border-white hover:scale-110 transition-all duration-200 active:scale-95`}
                   >
-                    <Building2 className="h-4 w-4" />
+                    <HabitatIcon className="h-4 w-4" />
                   </div>
 
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2.5 bg-gray-900 text-white text-xs rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 space-y-1">
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2.5 bg-gray-900 text-white text-xs rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 space-y-1.5">
                     <div className="font-semibold text-[13px]">{immeuble.adresse}</div>
-                    <div className="text-gray-300">
-                      {immeuble.nbEtages} ét. × {immeuble.nbPortesParEtage} ={' '}
-                      {totalPortes > 0 ? totalPortes : buildingDoorCount(immeuble)}{' '}
-                      portes
-                    </div>
-                    {totalPortes > 0 && (
-                      <div className="flex items-center gap-2 pt-0.5">
-                        <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${markerBg}`}
-                            style={{ width: `${couverture}%` }}
-                          />
-                        </div>
-                        <span className="text-[11px] tabular-nums">{couverture}%</span>
+                    <BuildingTypeBadge
+                      immeuble={immeuble}
+                      className="h-4 gap-1 px-1.5 py-0 text-[10px] font-medium"
+                    />
+                    <div className="text-gray-300">{totalPortes} portes</div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${coverageLevel.markerClass}`}
+                          style={{ width: `${couverture}%` }}
+                        />
                       </div>
-                    )}
+                      <span className="text-[11px] tabular-nums">{couverture}%</span>
+                    </div>
                     {contrats > 0 && (
                       <div className="text-emerald-400">
                         {contrats} contrat{contrats > 1 ? 's' : ''}
                       </div>
                     )}
-                    {immeuble.commercial && (
+                    {assignedCommercial && (
                       <div className="text-gray-300">
-                        👤 {immeuble.commercial.prenom} {immeuble.commercial.nom}
+                        👤 {assignedCommercial.prenom} {assignedCommercial.nom}
                       </div>
                     )}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
@@ -451,6 +559,10 @@ export default function AssignedZoneCard({
             </Source>
           )}
         </MapboxMap>
+
+        {!mapLoading && immeublesWithCoordinates.length > 0 && (
+          <CoverageLegend className="absolute bottom-3 left-3 z-20" />
+        )}
       </div>
     )
   }
@@ -468,34 +580,12 @@ export default function AssignedZoneCard({
                   <MapContent height="100%" showControls={true} />
 
                   {/* Boutons de contrôle */}
-                  <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant={isMapLocked ? 'secondary' : 'default'}
-                        size="sm"
-                        onClick={() => setIsMapLocked(!isMapLocked)}
-                        className="shadow-lg"
-                        title={isMapLocked ? 'Déverrouiller la carte' : 'Verrouiller la carte'}
-                      >
-                        {isMapLocked ? (
-                          <>
-                            <Lock className="h-4 w-4 mr-2" />
-                            Verrouillée
-                          </>
-                        ) : (
-                          <>
-                            <Unlock className="h-4 w-4 mr-2" />
-                            Déverrouillée
-                          </>
-                        )}
-                      </Button>
-
-                      {showAllImmeubles && (
-                        <Badge variant="secondary" className="shadow-lg">
-                          {immeublesWithCoordinates.length} immeubles affichés
-                        </Badge>
-                      )}
-                    </div>
+                  <div className="absolute bottom-3 right-3 z-30 flex items-center gap-2">
+                    {showAllImmeubles && (
+                      <Badge variant="secondary" className="shadow-lg">
+                        {immeublesWithCoordinates.length} immeubles affichés
+                      </Badge>
+                    )}
 
                     <Button
                       variant="secondary"
@@ -604,6 +694,10 @@ export default function AssignedZoneCard({
                     </div>
                   </div>
 
+                  {stats !== undefined && (
+                    <ZoneKpiStrip stats={stats} totalImmeubles={zone?.immeubles?.length ?? 0} />
+                  )}
+
                   {assignmentDate && (
                     <div className="pt-4 border-t">
                       <div className="flex items-center gap-3">
@@ -701,27 +795,7 @@ export default function AssignedZoneCard({
                   <MapContent height="100%" />
 
                   {/* Boutons de contrôle */}
-                  <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between gap-2">
-                    <Button
-                      variant={isMapLocked ? 'secondary' : 'default'}
-                      size="sm"
-                      onClick={() => setIsMapLocked(!isMapLocked)}
-                      className="shadow-lg"
-                      title={isMapLocked ? 'Déverrouiller la carte' : 'Verrouiller la carte'}
-                    >
-                      {isMapLocked ? (
-                        <>
-                          <Lock className="h-4 w-4 mr-2" />
-                          Verrouillée
-                        </>
-                      ) : (
-                        <>
-                          <Unlock className="h-4 w-4 mr-2" />
-                          Déverrouillée
-                        </>
-                      )}
-                    </Button>
-
+                  <div className="absolute bottom-3 right-3 z-30 flex items-center gap-2">
                     <Button
                       variant="secondary"
                       size="icon"

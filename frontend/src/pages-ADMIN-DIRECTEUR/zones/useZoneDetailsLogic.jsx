@@ -233,11 +233,13 @@ export function useZoneDetailsLogic() {
             assignmentDate={zone?.createdAt}
             className="w-full"
             fullWidth={true}
+            stats={aggregatedStats}
+            commercials={commercials}
           />
         ),
       },
     ],
-    [zone]
+    [zone, aggregatedStats, commercials]
   )
 
   return {

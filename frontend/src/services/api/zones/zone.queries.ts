@@ -75,6 +75,10 @@ export const GET_ZONE = `
         nbMaisonsPrevu
         commercialId
         zoneId
+        portes {
+          statut
+          nbContrats
+        }
       }
       createdAt
       updatedAt
