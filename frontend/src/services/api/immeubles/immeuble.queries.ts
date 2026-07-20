@@ -44,6 +44,7 @@ export const GET_IMMEUBLE = `
       commercialId
       managerId
       quartierId
+      zoneId
       createdAt
       updatedAt
     }

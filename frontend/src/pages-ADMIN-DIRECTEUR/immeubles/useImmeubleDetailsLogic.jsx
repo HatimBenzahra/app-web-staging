@@ -1,5 +1,11 @@
 import { useParams } from 'react-router-dom'
-import { useImmeuble, useCommercials, useManagers, useInfinitePortesByImmeuble } from '@/services'
+import {
+  useImmeuble,
+  useCommercials,
+  useManagers,
+  useZones,
+  useInfinitePortesByImmeuble,
+} from '@/services'
 import { useMemo, useState, useEffect } from 'react'
 import {
   effectiveTypeHabitat,
@@ -18,6 +24,7 @@ export function useImmeubleDetailsLogic() {
   const { data: immeuble, loading: immeubleLoading, error } = useImmeuble(parseInt(id))
   const { data: commercials } = useCommercials()
   const { data: managers } = useManagers()
+  const { data: zones } = useZones()
 
   // Utiliser useInfinitePortesByImmeuble avec une grande pageSize pour charger toutes les portes
   // pageSize=10000 devrait couvrir même les très grands immeubles
@@ -66,6 +73,10 @@ export function useImmeubleDetailsLogic() {
     const meta = getHabitatMeta(type)
     const commercial = commercials?.find(c => c.id === immeuble.commercialId)
     const manager = managers?.find(m => m.id === immeuble.managerId)
+    // Zone = résolue depuis immeuble.zoneId (source unique de l'appli), pas depuis l'adresse.
+    const zoneName = immeuble.zoneId
+      ? zones?.find(z => z.id === immeuble.zoneId)?.nom || `Zone #${immeuble.zoneId}`
+      : 'Non spécifiée'
     // Total de portes prévues = capacité déclarée (grille), jamais le compte de portes créées.
     const totalDoors = buildingDoorCount(immeuble)
 
@@ -137,12 +148,12 @@ export function useImmeubleDetailsLogic() {
       commercial_name: commercialName,
       has_elevator: immeuble.ascenseurPresent,
       digital_code: immeuble.digitalCode || 'Non défini',
-      zone: immeuble.adresse.split(',')[1]?.trim() || 'Non spécifiée',
+      zone: zoneName,
       created_at: immeuble.createdAt,
       updated_at: immeuble.updatedAt,
       floorDetails,
     }
-  }, [immeuble, commercials, managers, portes])
+  }, [immeuble, commercials, managers, zones, portes])
 
   const habitatMeta = useMemo(
     () => getHabitatMeta(immeubleData?.effectiveType),

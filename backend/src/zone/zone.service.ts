@@ -415,19 +415,11 @@ export class ZoneService {
 
     // Filtrage selon le rôle
     switch (userRole) {
+      // Admin et directeur : visibilité sur TOUTES les zones de l'organisation
+      // (les zones créées par l'admin doivent être visibles par les directeurs).
       case 'admin':
-        return this.prisma.zone.findMany({
-          include: {
-            immeubles: { where: prodImmeubleWhere },
-          },
-        });
-
       case 'directeur':
-        // Zones assignées au directeur
         return this.prisma.zone.findMany({
-          where: {
-            directeurId: userId,
-          },
           include: {
             immeubles: { where: prodImmeubleWhere },
           },
@@ -514,10 +506,7 @@ export class ZoneService {
       throw new NotFoundException('Zone not found');
     }
 
-    // Directeur can only access their own zones
-    if (userRole === 'directeur' && zone.directeurId !== userId) {
-      throw new ForbiddenException('Access denied');
-    }
+    // Directeur : accès en lecture à TOUTES les zones (aligné sur findAll).
 
     // Manager can only access their own zones
     if (userRole === 'manager' && zone.managerId !== userId) {
