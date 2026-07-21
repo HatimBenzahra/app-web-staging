@@ -33,6 +33,7 @@ import { PrismaService } from '../prisma.service';
 import { TranscriptionService } from '../transcription/transcription.service';
 import { SpeechAnalysisService } from '../transcription/speech-analysis.service';
 import { S3DiagnosticsService } from '../s3-diagnostics/s3-diagnostics.service';
+import { CoachingService } from '../coaching/coaching.service';
 
 type RoomTarget = {
   type: 'COMMERCIAL' | 'MANAGER';
@@ -76,6 +77,7 @@ export class RecordingService {
     private transcription: TranscriptionService,
     private speechAnalysis: SpeechAnalysisService,
     private s3Diagnostics: S3DiagnosticsService,
+    private coaching: CoachingService,
   ) {
     this.s3Diagnostics.instrument(this.s3, RecordingService.name);
   }
@@ -526,6 +528,17 @@ export class RecordingService {
         void this.processSegments(s3Key, createdSegments);
       }
     }
+
+    // Coaching IA : 1 audio = 1 porte. Analyse déclenchée automatiquement
+    // (non bloquant) à partir de la porte du premier segment. Le module coaching
+    // re-transcrit depuis S3, il ne dépend pas des RecordingSegment.
+    const primaryDoor = doorSegments?.[0] ?? null;
+    void this.coaching.enqueue({
+      s3Key,
+      porteId: primaryDoor?.porteId ?? null,
+      statut: (primaryDoor?.statut as string | undefined) ?? null,
+      durationSec: duration ?? null,
+    });
 
     const url = await this.signedUrlOrUndefined(s3Key);
 

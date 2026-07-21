@@ -20,6 +20,7 @@ import {
   Rocket,
   ScrollText,
   Target,
+  GraduationCap,
 } from 'lucide-react'
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -82,6 +83,12 @@ const performanceItems = [
     url: '/ecoutes/enregistrement',
     icon: Headphones,
     entity: 'ecoutes',
+  },
+  {
+    title: 'Coaching IA',
+    url: '/coaching',
+    icon: GraduationCap,
+    entity: 'coaching',
   },
   {
     title: 'Gamification',

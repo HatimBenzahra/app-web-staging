@@ -288,7 +288,7 @@ export class TranscriptionService implements OnModuleDestroy {
     }
   }
 
-  async transcribeFile(filePath: string): Promise<{ segments: WhisperSegment[]; duration: number } | null> {
+  async transcribeFile(filePath: string): Promise<{ segments: WhisperSegment[]; duration: number; text: string } | null> {
     try {
       const fileBuffer = fs.readFileSync(filePath);
 
@@ -331,7 +331,11 @@ export class TranscriptionService implements OnModuleDestroy {
 
       if (!data.segments || data.segments.length === 0) return null;
 
-      return { segments: data.segments, duration: data.duration || 0 };
+      return {
+        segments: data.segments,
+        duration: data.duration || 0,
+        text: data.text || '',
+      };
     } catch (error) {
       if (error?.name === 'AbortError') {
         this.logger.error(
@@ -341,6 +345,46 @@ export class TranscriptionService implements OnModuleDestroy {
         this.logger.error(`Échec appel Whisper: ${error?.message || error}`);
       }
       return null;
+    }
+  }
+
+  /**
+   * Transcription complète d'un objet S3 pour le coaching IA.
+   * Télécharge l'audio depuis S3, appelle Whisper et renvoie le texte + la durée.
+   * Indépendant du pipeline conversation (_conv) : ni découpe ni ré-upload.
+   */
+  async transcribeS3Object(
+    s3Key: string,
+  ): Promise<{ text: string; durationSec: number; segments: WhisperSegment[] } | null> {
+    if (!this.whisperUrl) {
+      this.logger.warn(
+        `WHISPER_API_URL absent, transcription coaching ignorée pour ${s3Key}`,
+      );
+      return null;
+    }
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `coaching-stt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    const originalFile = path.join(tmpDir, 'original.mp4');
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const downloaded = await this.downloadFromS3(s3Key, originalFile);
+      if (!downloaded) return null;
+      const result = await this.transcribeFile(originalFile);
+      if (!result) return null;
+      return {
+        text: result.text ?? '',
+        durationSec: result.duration ?? 0,
+        segments: result.segments,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Échec transcription coaching ${s3Key}: ${error?.message || error}`,
+      );
+      return null;
+    } finally {
+      this.cleanupDir(tmpDir);
     }
   }
 

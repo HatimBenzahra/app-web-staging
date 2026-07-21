@@ -82,19 +82,19 @@ model Commercial {
 }
 
 model Zone {
-  id          Int      @id @default(autoincrement())
-  nom         String
-  xOrigin     Float
-  yOrigin     Float
-  rayon       Float
-  polygon     Json? // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée
-  directeurId Int?
-  managerId   Int?
+  id            Int       @id @default(autoincrement())
+  nom           String
+  xOrigin       Float
+  yOrigin       Float
+  rayon         Float
+  polygon       Json? // GeoJSON anneau fermé [[lng,lat],...], null = zone cercle héritée
+  directeurId   Int?
+  managerId     Int?
   createdById   Int? // Id de l'utilisateur créateur (null si admin ou inconnu)
   createdByType UserType? // Type du créateur (null pour un admin : pas de valeur ADMIN dans l'enum)
   createdByName String? // Snapshot du nom du créateur à la création (dénormalisé, cf. commercialNom)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   directeur        Directeur?            @relation(fields: [directeurId], references: [id])
   manager          Manager?              @relation(fields: [managerId], references: [id])
@@ -266,6 +266,7 @@ model Porte {
   immeuble          Immeuble           @relation(fields: [immeubleId], references: [id])
   statusHistorique  StatusHistorique[]
   recordingSegments RecordingSegment[]
+  coachingAnalyses  CoachingAnalysis[]
 
   @@unique([immeubleId, numero])
 }
@@ -566,9 +567,10 @@ model Recording {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  commercial Commercial?        @relation(fields: [commercialId], references: [id], onDelete: SetNull)
-  manager    Manager?           @relation(fields: [managerId], references: [id], onDelete: SetNull)
-  analysis   RecordingAnalysis?
+  commercial       Commercial?        @relation(fields: [commercialId], references: [id], onDelete: SetNull)
+  manager          Manager?           @relation(fields: [managerId], references: [id], onDelete: SetNull)
+  analysis         RecordingAnalysis?
+  coachingAnalyses CoachingAnalysis[]
 
   @@index([lastModified])
   @@index([roomName])
@@ -597,8 +599,94 @@ model RecordingAnalysis {
   @@index([s3Key])
 }
 
+// Version figée d'un plan de vente, dérivée d'un fichier markdown
+// (frontmatter = grille de scoring). Chaque analyse coaching épingle la version
+// utilisée. Une seule version active par slug. contentHash = sha256 du markdown
+// source → déduplication / versioning automatique au boot.
+model SalesPlanVersion {
+  id          Int      @id @default(autoincrement())
+  slug        String
+  title       String
+  version     Int
+  contentHash String   @unique
+  criteria    Json // barème structuré parsé (steps → criteria, poids, points)
+  rawMarkdown String
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  analyses CoachingAnalysis[]
+
+  @@unique([slug, version])
+  @@index([slug, isActive])
+}
+
+// Analyse coaching d'un enregistrement : 1 audio = 1 porte = 1 analyse.
+// Source = Recording.s3Key (re-transcrit via Whisper), indépendante de
+// RecordingSegment. Le LLM juge les critères, le backend calcule le score.
+model CoachingAnalysis {
+  id                    Int              @id @default(autoincrement())
+  recordingId           Int
+  porteId               Int?
+  commercialId          Int?
+  managerId             Int?
+  s3KeyOriginal         String
+  statutPorte           StatutPorte? // snapshot du statut porte au moment de l'échange
+  salesPlanVersionId    Int
+  status                CoachingStatus   @default(PENDING)
+  quality               CoachingQuality?
+  score                 Float? // 0-100, calculé par le backend (source de vérité)
+  subScores             Json? // score par étape
+  confidence            Float?
+  summary               String?
+  strengths             Json?
+  improvements          Json?
+  recommendations       Json?
+  criterionResults      Json? // détail par critère (status/preuve/reco)
+  transcript            String?
+  transcriptDurationSec Float?
+  error                 String?
+  attempts              Int              @default(0) // file : nb de tentatives
+  nextRetryAt           DateTime? // file : prochaine tentative (backoff)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  recording        Recording        @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  porte            Porte?           @relation(fields: [porteId], references: [id], onDelete: SetNull)
+  salesPlanVersion SalesPlanVersion @relation(fields: [salesPlanVersionId], references: [id])
+
+  @@unique([s3KeyOriginal, salesPlanVersionId]) // idempotence : 1 analyse par audio × version de plan
+  @@index([status])
+  @@index([commercialId])
+  @@index([managerId])
+  @@index([porteId])
+  @@index([recordingId])
+}
+
+enum CoachingStatus {
+  PENDING
+  TRANSCRIBING
+  ANALYZING
+  READY
+  FAILED
+}
+
+// Config singleton du coaching (éditable depuis la page de gestion).
+model CoachingConfig {
+  id                 Int      @id @default(1)
+  coachableStatuts   Json // liste des StatutPorte qui déclenchent l'analyse auto
+  minAutoDurationSec Int      @default(120) // durée min (s) d'un audio pour l'analyse auto
+  updatedAt          DateTime @updatedAt
+}
+
+enum CoachingQuality {
+  ANALYZED // échange exploitable, score fiable
+  LOW_CONFIDENCE // échange court/bruité, score indicatif
+  INEXPLOITABLE // audio trop court / transcript vide → pas de score
+  FAILED // erreur technique
+}
+
 model GpsPosition {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   // deviceId reste nullable pour lecture des anciennes lignes kiosk ;
   // les positions mobiles sont désormais rattachées à un acteur polymorphe.
   deviceId     String?
@@ -611,9 +699,9 @@ model GpsPosition {
   longitude    Float
   accuracy     Float?
   batteryLevel Int?
-  isOnline     Boolean  @default(true)
-  recordedAt   DateTime @default(now())
-  createdAt    DateTime @default(now())
+  isOnline     Boolean   @default(true)
+  recordedAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
 
   @@index([deviceId])
   @@index([recordedAt])

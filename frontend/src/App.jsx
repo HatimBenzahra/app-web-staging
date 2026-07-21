@@ -30,6 +30,7 @@ const PorteDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/PorteD
 const ZoneDetails = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/ZoneDetails'))
 const GPSTracking = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gps-tracking/GPSTracking'))
 const Enregistrement = lazy(() => import('@/pages-ADMIN-DIRECTEUR/ecoutes/Enregistrement'))
+const CoachingIA = lazy(() => import('@/pages-ADMIN-DIRECTEUR/coaching/CoachingIA'))
 const Statistiques = lazy(() => import('@/pages-ADMIN-DIRECTEUR/statistiques/Statistiques'))
 const Gestion = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gestion/Gestion'))
 const Gamification = lazy(() => import('@/pages-ADMIN-DIRECTEUR/gamification/Gamification'))
@@ -84,6 +85,7 @@ function AdminLayout() {
     gestion: { label: 'Gestion', href: '/gestion' },
     'gps-tracking': { label: 'Suivi GPS', href: '/gps-tracking' },
     ecoutes: { label: 'Bibliothèque', href: '/ecoutes/enregistrement' },
+    coaching: { label: 'Coaching IA', href: '/coaching' },
     statistiques: { label: 'Statistiques', href: '/statistiques' },
     gamification: { label: 'Gamification', href: '/gamification' },
     kiosk: { label: 'Kiosk', href: '/kiosk' },
@@ -316,6 +318,14 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <Enregistrement />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/coaching"
+                    element={
+                      <SectionErrorBoundary>
+                        <CoachingIA />
                       </SectionErrorBoundary>
                     }
                   />

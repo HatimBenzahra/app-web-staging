@@ -1,0 +1,89 @@
+import { ParsedSalesPlan } from './sales-plan.types';
+
+/** Liste des slugs de produits détectables (dérivée des étapes productDetected:*). */
+export function productKeysFromPlan(plan: ParsedSalesPlan): string[] {
+  const keys = new Set<string>();
+  for (const step of plan.steps) {
+    const match = /^productDetected:(.+)$/.exec(step.appliesWhen);
+    if (match) keys.add(match[1]);
+  }
+  return [...keys];
+}
+
+function renderPlanForPrompt(plan: ParsedSalesPlan): string {
+  const lines: string[] = [];
+  for (const step of plan.steps) {
+    const applic =
+      step.appliesWhen === 'always'
+        ? ''
+        : ` (évaluée uniquement si : ${step.appliesWhen})`;
+    lines.push(`### Étape "${step.key}" — ${step.label}${applic}`);
+    for (const c of step.criteria) {
+      lines.push(`- critère "${c.key}" : ${c.label}`);
+      if (c.expectedSignals?.length) {
+        lines.push(`    signaux positifs : ${c.expectedSignals.join(' | ')}`);
+      }
+      if (c.negativeSignals?.length) {
+        lines.push(`    signaux négatifs : ${c.negativeSignals.join(' | ')}`);
+      }
+      if (c.evidenceRequired) {
+        lines.push(`    (preuve obligatoire : cite une phrase du transcript)`);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+export function buildSystemPrompt(): string {
+  return [
+    "Tu es un évaluateur de coaching commercial pour de la prospection porte-à-porte.",
+    "On te donne le référentiel d'un plan de vente (étapes + critères) et la transcription d'un échange entre un commercial et un prospect (1 audio = 1 porte).",
+    'Ton rôle : juger CHAQUE critère du plan et justifier avec des PREUVES (citations verbatim tirées du transcript).',
+    'Règles strictes :',
+    "- Ne juge que sur ce qui est réellement dans le transcript. N'invente jamais de preuve.",
+    "- Pour chaque critère, status ∈ {atteint, partiel, absent, non_applicable}.",
+    "- \"non_applicable\" seulement si le critère ne pouvait pas s'appliquer à cet échange (ex : produit non abordé, contrat non signé).",
+    '- Détecte les produits réellement abordés (détectés dans le discours).',
+    "- Le champ evidence contient des citations courtes exactes du transcript (ou vide si status=absent/non_applicable).",
+    '- Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans fence markdown.',
+    '- Rédige résumé, forces, axes et recommandations en français, de façon concrète et actionnable.',
+  ].join('\n');
+}
+
+export function buildUserPrompt(
+  plan: ParsedSalesPlan,
+  transcript: string,
+): string {
+  const productKeys = productKeysFromPlan(plan);
+  const schema = {
+    detectedProducts: productKeys,
+    criteria: [
+      {
+        stepKey: 'string (clé de l\'étape)',
+        criterionKey: 'string (clé du critère)',
+        status: 'atteint | partiel | absent | non_applicable',
+        evidence: ['citation exacte du transcript'],
+        comment: 'courte justification en français',
+      },
+    ],
+    summary: 'résumé de l\'échange en 2-3 phrases',
+    strengths: ['point fort 1', 'point fort 2'],
+    improvements: ['axe d\'amélioration 1'],
+    recommendations: ['action concrète recommandée 1'],
+    confidence: 'nombre 0-100 (ta confiance dans cette évaluation)',
+    diagnosticScore: 'nombre 0-100 (ton estimation globale, indicative)',
+  };
+
+  return [
+    `# CONTEXTE\n${plan.context ?? ''}`,
+    `# PLAN DE VENTE (${plan.title})\n${renderPlanForPrompt(plan)}`,
+    `# PRODUITS DÉTECTABLES\n${productKeys.join(', ') || '(aucun)'}`,
+    `# TRANSCRIPTION DE L'ÉCHANGE\n"""\n${transcript}\n"""`,
+    `# FORMAT DE SORTIE ATTENDU (JSON strict, mêmes clés)\n${JSON.stringify(
+      schema,
+      null,
+      2,
+    )}`,
+    "Renvoie un objet JSON avec une entrée dans \"criteria\" pour CHAQUE critère du plan (utilise non_applicable si besoin).",
+  ].join('\n\n');
+}
