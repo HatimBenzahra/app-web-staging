@@ -164,6 +164,8 @@ export default function CoachingIA() {
 
   // Pile ouverte (interrogation de la file).
   const [openPile, setOpenPile] = useState(null) // 'pending' | 'processing' | null
+  // Modal des enregistrements analysés (clic sur la pile « Analysés »).
+  const [analyzedOpen, setAnalyzedOpen] = useState(false)
 
   const pendingItems = queue.filter((q) => q.status === 'PENDING')
   const processingItems = queue.filter(
@@ -241,6 +243,7 @@ export default function CoachingIA() {
                     <Pile
                       count={stats.ready}
                       label="Analysés"
+                      onClick={() => setAnalyzedOpen(true)}
                       tone={{ text: 'text-green-600', chip: 'bg-green-500/70', ring: 'ring-green-500/50' }}
                     />
                     <FlowArrow />
@@ -423,6 +426,8 @@ export default function CoachingIA() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AnalyzedRecordingsModal open={analyzedOpen} onOpenChange={setAnalyzedOpen} />
     </div>
   )
 }

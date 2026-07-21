@@ -95,6 +95,7 @@ export const GET_MANAGER_PERSONAL = `
           rdvDate
           rdvTime
           derniereVisite
+          coachingFavori
         }
       }
       statistics {

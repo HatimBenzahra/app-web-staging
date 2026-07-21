@@ -100,6 +100,7 @@ export const GET_COMMERCIAL_FULL = `
           rdvDate
           rdvTime
           derniereVisite
+          coachingFavori
         }
       }
       zones {

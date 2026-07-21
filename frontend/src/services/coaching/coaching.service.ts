@@ -29,6 +29,7 @@ const COACHING_FIELDS = `
   subjectName
   subjectRole
   subjectId
+  favori
 `
 
 const BY_S3_KEYS = `
@@ -118,6 +119,11 @@ const SET_FAVORI = `
     setCoachingFavori(porteId: $porteId, favori: $favori)
   }
 `
+const GET_FAVORI = `
+  query CoachingFavori($porteId: Int!) {
+    coachingFavori(porteId: $porteId)
+  }
+`
 const SET_COACHABLE = `
   mutation SetCoachableStatuts($statuts: [String!]!) {
     setCoachableStatuts(statuts: $statuts) { ${CONFIG_FIELDS} }
@@ -189,6 +195,16 @@ export class CoachingService {
   static async setFavori(porteId: number, favori: boolean): Promise<boolean> {
     const data = await graphqlClient.request(SET_FAVORI, { porteId, favori })
     return data.setCoachingFavori ?? false
+  }
+
+  /** État favori d'une porte (source de vérité DB). */
+  static async getFavori(porteId: number): Promise<boolean> {
+    try {
+      const data = await graphqlClient.request(GET_FAVORI, { porteId })
+      return data.coachingFavori ?? false
+    } catch {
+      return false
+    }
   }
 
   /** Analyse coaching d'une porte (la plus récente), pour le modal de la porte. */

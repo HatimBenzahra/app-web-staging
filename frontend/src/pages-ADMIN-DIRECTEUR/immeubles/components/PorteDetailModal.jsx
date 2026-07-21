@@ -45,12 +45,13 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
 
   useEffect(() => {
     if (open && door?.porteId) {
-      setFavori(door.coachingFavori ?? false)
+      // État favori depuis la DB (le prop `door` ne le porte pas).
+      CoachingService.getFavori(door.porteId).then(setFavori)
       loadCoaching()
     } else {
       setAnalysis(null)
     }
-  }, [open, door?.porteId, door?.coachingFavori, loadCoaching])
+  }, [open, door?.porteId, loadCoaching])
 
   const s3Key = primarySegment?.s3KeyOriginal || analysis?.s3KeyOriginal || null
   const launchCoaching = async () => {

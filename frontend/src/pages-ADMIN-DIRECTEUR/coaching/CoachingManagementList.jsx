@@ -69,7 +69,6 @@ export default function CoachingManagementList() {
     launching,
     launch,
     toggleFavori,
-    reload,
   } = useCoachingManagement()
 
   // Recherche locale débouncée → filtre serveur.
@@ -82,7 +81,6 @@ export default function CoachingManagementList() {
   // Modal de détail (ouvert via « Voir »).
   const [modalAnalysis, setModalAnalysis] = useState(null)
   const [modalLoading, setModalLoading] = useState(false)
-  const [relaunching, setRelaunching] = useState(false)
 
   const openDetail = async (analysisId) => {
     if (!analysisId) return
@@ -90,17 +88,6 @@ export default function CoachingManagementList() {
     const a = await CoachingService.get(analysisId)
     setModalAnalysis(a)
     setModalLoading(false)
-  }
-  const relaunch = async () => {
-    if (!modalAnalysis) return
-    setRelaunching(true)
-    try {
-      const updated = await CoachingService.relaunch(modalAnalysis.id)
-      if (updated) setModalAnalysis(updated)
-      reload()
-    } finally {
-      setRelaunching(false)
-    }
   }
 
   const selectableKeys = items
@@ -198,7 +185,10 @@ export default function CoachingManagementList() {
             return (
               <li
                 key={it.s3Key}
-                className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5"
+                className={cn(
+                  'flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5',
+                  it.favori && 'favori-glow',
+                )}
               >
                 <input
                   type="checkbox"
@@ -306,9 +296,6 @@ export default function CoachingManagementList() {
           if (!o) setModalAnalysis(null)
         }}
         analysis={modalAnalysis}
-        recordingKey={modalAnalysis?.s3KeyOriginal}
-        onRelaunch={relaunch}
-        relaunching={relaunching}
       />
     </div>
   )

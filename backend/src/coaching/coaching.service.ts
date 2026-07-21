@@ -390,6 +390,15 @@ export class CoachingService {
     return favori;
   }
 
+  /** État favori d'une porte (source de vérité DB). */
+  async getCoachingFavori(porteId: number): Promise<boolean> {
+    const porte = await this.prisma.porte.findUnique({
+      where: { id: porteId },
+      select: { coachingFavori: true },
+    });
+    return porte?.coachingFavori ?? false;
+  }
+
   /** Relance manuelle d'une analyse existante (admin/directeur). */
   async relaunch(id: number): Promise<CoachingAnalysisDto> {
     const analysis = await this.prisma.coachingAnalysis.findUnique({
@@ -643,7 +652,10 @@ export class CoachingService {
   async getAnalysis(id: number): Promise<CoachingAnalysisDto> {
     const row = await this.prisma.coachingAnalysis.findUnique({
       where: { id },
-      include: { salesPlanVersion: { select: { slug: true, version: true } } },
+      include: {
+        salesPlanVersion: { select: { slug: true, version: true } },
+        porte: { select: { coachingFavori: true } },
+      },
     });
     if (!row) throw new NotFoundException('Analyse coaching introuvable');
     return this.toDto(row);
@@ -667,6 +679,7 @@ export class CoachingService {
         where,
         include: {
           salesPlanVersion: { select: { slug: true, version: true } },
+          porte: { select: { coachingFavori: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: filter.skip ?? 0,
@@ -694,7 +707,10 @@ export class CoachingService {
         s3KeyOriginal: { in: s3Keys },
         ...(version ? { salesPlanVersionId: version.id } : {}),
       },
-      include: { salesPlanVersion: { select: { slug: true, version: true } } },
+      include: {
+        salesPlanVersion: { select: { slug: true, version: true } },
+        porte: { select: { coachingFavori: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((r) => this.toDto(r));
@@ -1044,6 +1060,7 @@ export class CoachingService {
       planVersion: row.salesPlanVersion?.version ?? 0,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      favori: row.porte?.coachingFavori ?? false,
       // Enrichi après coup par resolveSubjects (listAnalyses).
       subjectName: null,
       subjectRole: null,

@@ -59,6 +59,7 @@ export class CoachingAnalysisDto {
   @Field(() => String, { nullable: true }) subjectName?: string | null;
   @Field(() => String, { nullable: true }) subjectRole?: string | null; // 'commercial' | 'manager'
   @Field(() => Int, { nullable: true }) subjectId?: number | null;
+  @Field() favori: boolean; // porte marquée favorite
 }
 
 @ObjectType()

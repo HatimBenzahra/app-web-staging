@@ -55,6 +55,14 @@ export class CoachingResolver {
     return this.coaching.coachingQueue();
   }
 
+  @Query(() => Boolean)
+  @Roles('admin', 'directeur')
+  coachingFavori(
+    @Args('porteId', { type: () => Int }) porteId: number,
+  ): Promise<boolean> {
+    return this.coaching.getCoachingFavori(porteId);
+  }
+
   @Query(() => PaginatedCoachingManagement)
   @Roles('admin', 'directeur')
   coachingManagementList(
