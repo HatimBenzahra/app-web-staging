@@ -20,8 +20,15 @@ import {
   isInProgress,
 } from './CoachingComponents'
 
-// Valeur sentinelle pour « tous les statuts » (le Select n'accepte pas value="").
+// Valeurs sentinelles pour « tous » (le Select n'accepte pas value="").
 const ALL_STATUTS_VALUE = '__all__'
+const ALL_SUBJECTS_VALUE = '__all__'
+const ALL_DURATION_VALUE = '__all__'
+const DURATION_TIERS = [
+  { value: 'lt1', label: 'Moins d’1 min' },
+  { value: '1to3', label: '1 à 3 min' },
+  { value: 'gt3', label: 'Plus de 3 min' },
+]
 
 // Indicateur d'état d'analyse d'un enregistrement.
 function AnalyseIndicator({ status, quality, score }) {
@@ -62,6 +69,13 @@ export default function CoachingManagementList() {
     setSearch,
     favorisOnly,
     setFavorisOnly,
+    subjectId,
+    setSubjectId,
+    durationTier,
+    setDurationTier,
+    notAnalyzedOnly,
+    setNotAnalyzedOnly,
+    subjects,
     selected,
     toggleSelect,
     clearSelection,
@@ -121,6 +135,60 @@ export default function CoachingManagementList() {
             ))}
           </SelectContent>
         </Select>
+
+        {/* Filtre par commercial / manager */}
+        <Select
+          value={subjectId != null ? String(subjectId) : ALL_SUBJECTS_VALUE}
+          onValueChange={(v) =>
+            setSubjectId(v === ALL_SUBJECTS_VALUE ? null : Number(v))
+          }
+        >
+          <SelectTrigger className="h-8 w-[190px] text-sm">
+            <SelectValue placeholder="Commercial / manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SUBJECTS_VALUE}>Tous les commerciaux</SelectItem>
+            {subjects.map((s) => (
+              <SelectItem key={`${s.subjectRole}-${s.subjectId}`} value={String(s.subjectId)}>
+                {s.subjectName}
+                {s.subjectRole === 'manager' ? ' (mgr)' : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Filtre par durée */}
+        <Select
+          value={durationTier || ALL_DURATION_VALUE}
+          onValueChange={(v) => setDurationTier(v === ALL_DURATION_VALUE ? '' : v)}
+        >
+          <SelectTrigger className="h-8 w-[150px] text-sm">
+            <SelectValue placeholder="Durée" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_DURATION_VALUE}>Toutes durées</SelectItem>
+            {DURATION_TIERS.map((d) => (
+              <SelectItem key={d.value} value={d.value}>
+                {d.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Non analysés uniquement */}
+        <button
+          type="button"
+          onClick={() => setNotAnalyzedOnly(!notAnalyzedOnly)}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm transition-colors',
+            notAnalyzedOnly
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border/60 text-muted-foreground hover:bg-muted/60',
+          )}
+        >
+          Non analysés
+        </button>
+
         <button
           type="button"
           onClick={() => setFavorisOnly(!favorisOnly)}

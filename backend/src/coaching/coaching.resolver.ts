@@ -15,6 +15,7 @@ import {
   CoachingQueueItemDto,
   CoachingManagementFilter,
   PaginatedCoachingManagement,
+  CoachableSubjectDto,
 } from './coaching.dto';
 
 @Resolver()
@@ -69,6 +70,12 @@ export class CoachingResolver {
     @Args('filter', { nullable: true }) filter?: CoachingManagementFilter,
   ): Promise<PaginatedCoachingManagement> {
     return this.coaching.coachingManagementList(filter ?? {});
+  }
+
+  @Query(() => [CoachableSubjectDto])
+  @Roles('admin', 'directeur')
+  coachableSubjects(): Promise<CoachableSubjectDto[]> {
+    return this.coaching.coachableSubjects();
   }
 
   @Query(() => ActiveSalesPlanDto, { nullable: true })

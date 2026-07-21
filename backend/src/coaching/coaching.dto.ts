@@ -126,6 +126,17 @@ export class CoachingManagementFilter {
   @Field(() => String, { nullable: true }) statut?: string;
   @Field(() => String, { nullable: true }) search?: string;
   @Field({ nullable: true }) favorisOnly?: boolean;
+  @Field(() => Int, { nullable: true }) subjectId?: number; // filtre par commercial/manager
+  @Field(() => String, { nullable: true }) durationTier?: string; // 'lt1' | '1to3' | 'gt3'
+  @Field({ nullable: true }) notAnalyzedOnly?: boolean; // uniquement les non-analysés
+}
+
+/** Sujet coachable (pour le menu déroulant de filtre). */
+@ObjectType()
+export class CoachableSubjectDto {
+  @Field(() => Int) subjectId: number;
+  @Field() subjectName: string;
+  @Field() subjectRole: string;
 }
 
 /** Synthèse globale d'un commercial / manager (hors pipeline audio). */
@@ -142,6 +153,9 @@ export class CoachingSynthesisDto {
   @Field(() => String, { nullable: true }) trend?: string | null;
   @Field(() => Float, { nullable: true }) scoreMoyen?: number | null;
   @Field(() => Int) nbAnalyses: number;
+  // Période couverte par les sessions jugées (plus ancienne → plus récente).
+  @Field(() => String, { nullable: true }) periodStart?: string | null;
+  @Field(() => String, { nullable: true }) periodEnd?: string | null;
   @Field(() => String, { nullable: true }) error?: string | null;
   @Field(() => String, { nullable: true }) generatedAt?: string | null;
 }
@@ -151,6 +165,8 @@ export class CoachingConfigDto {
   @Field(() => [String]) coachableStatuts: string[];
   @Field(() => [String]) allStatuts: string[];
   @Field(() => Int) minAutoDurationSec: number; // durée min (s) pour l'analyse auto
+  @Field() synthesisCronSchedule: string; // libellé planif cron synthèse
+  @Field(() => String, { nullable: true }) synthesisCronLastRunAt?: string | null;
 }
 
 @ObjectType()

@@ -674,10 +674,11 @@ enum CoachingStatus {
 
 // Config singleton du coaching (éditable depuis la page de gestion).
 model CoachingConfig {
-  id                 Int      @id @default(1)
-  coachableStatuts   Json // liste des StatutPorte qui déclenchent l'analyse auto
-  minAutoDurationSec Int      @default(120) // durée min (s) d'un audio pour l'analyse auto
-  updatedAt          DateTime @updatedAt
+  id                     Int       @id @default(1)
+  coachableStatuts       Json // liste des StatutPorte qui déclenchent l'analyse auto
+  minAutoDurationSec     Int       @default(120) // durée min (s) d'un audio pour l'analyse auto
+  synthesisCronLastRunAt DateTime? // dernière exécution du cron nocturne de synthèse
+  updatedAt              DateTime  @updatedAt
 }
 
 // Synthèse globale (hors pipeline audio) : bilan LLM par commercial / manager,

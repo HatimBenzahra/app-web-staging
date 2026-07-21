@@ -424,6 +424,45 @@ export default function CoachingIA() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Régénération automatique des synthèses (cron nocturne) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Régénération automatique des synthèses</CardTitle>
+              <CardDescription>
+                Les fiches synthèse des commerciaux/managers actifs sont régénérées
+                automatiquement (uniquement s'ils ont de nouvelles sessions coachées).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Planification
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {config.synthesisCronSchedule || 'Chaque jour à 03:00'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Dernière exécution
+                  </div>
+                  <div className="mt-1 font-medium tabular-nums">
+                    {config.synthesisCronLastRunAt
+                      ? new Date(config.synthesisCronLastRunAt).toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Jamais exécuté'}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

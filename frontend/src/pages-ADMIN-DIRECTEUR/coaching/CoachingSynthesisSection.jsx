@@ -18,6 +18,15 @@ import CoachingService from '@/services/coaching/coaching.service'
 
 const POLL_MS = 5000
 
+// Date courte JJ/MM/AAAA (tolère null / ISO).
+function fmtDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
 const TREND_META = {
   progresse: { label: 'En progression', icon: ArrowUpRight, cls: 'bg-green-500/10 text-green-600' },
   stagne: { label: 'Stable', icon: Minus, cls: 'bg-slate-500/10 text-slate-600' },
@@ -164,6 +173,16 @@ export default function CoachingSynthesisSection({ commercialId, managerId }) {
                 {syn.nbAnalyses > 1 ? 's' : ''}
               </span>
             </div>
+
+            {/* Période couverte par les sessions jugées */}
+            {(syn.periodStart || syn.periodEnd) && (
+              <p className="text-xs text-muted-foreground">
+                Période couverte : du{' '}
+                <span className="font-medium text-foreground/80">{fmtDate(syn.periodStart)}</span>{' '}
+                au{' '}
+                <span className="font-medium text-foreground/80">{fmtDate(syn.periodEnd)}</span>
+              </p>
+            )}
 
             {/* Analyse détaillée (tirets fouillés : contrats, portes, durées, refus, absences…) */}
             <Block

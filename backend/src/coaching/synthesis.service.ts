@@ -107,7 +107,22 @@ export class SynthesisService {
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async nightlyRegenerate(): Promise<void> {
     if (!this.llm.isConfigured()) return;
-    await this.regenerateAllActive();
+    try {
+      await this.regenerateAllActive();
+    } finally {
+      // Trace l'exécution (affichée dans les Réglages), même si 0 régénéré.
+      await this.prisma.coachingConfig
+        .upsert({
+          where: { id: 1 },
+          create: {
+            id: 1,
+            coachableStatuts: [],
+            synthesisCronLastRunAt: new Date(),
+          },
+          update: { synthesisCronLastRunAt: new Date() },
+        })
+        .catch(() => undefined);
+    }
   }
 
   /** Régénère les synthèses des sujets actifs ayant de nouvelles analyses. */
@@ -452,6 +467,14 @@ export class SynthesisService {
         typesHabitat: habitatCount,
       },
       tendance: { scoreParSemaine, direction },
+      // Période couverte : de la plus ancienne à la plus récente session jugée.
+      periode: {
+        start: analyses.length
+          ? analyses[analyses.length - 1].createdAt.toISOString()
+          : null,
+        end: analyses.length ? analyses[0].createdAt.toISOString() : null,
+        nb: analyses.length,
+      },
     };
   }
 
@@ -469,6 +492,8 @@ export class SynthesisService {
       trend: row.trend ?? null,
       scoreMoyen: row.scoreMoyen ?? null,
       nbAnalyses: row.nbAnalyses ?? 0,
+      periodStart: (row.stats as any)?.periode?.start ?? null,
+      periodEnd: (row.stats as any)?.periode?.end ?? null,
       error: row.error ?? null,
       generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
     };

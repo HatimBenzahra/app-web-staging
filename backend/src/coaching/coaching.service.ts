@@ -59,6 +59,17 @@ const MAX_ATTEMPTS = 3;
 // DB est absente ; la vraie valeur est éditable dans les Réglages (CoachingConfig).
 // La durée provient de la porte (segment). L'analyse MANUELLE (à venir) l'ignore.
 const MIN_AUTO_DURATION_SEC_DEFAULT = 120;
+// Libellé lisible de la planif du cron de synthèse (cf. @Cron EVERY_DAY_AT_3AM).
+const SYNTHESIS_CRON_SCHEDULE = 'Chaque jour à 03:00';
+
+// Filtre par tranche de durée (secondes) pour la liste de gestion.
+function matchDurationTier(sec: number, tier: string): boolean {
+  const d = sec ?? 0;
+  if (tier === 'lt1') return d < 60;
+  if (tier === '1to3') return d >= 60 && d < 180;
+  if (tier === 'gt3') return d >= 180;
+  return true; // tier inconnu → pas de filtrage
+}
 
 @Injectable()
 export class CoachingService {
@@ -165,12 +176,23 @@ export class CoachingService {
     coachableStatuts: string[];
     allStatuts: string[];
     minAutoDurationSec: number;
+    synthesisCronSchedule: string;
+    synthesisCronLastRunAt: string | null;
   }> {
     const c = await this.loadConfig();
+    // Lecture fraîche du timestamp cron (non caché — reflète l'état réel).
+    const row = await this.prisma.coachingConfig.findUnique({
+      where: { id: 1 },
+      select: { synthesisCronLastRunAt: true },
+    });
     return {
       coachableStatuts: c.statuts,
       allStatuts: ALL_STATUTS,
       minAutoDurationSec: c.minAutoDurationSec,
+      synthesisCronSchedule: SYNTHESIS_CRON_SCHEDULE,
+      synthesisCronLastRunAt: row?.synthesisCronLastRunAt
+        ? row.synthesisCronLastRunAt.toISOString()
+        : null,
     };
   }
 
@@ -965,9 +987,40 @@ export class CoachingService {
       })
       .filter((r) => r.active);
 
-    // Filtres favori + recherche (nom / adresse / numéro).
+    // État d'analyse (plan actif) pour TOUS les candidats — requis pour le filtre
+    // "non analysés uniquement" et pour l'indicateur, sans requête par page.
+    const version = await this.salesPlans.getActiveVersion();
+    const analysisByKey = new Map<
+      string,
+      { id: number; status: string; quality: string | null; score: number | null }
+    >();
+    if (version && withOwner.length) {
+      const analyses = await this.prisma.coachingAnalysis.findMany({
+        where: {
+          s3KeyOriginal: { in: withOwner.map((r) => r.s3Key) },
+          salesPlanVersionId: version.id,
+        },
+        select: { s3KeyOriginal: true, id: true, status: true, quality: true, score: true },
+      });
+      for (const a of analyses) {
+        analysisByKey.set(a.s3KeyOriginal, {
+          id: a.id,
+          status: a.status,
+          quality: a.quality,
+          score: a.score,
+        });
+      }
+    }
+
+    // Filtres : favori, sujet, durée, non-analysés, recherche.
     let list = withOwner;
     if (filter.favorisOnly) list = list.filter((r) => r.favori);
+    if (filter.subjectId != null)
+      list = list.filter((r) => r.subjectId === filter.subjectId);
+    if (filter.durationTier)
+      list = list.filter((r) => matchDurationTier(r.durationSec, filter.durationTier!));
+    if (filter.notAnalyzedOnly)
+      list = list.filter((r) => !analysisByKey.has(r.s3Key)); // aucune analyse encore
     if (filter.search?.trim()) {
       const q = filter.search.trim().toLowerCase();
       list = list.filter(
@@ -986,30 +1039,6 @@ export class CoachingService {
     const skip = filter.skip ?? 0;
     const take = Math.min(filter.take ?? 15, 100);
     const page = list.slice(skip, skip + take);
-
-    // État d'analyse (plan actif) pour la page courante uniquement.
-    const version = await this.salesPlans.getActiveVersion();
-    const analysisByKey = new Map<
-      string,
-      { id: number; status: string; quality: string | null; score: number | null }
-    >();
-    if (version && page.length) {
-      const analyses = await this.prisma.coachingAnalysis.findMany({
-        where: {
-          s3KeyOriginal: { in: page.map((r) => r.s3Key) },
-          salesPlanVersionId: version.id,
-        },
-        select: { s3KeyOriginal: true, id: true, status: true, quality: true, score: true },
-      });
-      for (const a of analyses) {
-        analysisByKey.set(a.s3KeyOriginal, {
-          id: a.id,
-          status: a.status,
-          quality: a.quality,
-          score: a.score,
-        });
-      }
-    }
 
     const items = page.map((r) => {
       const a = analysisByKey.get(r.s3Key);
@@ -1032,6 +1061,59 @@ export class CoachingService {
       };
     });
     return { items, total };
+  }
+
+  /**
+   * Sujets (commerciaux/managers actifs) ayant des enregistrements coachables —
+   * pour le menu déroulant de filtre de la liste de gestion.
+   */
+  async coachableSubjects(): Promise<
+    { subjectId: number; subjectName: string; subjectRole: string }[]
+  > {
+    const coachable = await this.getCoachableStatuts();
+    if (!coachable.length) return [];
+    const portes = await this.prisma.porte.findMany({
+      where: { statut: { in: coachable as StatutPorte[] }, recordingSegments: { some: {} } },
+      select: {
+        recordingSegments: { select: { commercialId: true, managerId: true } },
+      },
+    });
+    const commIds = new Set<number>();
+    const mgrIds = new Set<number>();
+    for (const p of portes) {
+      for (const s of p.recordingSegments) {
+        if (s.commercialId != null) commIds.add(s.commercialId);
+        else if (s.managerId != null) mgrIds.add(s.managerId);
+      }
+    }
+    const [comms, mgrs] = await Promise.all([
+      commIds.size
+        ? this.prisma.commercial.findMany({
+            where: { id: { in: [...commIds] }, status: UserStatus.ACTIF },
+            select: { id: true, nom: true, prenom: true },
+          })
+        : Promise.resolve([] as { id: number; nom: string; prenom: string }[]),
+      mgrIds.size
+        ? this.prisma.manager.findMany({
+            where: { id: { in: [...mgrIds] }, status: UserStatus.ACTIF },
+            select: { id: true, nom: true, prenom: true },
+          })
+        : Promise.resolve([] as { id: number; nom: string; prenom: string }[]),
+    ]);
+    const out = [
+      ...comms.map((c) => ({
+        subjectId: c.id,
+        subjectName: `${c.prenom} ${c.nom}`.trim(),
+        subjectRole: 'commercial',
+      })),
+      ...mgrs.map((m) => ({
+        subjectId: m.id,
+        subjectName: `${m.prenom} ${m.nom}`.trim(),
+        subjectRole: 'manager',
+      })),
+    ];
+    out.sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+    return out;
   }
 
   private toDto(row: any): CoachingAnalysisDto {

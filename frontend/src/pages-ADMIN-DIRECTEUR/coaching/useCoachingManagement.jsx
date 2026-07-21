@@ -13,6 +13,10 @@ export function useCoachingManagement() {
   const [statut, setStatutState] = useState('')
   const [search, setSearchState] = useState('')
   const [favorisOnly, setFavorisOnlyState] = useState(false)
+  const [subjectId, setSubjectIdState] = useState(null)
+  const [durationTier, setDurationTierState] = useState('')
+  const [notAnalyzedOnly, setNotAnalyzedOnlyState] = useState(false)
+  const [subjects, setSubjects] = useState([])
   const [selected, setSelected] = useState(() => new Set())
   const [launching, setLaunching] = useState(false)
   const pollRef = useRef(null)
@@ -26,17 +30,25 @@ export function useCoachingManagement() {
         statut: statut || null,
         search: search.trim() || null,
         favorisOnly: favorisOnly || null,
+        subjectId: subjectId ?? null,
+        durationTier: durationTier || null,
+        notAnalyzedOnly: notAnalyzedOnly || null,
       })
       setItems(res.items || [])
       setTotal(res.total || 0)
       setLoading(false)
     },
-    [page, statut, search, favorisOnly],
+    [page, statut, search, favorisOnly, subjectId, durationTier, notAnalyzedOnly],
   )
 
   useEffect(() => {
     load(true)
   }, [load])
+
+  // Liste des sujets (commerciaux/managers) pour le filtre déroulant — une fois.
+  useEffect(() => {
+    CoachingService.coachableSubjects().then(setSubjects)
+  }, [])
 
   // Rafraîchit les indicateurs (analyse terminée) sans spinner.
   useEffect(() => {
@@ -55,6 +67,18 @@ export function useCoachingManagement() {
   }
   const setFavorisOnly = (v) => {
     setFavorisOnlyState(v)
+    setPage(0)
+  }
+  const setSubjectId = (v) => {
+    setSubjectIdState(v)
+    setPage(0)
+  }
+  const setDurationTier = (v) => {
+    setDurationTierState(v)
+    setPage(0)
+  }
+  const setNotAnalyzedOnly = (v) => {
+    setNotAnalyzedOnlyState(v)
     setPage(0)
   }
 
@@ -112,6 +136,13 @@ export function useCoachingManagement() {
     setSearch,
     favorisOnly,
     setFavorisOnly,
+    subjectId,
+    setSubjectId,
+    durationTier,
+    setDurationTier,
+    notAnalyzedOnly,
+    setNotAnalyzedOnly,
+    subjects,
     selected,
     toggleSelect,
     clearSelection,

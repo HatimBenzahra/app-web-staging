@@ -72,7 +72,7 @@ const ACTIVE_PLAN = `
     }
   }
 `
-const CONFIG_FIELDS = `coachableStatuts allStatuts minAutoDurationSec`
+const CONFIG_FIELDS = `coachableStatuts allStatuts minAutoDurationSec synthesisCronSchedule synthesisCronLastRunAt`
 const COACHING_CONFIG = `
   query CoachingConfig {
     coachingConfig { ${CONFIG_FIELDS} }
@@ -109,6 +109,11 @@ const MANAGEMENT_LIST = `
     }
   }
 `
+const COACHABLE_SUBJECTS = `
+  query CoachableSubjects {
+    coachableSubjects { subjectId subjectName subjectRole }
+  }
+`
 const LAUNCH_MANY = `
   mutation LaunchCoachingAnalyses($s3Keys: [String!]!) {
     launchCoachingAnalyses(s3Keys: $s3Keys)
@@ -128,6 +133,7 @@ const SYNTHESIS_FIELDS = `
   subjectType subjectId status
   analyse strengths improvements priorities
   trend scoreMoyen nbAnalyses
+  periodStart periodEnd
   error generatedAt
 `
 const GET_SYNTHESIS = `
@@ -234,6 +240,17 @@ export class CoachingService {
     } catch (error) {
       console.error('Erreur coachingSynthesis:', error)
       return null
+    }
+  }
+
+  /** Sujets coachables (commerciaux/managers actifs) pour le filtre déroulant. */
+  static async coachableSubjects(): Promise<any[]> {
+    try {
+      const data = await graphqlClient.request(COACHABLE_SUBJECTS)
+      return data.coachableSubjects || []
+    } catch (error) {
+      console.error('Erreur coachableSubjects:', error)
+      return []
     }
   }
 
