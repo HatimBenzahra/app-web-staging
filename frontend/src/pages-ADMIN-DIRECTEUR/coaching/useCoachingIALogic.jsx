@@ -2,13 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import CoachingService from '@/services/coaching/coaching.service'
 
 const POLL_INTERVAL_MS = 6000
-const RECENT_TAKE = 12
 
-/** Logique du dashboard de gestion Coaching (file + analyses récentes + config). */
+/** Logique du dashboard de gestion Coaching (file + config). */
 export function useCoachingIALogic() {
   const [stats, setStats] = useState(null)
   const [queue, setQueue] = useState([])
-  const [recent, setRecent] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [config, setConfig] = useState({
@@ -21,14 +19,12 @@ export function useCoachingIALogic() {
 
   // Rafraîchit l'état temps réel (file + compteurs + derniers analysés).
   const refresh = useCallback(async () => {
-    const [s, q, r] = await Promise.all([
+    const [s, q] = await Promise.all([
       CoachingService.stats(),
       CoachingService.queue(),
-      CoachingService.analyses({ status: 'READY', take: RECENT_TAKE }),
     ])
     if (s) setStats(s)
     setQueue(q || [])
-    setRecent(r?.items || [])
   }, [])
 
   useEffect(() => {
@@ -77,7 +73,6 @@ export function useCoachingIALogic() {
   return {
     stats,
     queue,
-    recent,
     loading,
     error,
     config,

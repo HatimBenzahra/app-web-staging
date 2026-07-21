@@ -13,6 +13,8 @@ import {
   CoachingConfigDto,
   CoachingStatsDto,
   CoachingQueueItemDto,
+  CoachingManagementFilter,
+  PaginatedCoachingManagement,
 } from './coaching.dto';
 
 @Resolver()
@@ -51,6 +53,14 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingQueue(): Promise<CoachingQueueItemDto[]> {
     return this.coaching.coachingQueue();
+  }
+
+  @Query(() => PaginatedCoachingManagement)
+  @Roles('admin', 'directeur')
+  coachingManagementList(
+    @Args('filter', { nullable: true }) filter?: CoachingManagementFilter,
+  ): Promise<PaginatedCoachingManagement> {
+    return this.coaching.coachingManagementList(filter ?? {});
   }
 
   @Query(() => ActiveSalesPlanDto, { nullable: true })
@@ -118,6 +128,23 @@ export class CoachingResolver {
     @Args('s3Key') s3Key: string,
   ): Promise<CoachingAnalysisDto> {
     return this.coaching.launch(s3Key);
+  }
+
+  @Mutation(() => Int)
+  @Roles('admin', 'directeur')
+  launchCoachingAnalyses(
+    @Args({ name: 's3Keys', type: () => [String] }) s3Keys: string[],
+  ): Promise<number> {
+    return this.coaching.launchMany(s3Keys);
+  }
+
+  @Mutation(() => Boolean)
+  @Roles('admin', 'directeur')
+  setCoachingFavori(
+    @Args('porteId', { type: () => Int }) porteId: number,
+    @Args('favori') favori: boolean,
+  ): Promise<boolean> {
+    return this.coaching.setCoachingFavori(porteId, favori);
   }
 
   @Mutation(() => CoachingAnalysisDto)

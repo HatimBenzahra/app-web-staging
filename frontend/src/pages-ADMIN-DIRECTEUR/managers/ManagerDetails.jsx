@@ -1,7 +1,6 @@
 import DetailsPage from '@/components/DetailsPage'
 import { DetailsPageSkeleton } from '@/components/LoadingSkeletons'
 import DateRangeFilter from '@/components/DateRangeFilter'
-import CoachingSectionCommercial from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingSectionCommercial'
 import { useManagerDetailsLogic } from './useManagerDetailsLogic'
 
 export default function ManagerDetails() {
@@ -46,15 +45,7 @@ export default function ManagerDetails() {
         />
       }
       assignedZones={managerZones}
-      additionalSections={[
-        ...(additionalSections || []),
-        {
-          title: 'Coaching',
-          type: 'custom',
-          bare: true,
-          render: (data) => <CoachingSectionCommercial managerId={data.id} />,
-        },
-      ]}
+      additionalSections={additionalSections}
       backUrl="/managers"
     />
   )

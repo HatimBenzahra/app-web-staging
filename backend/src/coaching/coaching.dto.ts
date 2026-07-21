@@ -92,6 +92,41 @@ export class CoachingStatsDto {
   @Field(() => Float, { nullable: true }) avgScore?: number | null;
 }
 
+/** Un enregistrement coachable dans l'interface de gestion. */
+@ObjectType()
+export class CoachingManagementItemDto {
+  @Field() s3Key: string;
+  @Field(() => Int) porteId: number;
+  @Field(() => String, { nullable: true }) subjectName?: string | null;
+  @Field(() => String, { nullable: true }) subjectRole?: string | null;
+  @Field(() => Int, { nullable: true }) subjectId?: number | null;
+  @Field(() => String, { nullable: true }) statutPorte?: string | null;
+  @Field(() => Float, { nullable: true }) durationSec?: number | null;
+  @Field(() => String, { nullable: true }) adresse?: string | null;
+  @Field(() => String, { nullable: true }) porteNumero?: string | null;
+  @Field(() => Int, { nullable: true }) porteEtage?: number | null;
+  @Field() favori: boolean;
+  @Field(() => Int, { nullable: true }) analysisId?: number | null;
+  @Field(() => String, { nullable: true }) analysisStatus?: string | null;
+  @Field(() => String, { nullable: true }) quality?: string | null;
+  @Field(() => Float, { nullable: true }) score?: number | null;
+}
+
+@ObjectType()
+export class PaginatedCoachingManagement {
+  @Field(() => [CoachingManagementItemDto]) items: CoachingManagementItemDto[];
+  @Field(() => Int) total: number;
+}
+
+@InputType()
+export class CoachingManagementFilter {
+  @Field(() => Int, { nullable: true, defaultValue: 0 }) skip?: number;
+  @Field(() => Int, { nullable: true, defaultValue: 15 }) take?: number;
+  @Field(() => String, { nullable: true }) statut?: string;
+  @Field(() => String, { nullable: true }) search?: string;
+  @Field({ nullable: true }) favorisOnly?: boolean;
+}
+
 @ObjectType()
 export class CoachingConfigDto {
   @Field(() => [String]) coachableStatuts: string[];

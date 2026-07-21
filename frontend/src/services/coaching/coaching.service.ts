@@ -93,6 +93,31 @@ const COACHING_QUEUE = `
     }
   }
 `
+const MANAGEMENT_LIST = `
+  query CoachingManagementList($filter: CoachingManagementFilter) {
+    coachingManagementList(filter: $filter) {
+      items {
+        s3Key porteId
+        subjectName subjectRole subjectId
+        statutPorte durationSec
+        adresse porteNumero porteEtage
+        favori
+        analysisId analysisStatus quality score
+      }
+      total
+    }
+  }
+`
+const LAUNCH_MANY = `
+  mutation LaunchCoachingAnalyses($s3Keys: [String!]!) {
+    launchCoachingAnalyses(s3Keys: $s3Keys)
+  }
+`
+const SET_FAVORI = `
+  mutation SetCoachingFavori($porteId: Int!, $favori: Boolean!) {
+    setCoachingFavori(porteId: $porteId, favori: $favori)
+  }
+`
 const SET_COACHABLE = `
   mutation SetCoachableStatuts($statuts: [String!]!) {
     setCoachableStatuts(statuts: $statuts) { ${CONFIG_FIELDS} }
@@ -141,6 +166,42 @@ export class CoachingService {
   static async relaunch(id: number): Promise<any> {
     const data = await graphqlClient.request(RELAUNCH, { id })
     return data.relaunchCoachingAnalysis
+  }
+
+  /** Liste de gestion : enregistrements coachables (paginée, filtrable). */
+  static async managementList(filter: any): Promise<{ items: any[]; total: number }> {
+    try {
+      const data = await graphqlClient.request(MANAGEMENT_LIST, { filter })
+      return data.coachingManagementList || { items: [], total: 0 }
+    } catch (error) {
+      console.error('Erreur coachingManagementList:', error)
+      return { items: [], total: 0 }
+    }
+  }
+
+  /** Lance l'analyse manuelle (ignore le filtre durée) sur un lot de clés S3. */
+  static async launchMany(s3Keys: string[]): Promise<number> {
+    const data = await graphqlClient.request(LAUNCH_MANY, { s3Keys })
+    return data.launchCoachingAnalyses ?? 0
+  }
+
+  /** Marque/démarque une porte (enregistrement/coaching) comme favorite. */
+  static async setFavori(porteId: number, favori: boolean): Promise<boolean> {
+    const data = await graphqlClient.request(SET_FAVORI, { porteId, favori })
+    return data.setCoachingFavori ?? false
+  }
+
+  /** Analyse coaching d'une porte (la plus récente), pour le modal de la porte. */
+  static async byPorte(porteId: number): Promise<any | null> {
+    try {
+      const data = await graphqlClient.request(LIST_ANALYSES, {
+        filter: { porteId, take: 1 },
+      })
+      return data.coachingAnalyses?.items?.[0] || null
+    } catch (error) {
+      console.error('Erreur coachingAnalyses(porte):', error)
+      return null
+    }
   }
 
   /** File interrogeable : audios en attente / en cours (sujet + durée). */

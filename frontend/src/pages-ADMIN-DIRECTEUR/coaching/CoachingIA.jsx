@@ -6,9 +6,7 @@ import {
   AudioLines,
   CircleSlash,
   TriangleAlert,
-  Check,
   ChevronRight,
-  Eye,
 } from 'lucide-react'
 import {
   Card,
@@ -20,17 +18,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import CoachingService from '@/services/coaching/coaching.service'
 import { useCoachingIALogic } from './useCoachingIALogic'
 import SalesPlanViewer from './SalesPlanViewer'
-import CoachingDetailModal from './CoachingDetailModal'
+import CoachingManagementList from './CoachingManagementList'
+import AnalyzedRecordingsModal from './AnalyzedRecordingsModal'
 import {
   PORTE_STATUT_META,
   PorteStatutPill,
   StatusPill,
   parseRecordingKey,
   formatDuration,
-  isInProgress,
 } from './CoachingComponents'
 
 // Nombre max de jetons empilés affichés avant de basculer sur un compteur « +N ».
@@ -153,74 +150,10 @@ function QueueList({ items, emptyLabel }) {
   )
 }
 
-// Ligne d'une analyse récente, dépliable sur les « grands titres ».
-function RecentRow({ a, expanded, onToggle, onOpen }) {
-  const meta = parseRecordingKey(a.s3KeyOriginal)
-  return (
-    <li className="py-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 rounded-lg px-1 py-2 text-left transition-colors hover:bg-muted/40"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <ChevronRight
-            className={cn(
-              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
-              expanded && 'rotate-90',
-            )}
-          />
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">
-              {a.subjectName || meta.role || '—'}
-              <span className="ml-2 font-normal text-muted-foreground">{meta.address}</span>
-            </div>
-            <div className="mt-0.5">
-              <PorteStatutPill statut={a.statutPorte} />
-            </div>
-          </div>
-        </div>
-        <span className="shrink-0 font-serif text-lg tabular-nums">
-          {typeof a.score === 'number'
-            ? `${Math.round(a.score)}/100`
-            : isInProgress(a.status)
-              ? '…'
-              : '—'}
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="ml-6 mb-2 space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
-          {a.summary && <p className="text-muted-foreground">{a.summary}</p>}
-          {a.strengths?.length > 0 && (
-            <div className="flex gap-2">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-              <span>{a.strengths.slice(0, 3).join(' · ')}</span>
-            </div>
-          )}
-          {a.improvements?.length > 0 && (
-            <div className="flex gap-2">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <span>{a.improvements.slice(0, 3).join(' · ')}</span>
-            </div>
-          )}
-          <div className="pt-1">
-            <Button variant="outline" size="sm" onClick={() => onOpen(a)}>
-              <Eye className="h-4 w-4" />
-              Voir le détail complet
-            </Button>
-          </div>
-        </div>
-      )}
-    </li>
-  )
-}
-
 export default function CoachingIA() {
   const {
     stats,
     queue,
-    recent,
     loading,
     error,
     config,
@@ -229,23 +162,8 @@ export default function CoachingIA() {
     saveMinDuration,
   } = useCoachingIALogic()
 
-  // Pile ouverte (interrogation de la file) et ligne d'analyse dépliée.
+  // Pile ouverte (interrogation de la file).
   const [openPile, setOpenPile] = useState(null) // 'pending' | 'processing' | null
-  const [expandedId, setExpandedId] = useState(null)
-
-  // Modal de détail d'une analyse (ouvert depuis « Analysés récents »).
-  const [modalAnalysis, setModalAnalysis] = useState(null)
-  const [relaunching, setRelaunching] = useState(false)
-  const relaunch = async () => {
-    if (!modalAnalysis) return
-    setRelaunching(true)
-    try {
-      const updated = await CoachingService.relaunch(modalAnalysis.id)
-      if (updated) setModalAnalysis(updated)
-    } finally {
-      setRelaunching(false)
-    }
-  }
 
   const pendingItems = queue.filter((q) => q.status === 'PENDING')
   const processingItems = queue.filter(
@@ -390,36 +308,17 @@ export default function CoachingIA() {
             </CardContent>
           </Card>
 
-          {/* Analyses récentes des commerciaux / managers */}
+          {/* Interface de gestion : enregistrements coachables à analyser */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Analysés récents</CardTitle>
+              <CardTitle className="text-base">Enregistrements à coacher</CardTitle>
               <CardDescription>
-                Derniers audios analysés. Clique pour les grands titres, puis ouvre la fiche
-                du commercial / manager pour le détail complet.
+                Enregistrements des commerciaux/managers actifs. Lance l'analyse (manuelle,
+                sans filtre de durée), en un clic ou par sélection multiple.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Chargement…
-                </div>
-              ) : recent.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune analyse pour le moment.</p>
-              ) : (
-                <ul className="divide-y divide-border/60">
-                  {recent.map((a) => (
-                    <RecentRow
-                      key={a.id}
-                      a={a}
-                      expanded={expandedId === a.id}
-                      onToggle={() => setExpandedId((cur) => (cur === a.id ? null : a.id))}
-                      onOpen={setModalAnalysis}
-                    />
-                  ))}
-                </ul>
-              )}
+              <CoachingManagementList />
             </CardContent>
           </Card>
         </TabsContent>
@@ -524,17 +423,6 @@ export default function CoachingIA() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <CoachingDetailModal
-        open={!!modalAnalysis}
-        onOpenChange={(o) => {
-          if (!o) setModalAnalysis(null)
-        }}
-        analysis={modalAnalysis}
-        recordingKey={modalAnalysis?.s3KeyOriginal}
-        onRelaunch={relaunch}
-        relaunching={relaunching}
-      />
     </div>
   )
 }

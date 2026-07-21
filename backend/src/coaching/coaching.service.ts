@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { CoachingQuality, CoachingStatus, StatutPorte } from '@prisma/client';
+import {
+  CoachingQuality,
+  CoachingStatus,
+  StatutPorte,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { TranscriptionService } from '../transcription/transcription.service';
 import { SalesPlanService } from './sales-plan.service';
@@ -17,6 +22,8 @@ import {
   CoachingAnalysesFilter,
   CoachingAnalysisDto,
   CoachingQueueItemDto,
+  CoachingManagementFilter,
+  CoachingManagementItemDto,
 } from './coaching.dto';
 import {
   CriterionScore,
@@ -338,18 +345,49 @@ export class CoachingService {
         statutPorte: seg?.statut ?? null,
         salesPlanVersionId: version.id,
         status: CoachingStatus.PENDING,
+        manual: true,
       },
       update: {
         status: CoachingStatus.PENDING,
         error: null,
         attempts: 0,
         nextRetryAt: null,
+        manual: true,
       },
       select: { id: true },
     });
 
     // Job en PENDING → traité par le worker de file (processQueue).
     return this.getAnalysis(analysis.id);
+  }
+
+  /**
+   * Lancement manuel EN LOT sur des enregistrements existants (interface de
+   * gestion). Idempotent ; renvoie le nombre d'audios enfilés. Comme `launch`,
+   * ces analyses ignorent le gating durée (manual = true).
+   */
+  async launchMany(s3Keys: string[]): Promise<number> {
+    const keys = [...new Set((s3Keys ?? []).filter(Boolean))];
+    let n = 0;
+    for (const key of keys) {
+      try {
+        await this.launch(key);
+        n++;
+      } catch (e) {
+        this.logger.warn(`launchMany: ${key} ignoré (${(e as Error).message})`);
+      }
+    }
+    this.logger.log(`launchMany : ${n}/${keys.length} audios enfilés (manuel)`);
+    return n;
+  }
+
+  /** Marque/démarque une porte (son enregistrement/coaching) comme favorite. */
+  async setCoachingFavori(porteId: number, favori: boolean): Promise<boolean> {
+    await this.prisma.porte.update({
+      where: { id: porteId },
+      data: { coachingFavori: favori },
+    });
+    return favori;
   }
 
   /** Relance manuelle d'une analyse existante (admin/directeur). */
@@ -427,6 +465,10 @@ export class CoachingService {
 
       const plan = this.salesPlans.toParsedPlan(analysis.salesPlanVersion);
       const q = plan.quality;
+      // Lancement manuel : on ignore tout gating sur la DURÉE (l'utilisateur
+      // veut analyser cet audio quoi qu'il arrive). Le gating "pas de parole"
+      // (longueur du transcript) reste actif.
+      const manual = analysis.manual === true;
 
       // 0. Pré-gating sur la durée CONNUE (DB) — évite une transcription
       // inutile (download S3 + Whisper) quand l'audio est trop court.
@@ -436,6 +478,7 @@ export class CoachingService {
       });
       const knownDuration = known._max.durationSec ?? null;
       if (
+        !manual &&
         knownDuration != null &&
         q.minDurationSec != null &&
         knownDuration < q.minDurationSec
@@ -459,9 +502,12 @@ export class CoachingService {
       const transcript = (stt.text ?? '').trim();
       const durationSec = stt.durationSec ?? knownDuration ?? 0;
 
-      // 2. Gating post-transcription : longueur du transcript (+ durée réelle en repli)
+      // 2. Gating post-transcription : longueur du transcript (+ durée réelle
+      // en repli). En manuel, on n'applique QUE le gating "pas de parole".
       const tooShort =
-        (q.minDurationSec != null && durationSec < q.minDurationSec) ||
+        (!manual &&
+          q.minDurationSec != null &&
+          durationSec < q.minDurationSec) ||
         (q.minTranscriptChars != null &&
           transcript.length < q.minTranscriptChars);
       if (tooShort) {
@@ -772,6 +818,204 @@ export class CoachingService {
       }
     }
     return out;
+  }
+
+  /**
+   * Interface de gestion : enregistrements coachables (statut porte coachable +
+   * propriétaire ACTIF) avec l'état d'analyse et le favori. DB-only, paginé.
+   */
+  async coachingManagementList(
+    filter: CoachingManagementFilter,
+  ): Promise<{ items: CoachingManagementItemDto[]; total: number }> {
+    const coachable = await this.getCoachableStatuts();
+    const allowed = (
+      filter.statut && coachable.includes(filter.statut)
+        ? [filter.statut]
+        : coachable
+    ) as StatutPorte[];
+    if (!allowed.length) return { items: [], total: 0 };
+
+    const portes = await this.prisma.porte.findMany({
+      where: { statut: { in: allowed }, recordingSegments: { some: {} } },
+      select: {
+        id: true,
+        numero: true,
+        etage: true,
+        statut: true,
+        coachingFavori: true,
+        immeuble: { select: { adresse: true } },
+        recordingSegments: {
+          select: {
+            s3KeyOriginal: true,
+            durationSec: true,
+            id: true,
+            commercialId: true,
+            managerId: true,
+          },
+        },
+      },
+    });
+
+    // 1 entrée par clé S3 (1 audio = 1 porte).
+    type Row = {
+      s3Key: string;
+      porteId: number;
+      statutPorte: string;
+      favori: boolean;
+      adresse: string | null;
+      porteNumero: string;
+      porteEtage: number;
+      durationSec: number;
+      commercialId: number | null;
+      managerId: number | null;
+      maxId: number;
+    };
+    const byKey = new Map<string, Row>();
+    for (const p of portes) {
+      for (const seg of p.recordingSegments) {
+        const prev = byKey.get(seg.s3KeyOriginal);
+        if (!prev) {
+          byKey.set(seg.s3KeyOriginal, {
+            s3Key: seg.s3KeyOriginal,
+            porteId: p.id,
+            statutPorte: p.statut,
+            favori: p.coachingFavori,
+            adresse: p.immeuble?.adresse ?? null,
+            porteNumero: p.numero,
+            porteEtage: p.etage,
+            durationSec: seg.durationSec ?? 0,
+            commercialId: seg.commercialId,
+            managerId: seg.managerId,
+            maxId: seg.id,
+          });
+        } else {
+          if ((seg.durationSec ?? 0) > prev.durationSec)
+            prev.durationSec = seg.durationSec ?? 0;
+          if (seg.id > prev.maxId) prev.maxId = seg.id;
+          if (prev.commercialId == null && seg.commercialId != null)
+            prev.commercialId = seg.commercialId;
+          if (prev.managerId == null && seg.managerId != null)
+            prev.managerId = seg.managerId;
+        }
+      }
+    }
+
+    // Propriétaire (nom + statut) — ne garder que les ACTIF.
+    const rows = [...byKey.values()];
+    type OwnerRow = { id: number; nom: string; prenom: string; status: UserStatus };
+    const commercialIds = [
+      ...new Set(rows.map((r) => r.commercialId).filter((x): x is number => x != null)),
+    ];
+    const managerIds = [
+      ...new Set(rows.map((r) => r.managerId).filter((x): x is number => x != null)),
+    ];
+    const [commercials, managers] = await Promise.all([
+      commercialIds.length
+        ? this.prisma.commercial.findMany({
+            where: { id: { in: commercialIds } },
+            select: { id: true, nom: true, prenom: true, status: true },
+          })
+        : Promise.resolve([] as OwnerRow[]),
+      managerIds.length
+        ? this.prisma.manager.findMany({
+            where: { id: { in: managerIds } },
+            select: { id: true, nom: true, prenom: true, status: true },
+          })
+        : Promise.resolve([] as OwnerRow[]),
+    ]);
+    const cMap = new Map(commercials.map((c) => [c.id, c]));
+    const mMap = new Map(managers.map((m) => [m.id, m]));
+
+    const withOwner = rows
+      .map((r) => {
+        let name: string | null = null;
+        let role: 'commercial' | 'manager' | null = null;
+        let sid: number | null = null;
+        let active = false;
+        if (r.commercialId != null && cMap.has(r.commercialId)) {
+          const c = cMap.get(r.commercialId)!;
+          name = `${c.prenom} ${c.nom}`.trim();
+          role = 'commercial';
+          sid = r.commercialId;
+          active = c.status === UserStatus.ACTIF;
+        } else if (r.managerId != null && mMap.has(r.managerId)) {
+          const m = mMap.get(r.managerId)!;
+          name = `${m.prenom} ${m.nom}`.trim();
+          role = 'manager';
+          sid = r.managerId;
+          active = m.status === UserStatus.ACTIF;
+        }
+        return { ...r, subjectName: name, subjectRole: role, subjectId: sid, active };
+      })
+      .filter((r) => r.active);
+
+    // Filtres favori + recherche (nom / adresse / numéro).
+    let list = withOwner;
+    if (filter.favorisOnly) list = list.filter((r) => r.favori);
+    if (filter.search?.trim()) {
+      const q = filter.search.trim().toLowerCase();
+      list = list.filter(
+        (r) =>
+          (r.subjectName ?? '').toLowerCase().includes(q) ||
+          (r.adresse ?? '').toLowerCase().includes(q) ||
+          (r.porteNumero ?? '').toLowerCase().includes(q),
+      );
+    }
+    // Tri : favoris d'abord, puis récent.
+    list.sort(
+      (a, b) => Number(b.favori) - Number(a.favori) || b.maxId - a.maxId,
+    );
+
+    const total = list.length;
+    const skip = filter.skip ?? 0;
+    const take = Math.min(filter.take ?? 15, 100);
+    const page = list.slice(skip, skip + take);
+
+    // État d'analyse (plan actif) pour la page courante uniquement.
+    const version = await this.salesPlans.getActiveVersion();
+    const analysisByKey = new Map<
+      string,
+      { id: number; status: string; quality: string | null; score: number | null }
+    >();
+    if (version && page.length) {
+      const analyses = await this.prisma.coachingAnalysis.findMany({
+        where: {
+          s3KeyOriginal: { in: page.map((r) => r.s3Key) },
+          salesPlanVersionId: version.id,
+        },
+        select: { s3KeyOriginal: true, id: true, status: true, quality: true, score: true },
+      });
+      for (const a of analyses) {
+        analysisByKey.set(a.s3KeyOriginal, {
+          id: a.id,
+          status: a.status,
+          quality: a.quality,
+          score: a.score,
+        });
+      }
+    }
+
+    const items = page.map((r) => {
+      const a = analysisByKey.get(r.s3Key);
+      return {
+        s3Key: r.s3Key,
+        porteId: r.porteId,
+        subjectName: r.subjectName,
+        subjectRole: r.subjectRole,
+        subjectId: r.subjectId,
+        statutPorte: r.statutPorte,
+        durationSec: r.durationSec,
+        adresse: r.adresse,
+        porteNumero: r.porteNumero,
+        porteEtage: r.porteEtage,
+        favori: r.favori,
+        analysisId: a?.id ?? null,
+        analysisStatus: a?.status ?? null,
+        quality: a?.quality ?? null,
+        score: a?.score ?? null,
+      };
+    });
+    return { items, total };
   }
 
   private toDto(row: any): CoachingAnalysisDto {

@@ -260,6 +260,7 @@ model Porte {
   commentaire     String?
   duree           Int? // Durée de la dernière prospection chronométrée, en secondes
   derniereVisite  DateTime?
+  coachingFavori  Boolean     @default(false) // porte/enregistrement/coaching marqué favori
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -647,6 +648,7 @@ model CoachingAnalysis {
   error                 String?
   attempts              Int              @default(0) // file : nb de tentatives
   nextRetryAt           DateTime? // file : prochaine tentative (backoff)
+  manual                Boolean          @default(false) // lancé manuellement : ignore le gating durée
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
