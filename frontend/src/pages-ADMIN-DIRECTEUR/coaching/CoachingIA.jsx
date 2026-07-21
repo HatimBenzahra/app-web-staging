@@ -17,6 +17,13 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useCoachingIALogic } from './useCoachingIALogic'
 import SalesPlanViewer from './SalesPlanViewer'
@@ -32,6 +39,24 @@ import {
 
 // Nombre max de jetons empilés affichés avant de basculer sur un compteur « +N ».
 const MAX_CHIPS = 14
+
+// Options de planification du cron de synthèse.
+const CRON_FREQUENCIES = [
+  { value: 'daily', label: 'Chaque jour' },
+  { value: 'weekly', label: 'Chaque semaine' },
+  { value: 'off', label: 'Désactivé' },
+]
+const CRON_WEEKDAYS = [
+  { value: 1, label: 'Lundi' },
+  { value: 2, label: 'Mardi' },
+  { value: 3, label: 'Mercredi' },
+  { value: 4, label: 'Jeudi' },
+  { value: 5, label: 'Vendredi' },
+  { value: 6, label: 'Samedi' },
+  { value: 0, label: 'Dimanche' },
+]
+const CRON_HOURS = Array.from({ length: 24 }, (_, h) => h)
+const CRON_MINUTES = [0, 15, 30, 45]
 
 // Libellé de survol d'un jeton : « Nom · adresse · durée ».
 function chipTitle(item) {
@@ -160,6 +185,7 @@ export default function CoachingIA() {
     savingConfig,
     saveCoachableStatuts,
     saveMinDuration,
+    saveSynthesisCron,
   } = useCoachingIALogic()
 
   // Pile ouverte (interrogation de la file).
@@ -188,6 +214,27 @@ export default function CoachingIA() {
   const durSeconds = Math.round(parseFloat(durMin) * 60)
   const durValid = Number.isFinite(durSeconds) && durSeconds >= 0 && durSeconds <= 3600
   const durChanged = durValid && durSeconds !== (config.minAutoDurationSec ?? 120)
+
+  // Planif du cron de synthèse (rythme + heure), synchronisée depuis la config.
+  const [cron, setCron] = useState({ frequency: 'daily', hour: 3, minute: 0, weekday: 1 })
+  useEffect(() => {
+    setCron({
+      frequency: config.synthesisCronFrequency || 'daily',
+      hour: config.synthesisCronHour ?? 3,
+      minute: config.synthesisCronMinute ?? 0,
+      weekday: config.synthesisCronWeekday ?? 1,
+    })
+  }, [
+    config.synthesisCronFrequency,
+    config.synthesisCronHour,
+    config.synthesisCronMinute,
+    config.synthesisCronWeekday,
+  ])
+  const cronChanged =
+    cron.frequency !== (config.synthesisCronFrequency || 'daily') ||
+    cron.hour !== (config.synthesisCronHour ?? 3) ||
+    cron.minute !== (config.synthesisCronMinute ?? 0) ||
+    cron.weekday !== (config.synthesisCronWeekday ?? 1)
 
   const togglePile = (p) => setOpenPile((cur) => (cur === p ? null : p))
 
@@ -435,31 +482,118 @@ export default function CoachingIA() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+              <div className="flex flex-wrap items-end gap-3">
+                {/* Rythme */}
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Planification
+                  <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    Rythme
                   </div>
-                  <div className="mt-1 font-medium">
-                    {config.synthesisCronSchedule || 'Chaque jour à 03:00'}
-                  </div>
+                  <Select
+                    value={cron.frequency}
+                    onValueChange={(v) => setCron((c) => ({ ...c, frequency: v }))}
+                  >
+                    <SelectTrigger className="h-8 w-[160px] text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CRON_FREQUENCIES.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Dernière exécution
+
+                {/* Jour (hebdo uniquement) */}
+                {cron.frequency === 'weekly' && (
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      Jour
+                    </div>
+                    <Select
+                      value={String(cron.weekday)}
+                      onValueChange={(v) => setCron((c) => ({ ...c, weekday: Number(v) }))}
+                    >
+                      <SelectTrigger className="h-8 w-[130px] text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CRON_WEEKDAYS.map((d) => (
+                          <SelectItem key={d.value} value={String(d.value)}>
+                            {d.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="mt-1 font-medium tabular-nums">
-                    {config.synthesisCronLastRunAt
-                      ? new Date(config.synthesisCronLastRunAt).toLocaleString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : 'Jamais exécuté'}
+                )}
+
+                {/* Heure */}
+                {cron.frequency !== 'off' && (
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      Heure
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Select
+                        value={String(cron.hour)}
+                        onValueChange={(v) => setCron((c) => ({ ...c, hour: Number(v) }))}
+                      >
+                        <SelectTrigger className="h-8 w-[72px] text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CRON_HOURS.map((h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {String(h).padStart(2, '0')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-muted-foreground">:</span>
+                      <Select
+                        value={String(cron.minute)}
+                        onValueChange={(v) => setCron((c) => ({ ...c, minute: Number(v) }))}
+                      >
+                        <SelectTrigger className="h-8 w-[72px] text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CRON_MINUTES.map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {String(m).padStart(2, '0')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                <Button
+                  size="sm"
+                  disabled={savingConfig || !cronChanged}
+                  onClick={() => saveSynthesisCron(cron)}
+                >
+                  {savingConfig ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Enregistrer
+                </Button>
+              </div>
+
+              <div className="mt-4 text-xs text-muted-foreground">
+                Dernière exécution :{' '}
+                <span className="font-medium tabular-nums text-foreground/80">
+                  {config.synthesisCronLastRunAt
+                    ? new Date(config.synthesisCronLastRunAt).toLocaleString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Jamais exécuté'}
+                </span>
               </div>
             </CardContent>
           </Card>

@@ -101,28 +101,74 @@ export class SynthesisService {
   }
 
   // ---------------------------------------------------------------------------
-  // Cron nocturne
+  // Cron configurable (tick régulier qui lit la planif en base)
   // ---------------------------------------------------------------------------
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
-  async nightlyRegenerate(): Promise<void> {
+  /**
+   * Tick toutes les 10 min : régénère si l'échéance planifiée (rythme + heure,
+   * config éditable) est passée depuis la dernière exécution. Robuste (pas de
+   * reprogrammation dynamique du scheduler), exécuté au plus une fois par créneau.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async synthesisTick(): Promise<void> {
     if (!this.llm.isConfigured()) return;
+    const cfg = await this.prisma.coachingConfig.findUnique({ where: { id: 1 } });
+    if (!cfg || (cfg.synthesisCronFrequency ?? 'daily') === 'off') return;
+
+    const now = new Date();
+    const scheduled = mostRecentScheduled(
+      cfg.synthesisCronFrequency ?? 'daily',
+      cfg.synthesisCronHour ?? 3,
+      cfg.synthesisCronMinute ?? 0,
+      cfg.synthesisCronWeekday ?? 1,
+      now,
+    );
+    if (!scheduled) return;
+    // Déjà exécuté pour ce créneau ?
+    if (cfg.synthesisCronLastRunAt && cfg.synthesisCronLastRunAt >= scheduled) return;
+
+    this.logger.log(
+      `Cron synthèse déclenché (créneau ${scheduled.toISOString()})`,
+    );
     try {
       await this.regenerateAllActive();
     } finally {
-      // Trace l'exécution (affichée dans les Réglages), même si 0 régénéré.
       await this.prisma.coachingConfig
-        .upsert({
-          where: { id: 1 },
-          create: {
-            id: 1,
-            coachableStatuts: [],
-            synthesisCronLastRunAt: new Date(),
-          },
-          update: { synthesisCronLastRunAt: new Date() },
-        })
+        .update({ where: { id: 1 }, data: { synthesisCronLastRunAt: new Date() } })
         .catch(() => undefined);
     }
+  }
+
+  /** Met à jour la planif du cron de synthèse (Réglages). */
+  async setCron(input: {
+    frequency: string;
+    hour: number;
+    minute: number;
+    weekday: number;
+  }): Promise<void> {
+    const frequency = ['daily', 'weekly', 'off'].includes(input.frequency)
+      ? input.frequency
+      : 'daily';
+    const hour = Math.max(0, Math.min(23, Math.round(input.hour ?? 3)));
+    const minute = Math.max(0, Math.min(59, Math.round(input.minute ?? 0)));
+    const weekday = Math.max(0, Math.min(6, Math.round(input.weekday ?? 1)));
+    await this.prisma.coachingConfig.upsert({
+      where: { id: 1 },
+      create: {
+        id: 1,
+        coachableStatuts: [],
+        synthesisCronFrequency: frequency,
+        synthesisCronHour: hour,
+        synthesisCronMinute: minute,
+        synthesisCronWeekday: weekday,
+      },
+      update: {
+        synthesisCronFrequency: frequency,
+        synthesisCronHour: hour,
+        synthesisCronMinute: minute,
+        synthesisCronWeekday: weekday,
+      },
+    });
   }
 
   /** Régénère les synthèses des sujets actifs ayant de nouvelles analyses. */
@@ -233,10 +279,16 @@ export class SynthesisService {
         criterionResults: true,
         transcriptDurationSec: true,
         porteId: true,
+        s3KeyOriginal: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Date RÉELLE de l'échange = timestamp de la clé S3 (capture mobile),
+    // pas la date de lancement de l'analyse. Repli sur createdAt si non parsable.
+    const recDateOf = (a: { s3KeyOriginal: string; createdAt: Date }): Date =>
+      parseRecordingDate(a.s3KeyOriginal) ?? a.createdAt;
 
     // Agrégats scores
     const scores = analyses
@@ -325,11 +377,11 @@ export class SynthesisService {
       dureeMoyenneParStatut[st] = Math.round(v.sum / v.n);
     }
 
-    // Tendance : score moyen par semaine ISO
+    // Tendance : score moyen par semaine ISO (basée sur la date d'échange réelle)
     const weekAgg = new Map<string, { sum: number; n: number }>();
     for (const a of analyses) {
       if (typeof a.score !== 'number') continue;
-      const w = isoWeek(a.createdAt);
+      const w = isoWeek(recDateOf(a));
       const cur = weekAgg.get(w) ?? { sum: 0, n: 0 };
       cur.sum += a.score;
       cur.n++;
@@ -342,7 +394,7 @@ export class SynthesisService {
 
     // Sessions détaillées récentes (verdict + commentaire par critère, sans transcript)
     const sessionsRecentes = analyses.slice(0, RECENT_SESSIONS).map((a) => ({
-      date: a.createdAt.toISOString().slice(0, 10),
+      date: recDateOf(a).toISOString().slice(0, 10),
       statutPorte: a.statutPorte ?? null,
       score: typeof a.score === 'number' ? Math.round(a.score) : null,
       dureeSec:
@@ -467,14 +519,16 @@ export class SynthesisService {
         typesHabitat: habitatCount,
       },
       tendance: { scoreParSemaine, direction },
-      // Période couverte : de la plus ancienne à la plus récente session jugée.
-      periode: {
-        start: analyses.length
-          ? analyses[analyses.length - 1].createdAt.toISOString()
-          : null,
-        end: analyses.length ? analyses[0].createdAt.toISOString() : null,
-        nb: analyses.length,
-      },
+      // Période couverte : min → max des dates d'échange RÉELLES (clé S3).
+      periode: (() => {
+        if (!analyses.length) return { start: null, end: null, nb: 0 };
+        const times = analyses.map((a) => recDateOf(a).getTime());
+        return {
+          start: new Date(Math.min(...times)).toISOString(),
+          end: new Date(Math.max(...times)).toISOString(),
+          nb: analyses.length,
+        };
+      })(),
     };
   }
 
@@ -525,8 +579,80 @@ function trendDirection(points: number[]): string {
   return 'stagne';
 }
 
+/**
+ * Date de capture d'un enregistrement, extraite du suffixe de la clé S3
+ * (ex. "…_2026-07-20T13-35-30.679Z.mp4" ou epoch). Null si non parsable.
+ * Miroir de parseRecordingKey côté front.
+ */
+function parseRecordingDate(s3Key: string | null | undefined): Date | null {
+  if (!s3Key) return null;
+  const file = (s3Key.split('/').pop() ?? '').replace(/\.mp4$/i, '');
+  const i = file.lastIndexOf('_');
+  if (i < 0) return null;
+  const raw = file.slice(i + 1);
+  const epoch = Number(raw);
+  if (Number.isFinite(epoch) && epoch > 0) {
+    return new Date(epoch > 1e12 ? epoch : epoch * 1000);
+  }
+  // ISO avec tirets dans l'heure : 2026-07-20T13-35-30.679Z → 13:35:30
+  const iso = raw.replace(/T(\d{2})-(\d{2})-(\d{2})/, 'T$1:$2:$3');
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** Extrait "CP Ville" d'une adresse ("16 Rue X 93100 Montreuil" → "93100 Montreuil"). */
 function extractVille(adresse: string): string | null {
   const m = /(\d{5})\s+([A-Za-zÀ-ÿ'\- ]+)$/.exec((adresse ?? '').trim());
   return m ? `${m[1]} ${m[2].trim()}` : null;
+}
+
+/**
+ * Dernière échéance planifiée <= now, selon rythme + heure (config).
+ * daily : aujourd'hui à HH:MM, sinon hier. weekly : dernière occurrence du
+ * jour choisi à HH:MM. Renvoie null si 'off'.
+ */
+export function mostRecentScheduled(
+  frequency: string,
+  hour: number,
+  minute: number,
+  weekday: number,
+  now: Date,
+): Date | null {
+  if (frequency === 'off') return null;
+  const cand = new Date(now);
+  cand.setHours(hour, minute, 0, 0);
+  if (frequency === 'weekly') {
+    const diff = (cand.getDay() - weekday + 7) % 7; // jours depuis le dernier jour cible
+    cand.setDate(cand.getDate() - diff);
+    if (cand > now) cand.setDate(cand.getDate() - 7);
+    return cand;
+  }
+  // daily (défaut)
+  if (cand > now) cand.setDate(cand.getDate() - 1);
+  return cand;
+}
+
+const WEEKDAYS_FR = [
+  'dimanche',
+  'lundi',
+  'mardi',
+  'mercredi',
+  'jeudi',
+  'vendredi',
+  'samedi',
+];
+
+/** Libellé lisible de la planif (ex. « Chaque jour à 03:00 », « Chaque lundi à 09:30 »). */
+export function synthesisScheduleLabel(
+  frequency: string,
+  hour: number,
+  minute: number,
+  weekday: number,
+): string {
+  if (frequency === 'off') return 'Désactivé';
+  const hhmm = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  if (frequency === 'weekly') {
+    return `Chaque ${WEEKDAYS_FR[weekday] ?? 'jour'} à ${hhmm}`;
+  }
+  return `Chaque jour à ${hhmm}`;
 }

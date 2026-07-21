@@ -25,6 +25,7 @@ import {
   CoachingManagementFilter,
   CoachingManagementItemDto,
 } from './coaching.dto';
+import { synthesisScheduleLabel } from './synthesis.service';
 import {
   CriterionScore,
   LlmCoachingOutput,
@@ -59,9 +60,6 @@ const MAX_ATTEMPTS = 3;
 // DB est absente ; la vraie valeur est éditable dans les Réglages (CoachingConfig).
 // La durée provient de la porte (segment). L'analyse MANUELLE (à venir) l'ignore.
 const MIN_AUTO_DURATION_SEC_DEFAULT = 120;
-// Libellé lisible de la planif du cron de synthèse (cf. @Cron EVERY_DAY_AT_3AM).
-const SYNTHESIS_CRON_SCHEDULE = 'Chaque jour à 03:00';
-
 // Filtre par tranche de durée (secondes) pour la liste de gestion.
 function matchDurationTier(sec: number, tier: string): boolean {
   const d = sec ?? 0;
@@ -177,19 +175,37 @@ export class CoachingService {
     allStatuts: string[];
     minAutoDurationSec: number;
     synthesisCronSchedule: string;
+    synthesisCronFrequency: string;
+    synthesisCronHour: number;
+    synthesisCronMinute: number;
+    synthesisCronWeekday: number;
     synthesisCronLastRunAt: string | null;
   }> {
     const c = await this.loadConfig();
-    // Lecture fraîche du timestamp cron (non caché — reflète l'état réel).
+    // Lecture fraîche de la planif cron (non cachée — reflète l'état réel).
     const row = await this.prisma.coachingConfig.findUnique({
       where: { id: 1 },
-      select: { synthesisCronLastRunAt: true },
+      select: {
+        synthesisCronFrequency: true,
+        synthesisCronHour: true,
+        synthesisCronMinute: true,
+        synthesisCronWeekday: true,
+        synthesisCronLastRunAt: true,
+      },
     });
+    const frequency = row?.synthesisCronFrequency ?? 'daily';
+    const hour = row?.synthesisCronHour ?? 3;
+    const minute = row?.synthesisCronMinute ?? 0;
+    const weekday = row?.synthesisCronWeekday ?? 1;
     return {
       coachableStatuts: c.statuts,
       allStatuts: ALL_STATUTS,
       minAutoDurationSec: c.minAutoDurationSec,
-      synthesisCronSchedule: SYNTHESIS_CRON_SCHEDULE,
+      synthesisCronSchedule: synthesisScheduleLabel(frequency, hour, minute, weekday),
+      synthesisCronFrequency: frequency,
+      synthesisCronHour: hour,
+      synthesisCronMinute: minute,
+      synthesisCronWeekday: weekday,
       synthesisCronLastRunAt: row?.synthesisCronLastRunAt
         ? row.synthesisCronLastRunAt.toISOString()
         : null,
@@ -403,12 +419,15 @@ export class CoachingService {
     return n;
   }
 
-  /** Marque/démarque une porte (son enregistrement/coaching) comme favorite. */
+  /**
+   * Marque/démarque une porte comme favorite. UPDATE SQL brut EXPRÈS : le favori
+   * est une métadonnée de coaching, il ne doit PAS bumper `Porte.updatedAt`
+   * (sinon la porte remonte à tort dans les KPIs « modifiées aujourd'hui »).
+   */
   async setCoachingFavori(porteId: number, favori: boolean): Promise<boolean> {
-    await this.prisma.porte.update({
-      where: { id: porteId },
-      data: { coachingFavori: favori },
-    });
+    await this.prisma.$executeRaw`
+      UPDATE "Porte" SET "coachingFavori" = ${favori} WHERE "id" = ${porteId}
+    `;
     return favori;
   }
 

@@ -677,7 +677,12 @@ model CoachingConfig {
   id                     Int       @id @default(1)
   coachableStatuts       Json // liste des StatutPorte qui déclenchent l'analyse auto
   minAutoDurationSec     Int       @default(120) // durée min (s) d'un audio pour l'analyse auto
-  synthesisCronLastRunAt DateTime? // dernière exécution du cron nocturne de synthèse
+  // Planif configurable de la régénération auto des synthèses.
+  synthesisCronFrequency String    @default("daily") // 'daily' | 'weekly' | 'off'
+  synthesisCronHour      Int       @default(3) // 0-23
+  synthesisCronMinute    Int       @default(0) // 0-59
+  synthesisCronWeekday   Int       @default(1) // 0=dim..6=sam (si weekly)
+  synthesisCronLastRunAt DateTime? // dernière exécution du cron de synthèse
   updatedAt              DateTime  @updatedAt
 }
 

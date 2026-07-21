@@ -165,7 +165,11 @@ export class CoachingConfigDto {
   @Field(() => [String]) coachableStatuts: string[];
   @Field(() => [String]) allStatuts: string[];
   @Field(() => Int) minAutoDurationSec: number; // durée min (s) pour l'analyse auto
-  @Field() synthesisCronSchedule: string; // libellé planif cron synthèse
+  @Field() synthesisCronSchedule: string; // libellé lisible de la planif
+  @Field() synthesisCronFrequency: string; // 'daily' | 'weekly' | 'off'
+  @Field(() => Int) synthesisCronHour: number;
+  @Field(() => Int) synthesisCronMinute: number;
+  @Field(() => Int) synthesisCronWeekday: number; // 0=dim..6=sam
   @Field(() => String, { nullable: true }) synthesisCronLastRunAt?: string | null;
 }
 

@@ -72,7 +72,11 @@ const ACTIVE_PLAN = `
     }
   }
 `
-const CONFIG_FIELDS = `coachableStatuts allStatuts minAutoDurationSec synthesisCronSchedule synthesisCronLastRunAt`
+const CONFIG_FIELDS = `
+  coachableStatuts allStatuts minAutoDurationSec
+  synthesisCronSchedule synthesisCronFrequency synthesisCronHour
+  synthesisCronMinute synthesisCronWeekday synthesisCronLastRunAt
+`
 const COACHING_CONFIG = `
   query CoachingConfig {
     coachingConfig { ${CONFIG_FIELDS} }
@@ -154,6 +158,11 @@ const SET_COACHABLE = `
 const SET_MIN_DURATION = `
   mutation SetMinAutoDurationSec($seconds: Int!) {
     setMinAutoDurationSec(seconds: $seconds) { ${CONFIG_FIELDS} }
+  }
+`
+const SET_SYNTHESIS_CRON = `
+  mutation SetSynthesisCron($frequency: String!, $hour: Int!, $minute: Int!, $weekday: Int) {
+    setSynthesisCron(frequency: $frequency, hour: $hour, minute: $minute, weekday: $weekday) { ${CONFIG_FIELDS} }
   }
 `
 
@@ -311,6 +320,22 @@ export class CoachingService {
   static async setMinAutoDurationSec(seconds: number): Promise<any | null> {
     const data = await graphqlClient.request(SET_MIN_DURATION, { seconds })
     return data.setMinAutoDurationSec
+  }
+
+  /** Planif du cron de synthèse (rythme + heure). */
+  static async setSynthesisCron(
+    frequency: string,
+    hour: number,
+    minute: number,
+    weekday: number,
+  ): Promise<any | null> {
+    const data = await graphqlClient.request(SET_SYNTHESIS_CRON, {
+      frequency,
+      hour,
+      minute,
+      weekday,
+    })
+    return data.setSynthesisCron
   }
 
   /** État de la file + KPIs (dashboard). */

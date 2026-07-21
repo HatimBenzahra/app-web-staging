@@ -70,6 +70,23 @@ export function useCoachingIALogic() {
     }
   }, [])
 
+  const saveSynthesisCron = useCallback(async ({ frequency, hour, minute, weekday }) => {
+    setSavingConfig(true)
+    try {
+      const updated = await CoachingService.setSynthesisCron(
+        frequency,
+        hour,
+        minute,
+        weekday,
+      )
+      if (updated) setConfig(updated)
+    } catch (e) {
+      setError(e?.message || 'Échec de la mise à jour de la planification')
+    } finally {
+      setSavingConfig(false)
+    }
+  }, [])
+
   return {
     stats,
     queue,
@@ -79,5 +96,6 @@ export function useCoachingIALogic() {
     savingConfig,
     saveCoachableStatuts,
     saveMinDuration,
+    saveSynthesisCron,
   }
 }

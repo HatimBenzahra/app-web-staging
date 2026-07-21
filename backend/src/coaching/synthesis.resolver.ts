@@ -4,7 +4,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SynthesisService } from './synthesis.service';
-import { CoachingSynthesisDto } from './coaching.dto';
+import { CoachingService } from './coaching.service';
+import { CoachingSynthesisDto, CoachingConfigDto } from './coaching.dto';
 
 type SubjectType = 'commercial' | 'manager';
 
@@ -15,7 +16,10 @@ function normalizeSubject(t: string): SubjectType {
 @Resolver()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SynthesisResolver {
-  constructor(private readonly synthesis: SynthesisService) {}
+  constructor(
+    private readonly synthesis: SynthesisService,
+    private readonly coaching: CoachingService,
+  ) {}
 
   @Query(() => CoachingSynthesisDto, { nullable: true })
   @Roles('admin', 'directeur')
@@ -33,5 +37,23 @@ export class SynthesisResolver {
     @Args('subjectId', { type: () => Int }) subjectId: number,
   ): Promise<CoachingSynthesisDto> {
     return this.synthesis.requestGenerate(normalizeSubject(subjectType), subjectId);
+  }
+
+  /** Configure la planif du cron de synthèse (rythme + heure). */
+  @Mutation(() => CoachingConfigDto)
+  @Roles('admin', 'directeur')
+  async setSynthesisCron(
+    @Args('frequency') frequency: string,
+    @Args('hour', { type: () => Int }) hour: number,
+    @Args('minute', { type: () => Int }) minute: number,
+    @Args('weekday', { type: () => Int, nullable: true }) weekday?: number,
+  ): Promise<CoachingConfigDto> {
+    await this.synthesis.setCron({
+      frequency,
+      hour,
+      minute,
+      weekday: weekday ?? 1,
+    });
+    return this.coaching.getConfig();
   }
 }
