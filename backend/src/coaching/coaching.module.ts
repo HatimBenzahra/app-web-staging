@@ -6,6 +6,8 @@ import { CoachingResolver } from './coaching.resolver';
 import { SalesPlanService } from './sales-plan.service';
 import { LlmService } from './llm.service';
 import { ScoringService } from './scoring.service';
+import { SynthesisService } from './synthesis.service';
+import { SynthesisResolver } from './synthesis.resolver';
 
 @Module({
   imports: [TranscriptionModule],
@@ -15,6 +17,8 @@ import { ScoringService } from './scoring.service';
     SalesPlanService,
     LlmService,
     ScoringService,
+    SynthesisService,
+    SynthesisResolver,
     PrismaService,
   ],
   exports: [CoachingService],

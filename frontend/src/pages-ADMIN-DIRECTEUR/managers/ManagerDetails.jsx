@@ -1,6 +1,7 @@
 import DetailsPage from '@/components/DetailsPage'
 import { DetailsPageSkeleton } from '@/components/LoadingSkeletons'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import CoachingSynthesisSection from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingSynthesisSection'
 import { useManagerDetailsLogic } from './useManagerDetailsLogic'
 
 export default function ManagerDetails() {
@@ -45,7 +46,16 @@ export default function ManagerDetails() {
         />
       }
       assignedZones={managerZones}
-      additionalSections={additionalSections}
+      additionalSections={[
+        ...(additionalSections || []),
+        {
+          title: 'Synthèse coaching',
+          type: 'custom',
+          bare: true,
+          position: 'top',
+          render: (data) => <CoachingSynthesisSection managerId={data.id} />,
+        },
+      ]}
       backUrl="/managers"
     />
   )

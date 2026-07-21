@@ -128,6 +128,24 @@ export class CoachingManagementFilter {
   @Field({ nullable: true }) favorisOnly?: boolean;
 }
 
+/** Synthèse globale d'un commercial / manager (hors pipeline audio). */
+@ObjectType()
+export class CoachingSynthesisDto {
+  @Field() subjectType: string;
+  @Field(() => Int, { nullable: true }) subjectId?: number | null;
+  @Field() status: string;
+  // Analyse détaillée (liste de tirets fouillés) + listes forces/axes/priorités.
+  @Field(() => [String]) analyse: string[];
+  @Field(() => [String]) strengths: string[];
+  @Field(() => [String]) improvements: string[];
+  @Field(() => [String]) priorities: string[];
+  @Field(() => String, { nullable: true }) trend?: string | null;
+  @Field(() => Float, { nullable: true }) scoreMoyen?: number | null;
+  @Field(() => Int) nbAnalyses: number;
+  @Field(() => String, { nullable: true }) error?: string | null;
+  @Field(() => String, { nullable: true }) generatedAt?: string | null;
+}
+
 @ObjectType()
 export class CoachingConfigDto {
   @Field(() => [String]) coachableStatuts: string[];

@@ -124,6 +124,22 @@ const GET_FAVORI = `
     coachingFavori(porteId: $porteId)
   }
 `
+const SYNTHESIS_FIELDS = `
+  subjectType subjectId status
+  analyse strengths improvements priorities
+  trend scoreMoyen nbAnalyses
+  error generatedAt
+`
+const GET_SYNTHESIS = `
+  query CoachingSynthesis($subjectType: String!, $subjectId: Int!) {
+    coachingSynthesis(subjectType: $subjectType, subjectId: $subjectId) { ${SYNTHESIS_FIELDS} }
+  }
+`
+const GENERATE_SYNTHESIS = `
+  mutation GenerateCoachingSynthesis($subjectType: String!, $subjectId: Int!) {
+    generateCoachingSynthesis(subjectType: $subjectType, subjectId: $subjectId) { ${SYNTHESIS_FIELDS} }
+  }
+`
 const SET_COACHABLE = `
   mutation SetCoachableStatuts($statuts: [String!]!) {
     setCoachableStatuts(statuts: $statuts) { ${CONFIG_FIELDS} }
@@ -205,6 +221,29 @@ export class CoachingService {
     } catch {
       return false
     }
+  }
+
+  /** Synthèse globale d'un commercial / manager (ou null si jamais générée). */
+  static async getSynthesis(
+    subjectType: 'commercial' | 'manager',
+    subjectId: number,
+  ): Promise<any | null> {
+    try {
+      const data = await graphqlClient.request(GET_SYNTHESIS, { subjectType, subjectId })
+      return data.coachingSynthesis || null
+    } catch (error) {
+      console.error('Erreur coachingSynthesis:', error)
+      return null
+    }
+  }
+
+  /** Lance (ou relance) la génération de la synthèse. Renvoie l'état courant. */
+  static async generateSynthesis(
+    subjectType: 'commercial' | 'manager',
+    subjectId: number,
+  ): Promise<any | null> {
+    const data = await graphqlClient.request(GENERATE_SYNTHESIS, { subjectType, subjectId })
+    return data.generateCoachingSynthesis || null
   }
 
   /** Analyse coaching d'une porte (la plus récente), pour le modal de la porte. */

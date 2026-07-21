@@ -680,6 +680,33 @@ model CoachingConfig {
   updatedAt          DateTime @updatedAt
 }
 
+// Synthèse globale (hors pipeline audio) : bilan LLM par commercial / manager,
+// basé sur ses sessions de coaching + statuts + contrats + zone de terrain.
+model CoachingSynthesis {
+  id           Int            @id @default(autoincrement())
+  subjectType  String // 'commercial' | 'manager'
+  subjectKey   String         @unique // "commercial:12" — 1 synthèse (la + récente) par sujet
+  commercialId Int?
+  managerId    Int?
+  status       CoachingStatus @default(PENDING) // réutilise l'enum (PENDING/ANALYZING/READY/FAILED)
+  summary      String? // legacy (ancienne sortie plate) — conservé, non utilisé
+  strengths    Json? // legacy
+  improvements Json? // legacy
+  priorities   Json? // legacy
+  sections     Json? // sortie structurée : { bilan, performanceTerrain, contrats, forces, axes, planAction }
+  trend        String? // 'progresse' | 'stagne' | 'regresse'
+  scoreMoyen   Float? // source de vérité (calculé backend)
+  nbAnalyses   Int            @default(0)
+  stats        Json? // snapshot agrégé passé au LLM (traçabilité)
+  error        String?
+  generatedAt  DateTime?
+  updatedAt    DateTime       @updatedAt
+  createdAt    DateTime       @default(now())
+
+  @@index([commercialId])
+  @@index([managerId])
+}
+
 enum CoachingQuality {
   ANALYZED // échange exploitable, score fiable
   LOW_CONFIDENCE // échange court/bruité, score indicatif

@@ -816,6 +816,13 @@ export default function DetailsPage({
   // Enregistrer les sections dans le contexte quand le composant est monté
   useEffect(() => {
     const sections = []
+    // Sections additionnelles positionnées EN HAUT (avant les stats)
+    additionalSections
+      .filter(section => section.position === 'top')
+      .forEach(section => {
+        sections.push({ id: createSectionId(section.title), title: section.title })
+      })
+
     // Ajouter la section des informations personnelles
     if (personalInfo.length > 0) {
       sections.push({
@@ -840,13 +847,15 @@ export default function DetailsPage({
       })
     }
 
-    // Ajouter les sections additionnelles
-    additionalSections.forEach(section => {
-      sections.push({
-        id: createSectionId(section.title),
-        title: section.title,
+    // Ajouter les sections additionnelles restantes (en bas)
+    additionalSections
+      .filter(section => section.position !== 'top')
+      .forEach(section => {
+        sections.push({
+          id: createSectionId(section.title),
+          title: section.title,
+        })
       })
-    })
 
     setSections(sections)
 
@@ -1028,6 +1037,18 @@ export default function DetailsPage({
           </div>
         </div>
       </div>
+      {/* Sections additionnelles EN HAUT (avant les stats) — auto-encadrées */}
+      {additionalSections
+        .filter(section => section.position === 'top')
+        .map((section, index) => (
+          <div
+            key={`top-${index}`}
+            id={createSectionId(section.title)}
+            className={getSectionClasses(createSectionId(section.title))}
+          >
+            {section.render ? section.render(data) : null}
+          </div>
+        ))}
       {/* Informations personnelles */}
       {personalInfo.length > 0 && (
         <div
@@ -1203,7 +1224,9 @@ export default function DetailsPage({
       )}
 
       {/* Sections additionnelles personnalisées */}
-      {additionalSections.map((section, index) => (
+      {additionalSections
+        .filter(section => section.position !== 'top')
+        .map((section, index) => (
         <div
           key={index}
           id={createSectionId(section.title)}

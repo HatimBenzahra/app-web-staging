@@ -2,6 +2,7 @@ import DetailsPage from '@/components/DetailsPage'
 import { DetailsPageSkeleton } from '@/components/LoadingSkeletons'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import BuildingFacadeModal from '@/pages-ADMIN-DIRECTEUR/immeubles/components/BuildingFacadeModal'
+import CoachingSynthesisSection from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingSynthesisSection'
 import { useCommercialDetailsLogic } from './useCommercialDetailsLogic'
 
 export default function CommercialDetails() {
@@ -64,7 +65,16 @@ export default function CommercialDetails() {
           />
         }
         assignedZones={assignedZones}
-        additionalSections={additionalSections}
+        additionalSections={[
+          ...(additionalSections || []),
+          {
+            title: 'Synthèse coaching',
+            type: 'custom',
+            bare: true,
+            position: 'top',
+            render: (data) => <CoachingSynthesisSection commercialId={data.id} />,
+          },
+        ]}
         backUrl="/commerciaux"
       />
       <BuildingFacadeModal
