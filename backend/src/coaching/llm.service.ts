@@ -12,7 +12,8 @@ export class LlmService {
   private readonly baseUrl = (process.env.VLLM_BASE_URL ?? '').replace(/\/+$/, '');
   private readonly model = process.env.VLLM_MODEL ?? '';
   private readonly apiKey = process.env.VLLM_API_KEY ?? '';
-  private readonly timeoutMs = Number(process.env.VLLM_TIMEOUT_MS ?? 120000);
+  // Public : entre dans le calcul du seuil de requeue "job bloqué" du coaching.
+  readonly timeoutMs = Number(process.env.VLLM_TIMEOUT_MS ?? 120000);
   private readonly maxTokens = Number(process.env.VLLM_MAX_TOKENS ?? 4000);
 
   private readonly http: AxiosInstance = axios.create();

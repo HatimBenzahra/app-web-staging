@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SynthesisService } from './synthesis.service';
-import { CoachingService } from './coaching.service';
+import { CoachingConfigService } from './coaching-config.service';
 import { CoachingSynthesisDto, CoachingConfigDto } from './coaching.dto';
 
 type SubjectType = 'commercial' | 'manager';
@@ -18,7 +18,7 @@ function normalizeSubject(t: string): SubjectType {
 export class SynthesisResolver {
   constructor(
     private readonly synthesis: SynthesisService,
-    private readonly coaching: CoachingService,
+    private readonly config: CoachingConfigService,
   ) {}
 
   @Query(() => CoachingSynthesisDto, { nullable: true })
@@ -54,6 +54,6 @@ export class SynthesisResolver {
       minute,
       weekday: weekday ?? 1,
     });
-    return this.coaching.getConfig();
+    return this.config.getConfig();
   }
 }

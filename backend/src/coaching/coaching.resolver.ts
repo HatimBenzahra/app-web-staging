@@ -4,6 +4,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CoachingService } from './coaching.service';
+import { CoachingConfigService } from './coaching-config.service';
+import { CoachingQueryService } from './coaching-query.service';
 import { SalesPlanService } from './sales-plan.service';
 import {
   ActiveSalesPlanDto,
@@ -23,6 +25,8 @@ import {
 export class CoachingResolver {
   constructor(
     private readonly coaching: CoachingService,
+    private readonly config: CoachingConfigService,
+    private readonly query: CoachingQueryService,
     private readonly salesPlans: SalesPlanService,
   ) {}
 
@@ -31,7 +35,7 @@ export class CoachingResolver {
   coachingAnalysis(
     @Args('id', { type: () => Int }) id: number,
   ): Promise<CoachingAnalysisDto> {
-    return this.coaching.getAnalysis(id);
+    return this.query.getAnalysis(id);
   }
 
   @Query(() => PaginatedCoachingAnalyses)
@@ -39,7 +43,7 @@ export class CoachingResolver {
   coachingAnalyses(
     @Args('filter', { nullable: true }) filter?: CoachingAnalysesFilter,
   ): Promise<PaginatedCoachingAnalyses> {
-    return this.coaching.listAnalyses(filter ?? {});
+    return this.query.listAnalyses(filter ?? {});
   }
 
   @Query(() => [CoachingAnalysisDto])
@@ -47,13 +51,13 @@ export class CoachingResolver {
   coachingByS3Keys(
     @Args({ name: 's3Keys', type: () => [String] }) s3Keys: string[],
   ): Promise<CoachingAnalysisDto[]> {
-    return this.coaching.byS3Keys(s3Keys);
+    return this.query.byS3Keys(s3Keys);
   }
 
   @Query(() => [CoachingQueueItemDto])
   @Roles('admin', 'directeur')
   coachingQueue(): Promise<CoachingQueueItemDto[]> {
-    return this.coaching.coachingQueue();
+    return this.query.coachingQueue();
   }
 
   @Query(() => Boolean)
@@ -69,13 +73,13 @@ export class CoachingResolver {
   coachingManagementList(
     @Args('filter', { nullable: true }) filter?: CoachingManagementFilter,
   ): Promise<PaginatedCoachingManagement> {
-    return this.coaching.coachingManagementList(filter ?? {});
+    return this.query.coachingManagementList(filter ?? {});
   }
 
   @Query(() => [CoachableSubjectDto])
   @Roles('admin', 'directeur')
   coachableSubjects(): Promise<CoachableSubjectDto[]> {
-    return this.coaching.coachableSubjects();
+    return this.query.coachableSubjects();
   }
 
   @Query(() => ActiveSalesPlanDto, { nullable: true })
@@ -110,13 +114,13 @@ export class CoachingResolver {
   @Query(() => CoachingConfigDto)
   @Roles('admin', 'directeur')
   coachingConfig(): Promise<CoachingConfigDto> {
-    return this.coaching.getConfig();
+    return this.config.getConfig();
   }
 
   @Query(() => CoachingStatsDto)
   @Roles('admin', 'directeur')
   coachingStats(): Promise<CoachingStatsDto> {
-    return this.coaching.getStats();
+    return this.query.getStats();
   }
 
   @Mutation(() => CoachingConfigDto)
@@ -124,8 +128,8 @@ export class CoachingResolver {
   async setCoachableStatuts(
     @Args({ name: 'statuts', type: () => [String] }) statuts: string[],
   ): Promise<CoachingConfigDto> {
-    await this.coaching.setCoachableStatuts(statuts);
-    return this.coaching.getConfig();
+    await this.config.setCoachableStatuts(statuts);
+    return this.config.getConfig();
   }
 
   @Mutation(() => CoachingConfigDto)
@@ -133,8 +137,8 @@ export class CoachingResolver {
   async setMinAutoDurationSec(
     @Args({ name: 'seconds', type: () => Int }) seconds: number,
   ): Promise<CoachingConfigDto> {
-    await this.coaching.setMinAutoDurationSec(seconds);
-    return this.coaching.getConfig();
+    await this.config.setMinAutoDurationSec(seconds);
+    return this.config.getConfig();
   }
 
   @Mutation(() => CoachingAnalysisDto)

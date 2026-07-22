@@ -53,7 +53,9 @@ export class TranscriptionService implements OnModuleDestroy {
   }
 
   private readonly whisperUrl = process.env.WHISPER_API_URL;
-  private readonly whisperTimeoutMs = this.resolveWhisperTimeout();
+  // Public : utilisé par le coaching pour dériver le seuil de requeue d'un job
+  // bloqué (doit dépasser ce timeout, sinon on re-claime un job encore vivant).
+  readonly whisperTimeoutMs = this.resolveWhisperTimeout();
 
   /** In-memory progress tracking per s3Key */
   private readonly progress = new Map<string, ExtractionProgress>();

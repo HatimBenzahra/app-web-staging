@@ -141,19 +141,27 @@ export class SynthesisService {
       now,
     );
     if (!scheduled) return;
-    // Déjà exécuté pour ce créneau ?
-    if (cfg.synthesisCronLastRunAt && cfg.synthesisCronLastRunAt >= scheduled) return;
+
+    // Claim atomique du créneau AVANT de lancer : garantit qu'un seul tick (et
+    // une seule instance) exécute ce créneau, même si regenerateAllActive dure
+    // plus de 10 min — sinon le tick suivant verrait lastRunAt encore ancien et
+    // relancerait une régénération concurrente (double coût LLM).
+    const claim = await this.prisma.coachingConfig.updateMany({
+      where: {
+        id: 1,
+        OR: [
+          { synthesisCronLastRunAt: null },
+          { synthesisCronLastRunAt: { lt: scheduled } },
+        ],
+      },
+      data: { synthesisCronLastRunAt: new Date() },
+    });
+    if (claim.count !== 1) return; // créneau déjà pris
 
     this.logger.log(
       `Cron synthèse déclenché (créneau ${scheduled.toISOString()})`,
     );
-    try {
-      await this.regenerateAllActive();
-    } finally {
-      await this.prisma.coachingConfig
-        .update({ where: { id: 1 }, data: { synthesisCronLastRunAt: new Date() } })
-        .catch(() => undefined);
-    }
+    await this.regenerateAllActive();
   }
 
   /** Met à jour la planif du cron de synthèse (Réglages). */
