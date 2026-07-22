@@ -33,7 +33,24 @@ export class SynthesisService {
     const row = await this.prisma.coachingSynthesis.findUnique({
       where: { subjectKey: `${subjectType}:${subjectId}` },
     });
-    return row ? this.toDto(row) : null;
+    if (!row) return null;
+    // Période couverte = min/max du createdAt (BD) des enregistrements analysés
+    // (status READY) du sujet, recalculée à chaque affichage (pas figée).
+    const where =
+      subjectType === 'commercial'
+        ? { commercialId: subjectId }
+        : { managerId: subjectId };
+    const period = await this.prisma.recording.aggregate({
+      where: {
+        coachingAnalyses: { some: { ...where, status: CoachingStatus.READY } },
+      },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
+    });
+    return this.toDto(row, {
+      periodStart: period._min.createdAt?.toISOString() ?? null,
+      periodEnd: period._max.createdAt?.toISOString() ?? null,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -281,6 +298,7 @@ export class SynthesisService {
         porteId: true,
         s3KeyOriginal: true,
         createdAt: true,
+        recording: { select: { createdAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -519,10 +537,11 @@ export class SynthesisService {
         typesHabitat: habitatCount,
       },
       tendance: { scoreParSemaine, direction },
-      // Période couverte : min → max des dates d'échange RÉELLES (clé S3).
+      // Période couverte : min → max du createdAt (BD) des enregistrements
+      // analysés. Cohérent avec le recalcul live de getSynthesis().
       periode: (() => {
         if (!analyses.length) return { start: null, end: null, nb: 0 };
-        const times = analyses.map((a) => recDateOf(a).getTime());
+        const times = analyses.map((a) => a.recording.createdAt.getTime());
         return {
           start: new Date(Math.min(...times)).toISOString(),
           end: new Date(Math.max(...times)).toISOString(),
@@ -532,7 +551,10 @@ export class SynthesisService {
     };
   }
 
-  private toDto(row: any): CoachingSynthesisDto {
+  private toDto(
+    row: any,
+    period?: { periodStart: string | null; periodEnd: string | null },
+  ): CoachingSynthesisDto {
     const s = (row.sections as Record<string, string[]>) ?? {};
     const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
     return {
@@ -546,8 +568,8 @@ export class SynthesisService {
       trend: row.trend ?? null,
       scoreMoyen: row.scoreMoyen ?? null,
       nbAnalyses: row.nbAnalyses ?? 0,
-      periodStart: (row.stats as any)?.periode?.start ?? null,
-      periodEnd: (row.stats as any)?.periode?.end ?? null,
+      periodStart: period?.periodStart ?? null,
+      periodEnd: period?.periodEnd ?? null,
       error: row.error ?? null,
       generatedAt: row.generatedAt ? row.generatedAt.toISOString() : null,
     };
