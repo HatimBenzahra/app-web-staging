@@ -72,7 +72,12 @@ export default function CommercialDetails() {
             type: 'custom',
             bare: true,
             position: 'top',
-            render: (data) => <CoachingSynthesisSection commercialId={data.id} />,
+            render: (data) => (
+              <CoachingSynthesisSection
+                commercialId={data.id}
+                subjectName={[data.prenom, data.nom].filter(Boolean).join(' ') || undefined}
+              />
+            ),
           },
         ]}
         backUrl="/commerciaux"

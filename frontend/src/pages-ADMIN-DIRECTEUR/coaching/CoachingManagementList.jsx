@@ -55,7 +55,17 @@ function AnalyseIndicator({ status, quality, score }) {
   )
 }
 
-export default function CoachingManagementList() {
+/**
+ * Liste de gestion des enregistrements coachables (recherche + filtres +
+ * sélection multiple + lancement). Réutilisable :
+ * - `initialSubjectId` pré-règle le filtre commercial/manager ;
+ * - `lockSubject` masque le sélecteur de sujet (liste verrouillée sur un sujet,
+ *   ex. modal ouvert depuis la synthèse d'une fiche).
+ */
+export default function CoachingManagementList({
+  initialSubjectId = null,
+  lockSubject = false,
+}) {
   const {
     items,
     total,
@@ -83,7 +93,7 @@ export default function CoachingManagementList() {
     launching,
     launch,
     toggleFavori,
-  } = useCoachingManagement()
+  } = useCoachingManagement({ initialSubjectId })
 
   // Recherche locale débouncée → filtre serveur.
   const [searchInput, setSearchInput] = useState(search)
@@ -136,26 +146,29 @@ export default function CoachingManagementList() {
           </SelectContent>
         </Select>
 
-        {/* Filtre par commercial / manager */}
-        <Select
-          value={subjectId != null ? String(subjectId) : ALL_SUBJECTS_VALUE}
-          onValueChange={(v) =>
-            setSubjectId(v === ALL_SUBJECTS_VALUE ? null : Number(v))
-          }
-        >
-          <SelectTrigger className="h-8 w-[190px] text-sm">
-            <SelectValue placeholder="Commercial / manager" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SUBJECTS_VALUE}>Tous les commerciaux</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={`${s.subjectRole}-${s.subjectId}`} value={String(s.subjectId)}>
-                {s.subjectName}
-                {s.subjectRole === 'manager' ? ' (mgr)' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Filtre par commercial / manager — masqué si la liste est verrouillée
+            sur un sujet (ex. modal ouvert depuis la synthèse d'une fiche). */}
+        {!lockSubject && (
+          <Select
+            value={subjectId != null ? String(subjectId) : ALL_SUBJECTS_VALUE}
+            onValueChange={(v) =>
+              setSubjectId(v === ALL_SUBJECTS_VALUE ? null : Number(v))
+            }
+          >
+            <SelectTrigger className="h-8 w-[190px] text-sm">
+              <SelectValue placeholder="Commercial / manager" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SUBJECTS_VALUE}>Tous les commerciaux</SelectItem>
+              {subjects.map((s) => (
+                <SelectItem key={`${s.subjectRole}-${s.subjectId}`} value={String(s.subjectId)}>
+                  {s.subjectName}
+                  {s.subjectRole === 'manager' ? ' (mgr)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Filtre par durée */}
         <Select

@@ -4,8 +4,12 @@ import CoachingService from '@/services/coaching/coaching.service'
 const PAGE_SIZE = 15
 const POLL_MS = 6000
 
-/** Logique de l'interface de gestion : liste paginée + filtres + sélection. */
-export function useCoachingManagement() {
+/**
+ * Logique de l'interface de gestion : liste paginée + filtres + sélection.
+ * `initialSubjectId` pré-règle le filtre sujet (ex. liste scopée à un
+ * commercial/manager dans un modal) ; null = tous les sujets (comportement page).
+ */
+export function useCoachingManagement({ initialSubjectId = null } = {}) {
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -13,7 +17,7 @@ export function useCoachingManagement() {
   const [statut, setStatutState] = useState('')
   const [search, setSearchState] = useState('')
   const [favorisOnly, setFavorisOnlyState] = useState(false)
-  const [subjectId, setSubjectIdState] = useState(null)
+  const [subjectId, setSubjectIdState] = useState(initialSubjectId)
   const [durationTier, setDurationTierState] = useState('')
   const [notAnalyzedOnly, setNotAnalyzedOnlyState] = useState(false)
   const [subjects, setSubjects] = useState([])

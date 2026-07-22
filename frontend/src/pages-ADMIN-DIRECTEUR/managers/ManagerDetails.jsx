@@ -53,7 +53,12 @@ export default function ManagerDetails() {
           type: 'custom',
           bare: true,
           position: 'top',
-          render: (data) => <CoachingSynthesisSection managerId={data.id} />,
+          render: (data) => (
+            <CoachingSynthesisSection
+              managerId={data.id}
+              subjectName={[data.prenom, data.nom].filter(Boolean).join(' ') || undefined}
+            />
+          ),
         },
       ]}
       backUrl="/managers"

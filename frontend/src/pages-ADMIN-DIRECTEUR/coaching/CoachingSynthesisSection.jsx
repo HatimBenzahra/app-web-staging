@@ -15,6 +15,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import CoachingService from '@/services/coaching/coaching.service'
+import CoachingSessionsModal from './CoachingSessionsModal'
 
 const POLL_MS = 5000
 
@@ -58,13 +59,15 @@ function Block({ icon: Icon, title, items, tone }) {
  * Section « Synthèse coaching » d'une fiche commercial / manager : bilan global
  * généré par le LLM (hors pipeline audio). Prop `commercialId` OU `managerId`.
  */
-export default function CoachingSynthesisSection({ commercialId, managerId }) {
+export default function CoachingSynthesisSection({ commercialId, managerId, subjectName }) {
   const subjectType = commercialId != null ? 'commercial' : 'manager'
   const subjectId = commercialId != null ? commercialId : managerId
 
   const [syn, setSyn] = useState(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [readyCount, setReadyCount] = useState(null)
   const pollRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -91,6 +94,25 @@ export default function CoachingSynthesisSection({ commercialId, managerId }) {
     return () => pollRef.current && clearInterval(pollRef.current)
   }, [inProgress, load])
 
+  // Nombre d'analyses READY du sujet (source live). Sert à signaler les sessions
+  // pas encore incluses dans la synthèse (snapshot figé à la dernière génération).
+  const refreshReadyCount = useCallback(async () => {
+    if (subjectId == null) return
+    const where =
+      subjectType === 'commercial' ? { commercialId: subjectId } : { managerId: subjectId }
+    const res = await CoachingService.analyses({ ...where, status: 'READY', take: 1 })
+    setReadyCount(res?.total ?? 0)
+  }, [subjectType, subjectId])
+
+  // Charge le compte au montage puis le rafraîchit régulièrement (léger : total
+  // seul) → le badge « nouvelles sessions » apparaît quand des analyses ajoutées
+  // se terminent, même après fermeture du modal.
+  useEffect(() => {
+    refreshReadyCount()
+    const t = setInterval(refreshReadyCount, POLL_MS)
+    return () => clearInterval(t)
+  }, [refreshReadyCount])
+
   const generate = async () => {
     setGenerating(true)
     try {
@@ -103,117 +125,167 @@ export default function CoachingSynthesisSection({ commercialId, managerId }) {
 
   const trend = TREND_META[syn?.trend] || null
   const ready = syn?.status === 'READY'
+  // Sessions analysées non encore prises en compte par la synthèse figée.
+  const newSessions =
+    ready && readyCount != null && syn?.nbAnalyses != null
+      ? Math.max(0, readyCount - syn.nbAnalyses)
+      : 0
 
   return (
-    <Card className="border-border/60 bg-card">
-      <CardContent className="pt-6">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
-              <GraduationCap className="h-4 w-4" />
-            </span>
-            <h3 className="text-base font-semibold">Synthèse coaching</h3>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={generate}
-            disabled={generating || inProgress}
-          >
-            {generating || inProgress ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            {syn ? 'Régénérer' : 'Générer'}
-          </Button>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Chargement…
-          </div>
-        ) : inProgress ? (
-          <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Génération de la synthèse en cours…
-          </div>
-        ) : syn?.status === 'FAILED' ? (
-          <div className="rounded-lg bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            Échec de la génération{syn.error ? ` : ${syn.error}` : ''}.
-          </div>
-        ) : !syn || !ready ? (
-          <p className="text-sm text-muted-foreground">
-            Pas encore de synthèse pour ce {subjectType === 'manager' ? 'manager' : 'commercial'}.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {/* Bandeau : tendance · score · nb analyses */}
-            <div className="flex flex-wrap items-center gap-3">
-              {trend && (
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
-                    trend.cls,
-                  )}
+    <>
+      <Card className="border-border/60 bg-card">
+        <CardContent className="pt-6">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
+                <GraduationCap className="h-4 w-4" />
+              </span>
+              <h3 className="text-base font-semibold">Synthèse coaching</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              {newSessions > 0 && (
+                <button
+                  type="button"
+                  onClick={generate}
+                  disabled={generating || inProgress}
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+                  title="De nouvelles sessions ont été analysées depuis cette synthèse — régénérez pour les inclure"
                 >
-                  <trend.icon className="h-3.5 w-3.5" />
-                  {trend.label}
-                </span>
+                  +{newSessions} nouvelle{newSessions > 1 ? 's' : ''} session
+                  {newSessions > 1 ? 's' : ''}
+                </button>
               )}
-              <span className="text-sm">
-                <span className="font-serif text-lg tabular-nums">
-                  {syn.scoreMoyen ?? '—'}
-                </span>
-                <span className="text-muted-foreground">/100 moyen</span>
-              </span>
-              <span className="text-sm text-muted-foreground">
-                · {syn.nbAnalyses} session{syn.nbAnalyses > 1 ? 's' : ''} analysée
-                {syn.nbAnalyses > 1 ? 's' : ''}
-              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generate}
+                disabled={generating || inProgress}
+              >
+                {generating || inProgress ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {syn ? 'Régénérer' : 'Générer'}
+              </Button>
             </div>
-
-            {/* Période couverte par les sessions jugées */}
-            {(syn.periodStart || syn.periodEnd) && (
-              <p className="text-xs text-muted-foreground">
-                Période couverte : du{' '}
-                <span className="font-medium text-foreground/80">{fmtDate(syn.periodStart)}</span>{' '}
-                au{' '}
-                <span className="font-medium text-foreground/80">{fmtDate(syn.periodEnd)}</span>
-              </p>
-            )}
-
-            {/* Analyse détaillée (tirets fouillés : contrats, portes, durées, refus, absences…) */}
-            <Block
-              icon={ClipboardList}
-              title="Analyse détaillée"
-              items={syn.analyse}
-              tone="text-foreground"
-            />
-
-            {/* Forces / Axes / Priorités */}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Block icon={ThumbsUp} title="Forces" items={syn.strengths} tone="text-green-600" />
-              <Block icon={TrendingUp} title="À améliorer" items={syn.improvements} tone="text-amber-600" />
-              <Block icon={ListChecks} title="Priorités" items={syn.priorities} tone="text-indigo-600" />
-            </div>
-
-            {syn.generatedAt && (
-              <p className="text-xs text-muted-foreground">
-                Généré le{' '}
-                {new Date(syn.generatedAt).toLocaleString('fr-FR', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
-            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Chargement…
+            </div>
+          ) : inProgress ? (
+            <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Génération de la synthèse en cours…
+            </div>
+          ) : syn?.status === 'FAILED' ? (
+            <div className="rounded-lg bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              Échec de la génération{syn.error ? ` : ${syn.error}` : ''}.
+            </div>
+          ) : !syn || !ready ? (
+            <p className="text-sm text-muted-foreground">
+              Pas encore de synthèse pour ce {subjectType === 'manager' ? 'manager' : 'commercial'}.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Bandeau : tendance · score · nb analyses */}
+              <div className="flex flex-wrap items-center gap-3">
+                {trend && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                      trend.cls
+                    )}
+                  >
+                    <trend.icon className="h-3.5 w-3.5" />
+                    {trend.label}
+                  </span>
+                )}
+                <span className="text-sm">
+                  <span className="font-serif text-lg tabular-nums">{syn.scoreMoyen ?? '—'}</span>
+                  <span className="text-muted-foreground">/100 moyen</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSessionsOpen(true)}
+                  className="inline-flex items-center gap-1 rounded text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                  title="Voir les sessions et en ajouter"
+                >
+                  · {syn.nbAnalyses} session{syn.nbAnalyses > 1 ? 's' : ''} analysée
+                  {syn.nbAnalyses > 1 ? 's' : ''}
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Période couverte par les sessions jugées */}
+              {(syn.periodStart || syn.periodEnd) && (
+                <p className="text-xs text-muted-foreground">
+                  Période couverte : du{' '}
+                  <span className="font-medium text-foreground/80">{fmtDate(syn.periodStart)}</span>{' '}
+                  au{' '}
+                  <span className="font-medium text-foreground/80">{fmtDate(syn.periodEnd)}</span>
+                </p>
+              )}
+
+              {/* Analyse détaillée (tirets fouillés : contrats, portes, durées, refus, absences…) */}
+              <Block
+                icon={ClipboardList}
+                title="Analyse détaillée"
+                items={syn.analyse}
+                tone="text-foreground"
+              />
+
+              {/* Forces / Axes / Priorités */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Block icon={ThumbsUp} title="Forces" items={syn.strengths} tone="text-green-600" />
+                <Block
+                  icon={TrendingUp}
+                  title="À améliorer"
+                  items={syn.improvements}
+                  tone="text-amber-600"
+                />
+                <Block
+                  icon={ListChecks}
+                  title="Priorités"
+                  items={syn.priorities}
+                  tone="text-indigo-600"
+                />
+              </div>
+
+              {syn.generatedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Généré le{' '}
+                  {new Date(syn.generatedAt).toLocaleString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <CoachingSessionsModal
+        open={sessionsOpen}
+        onOpenChange={o => {
+          setSessionsOpen(o)
+          // Retour du modal : on a pu lancer des analyses → rafraîchit la
+          // synthèse (période live) et le compte de sessions analysées.
+          if (!o) {
+            load()
+            refreshReadyCount()
+          }
+        }}
+        subjectId={subjectId}
+        subjectName={subjectName}
+      />
+    </>
   )
 }
