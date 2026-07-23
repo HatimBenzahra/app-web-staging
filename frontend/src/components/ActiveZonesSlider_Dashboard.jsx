@@ -171,7 +171,7 @@ export default function ActiveZonesSlider({
           </Suspense>
         ) : (
           <Card className="border-2">
-            <CardContent className="pt-6">
+            <CardContent>
               <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
                 <p className="text-sm text-muted-foreground">
                   Carte masquee pour accelerer le chargement initial.
@@ -189,7 +189,7 @@ export default function ActiveZonesSlider({
       {/* Navigation du slider */}
       {enrichedAssignments.length > 1 && isSliding && (
         <Card className="border-2">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center justify-between">
               <Button
                 variant="outline"

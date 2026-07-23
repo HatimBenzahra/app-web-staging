@@ -376,7 +376,7 @@ export default function CoachingIA() {
         {/* Onglet Plan de vente */}
         <TabsContent value="plan">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent>
               <SalesPlanViewer />
             </CardContent>
           </Card>

@@ -361,7 +361,7 @@ export default function AssignedZoneCard({
   if (!zone && !showAllImmeubles) {
     return (
       <Card className={`border-2 ${className}`}>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="flex items-center justify-center py-8">
             <p className="text-muted-foreground">Aucune zone assignée</p>
           </div>
@@ -571,7 +571,7 @@ export default function AssignedZoneCard({
   return (
     <>
       <Card className={`border-2 ${className}`}>
-        <CardContent className="pt-6">
+        <CardContent>
           {fullWidth ? (
             /* Layout pleine largeur avec map en haut */
             <div className="space-y-6">

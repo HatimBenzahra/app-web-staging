@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  GraduationCap,
   Loader2,
-  Sparkles,
+  RefreshCw,
   ClipboardList,
   ThumbsUp,
   TrendingUp,
@@ -160,41 +159,84 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
   return (
     <>
       <Card className="border-border/60 bg-card">
-        <CardContent className="pt-6">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
-                <GraduationCap className="h-4 w-4" />
-              </span>
-              <h3 className="text-base font-semibold">Synthèse coaching</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              {newSessions > 0 && (
-                <button
-                  type="button"
-                  onClick={generate}
-                  disabled={generating || inProgress}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-                  title="De nouvelles sessions ont été analysées depuis cette synthèse — régénérez pour les inclure"
-                >
-                  +{newSessions} nouvelle{newSessions > 1 ? 's' : ''} session
-                  {newSessions > 1 ? 's' : ''}
-                </button>
-              )}
+        {/* @container : les sous-grilles s'adaptent à la LARGEUR RÉELLE de la card
+            (étroite en colonne latérale → empilé ; large en pleine largeur → 3 colonnes). */}
+        <CardContent className="@container">
+          {/* En-tête compact : titre + retry + (si prêt) score/tendance/sessions/période
+              sur UNE seule ligne pour économiser de la hauteur verticale. */}
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="h-2 w-2 rounded-full bg-primary" />
+              <h3 className="text-lg font-semibold tracking-tight">Synthèse coaching</h3>
+              {/* Retry discret (pas de bouton « IA »). */}
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon-sm"
                 onClick={generate}
                 disabled={generating || inProgress}
+                title={syn ? 'Régénérer la synthèse' : 'Générer la synthèse'}
+                aria-label={syn ? 'Régénérer la synthèse' : 'Générer la synthèse'}
+                className="text-muted-foreground hover:text-foreground"
               >
                 {generating || inProgress ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Sparkles className="h-4 w-4" />
+                  <RefreshCw className="h-4 w-4" />
                 )}
-                {syn ? 'Régénérer' : 'Générer'}
               </Button>
             </div>
+
+            {ready && (
+              <>
+                <span className="flex items-baseline gap-1">
+                  <span className="text-xl font-bold leading-none tabular-nums">
+                    {syn.scoreMoyen ?? '—'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">/100</span>
+                </span>
+                {trend && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                      trend.cls
+                    )}
+                  >
+                    <trend.icon className="h-3.5 w-3.5" />
+                    {trend.label}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSessionsOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1 text-sm transition-colors hover:border-border hover:bg-muted/60"
+                  title="Voir les sessions et en ajouter"
+                >
+                  <span className="font-bold tabular-nums">{syn.nbAnalyses}</span>
+                  <span className="text-muted-foreground">
+                    session{syn.nbAnalyses > 1 ? 's' : ''} analysée{syn.nbAnalyses > 1 ? 's' : ''}
+                  </span>
+                  <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+                {(syn.periodStart || syn.periodEnd) && (
+                  <span className="text-xs text-muted-foreground">
+                    {fmtDate(syn.periodStart)} → {fmtDate(syn.periodEnd)}
+                  </span>
+                )}
+              </>
+            )}
+
+            {newSessions > 0 && (
+              <button
+                type="button"
+                onClick={generate}
+                disabled={generating || inProgress}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+                title="De nouvelles sessions ont été analysées depuis cette synthèse — régénérez pour les inclure"
+              >
+                +{newSessions} nouvelle{newSessions > 1 ? 's' : ''} session
+                {newSessions > 1 ? 's' : ''}
+              </button>
+            )}
           </div>
 
           {loading ? (
@@ -217,45 +259,6 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
             </p>
           ) : (
             <div className="space-y-4">
-              {/* Bandeau : tendance · score · nb analyses */}
-              <div className="flex flex-wrap items-center gap-3">
-                {trend && (
-                  <span
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
-                      trend.cls
-                    )}
-                  >
-                    <trend.icon className="h-3.5 w-3.5" />
-                    {trend.label}
-                  </span>
-                )}
-                <span className="text-sm">
-                  <span className="font-serif text-lg tabular-nums">{syn.scoreMoyen ?? '—'}</span>
-                  <span className="text-muted-foreground">/100 moyen</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSessionsOpen(true)}
-                  className="inline-flex items-center gap-1 rounded text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-                  title="Voir les sessions et en ajouter"
-                >
-                  · {syn.nbAnalyses} session{syn.nbAnalyses > 1 ? 's' : ''} analysée
-                  {syn.nbAnalyses > 1 ? 's' : ''}
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              {/* Période couverte par les sessions jugées */}
-              {(syn.periodStart || syn.periodEnd) && (
-                <p className="text-xs text-muted-foreground">
-                  Période couverte : du{' '}
-                  <span className="font-medium text-foreground/80">{fmtDate(syn.periodStart)}</span>{' '}
-                  au{' '}
-                  <span className="font-medium text-foreground/80">{fmtDate(syn.periodEnd)}</span>
-                </p>
-              )}
-
               {/* Analyse structurée : aperçu → discours → prospection, paragraphes
                   titrés en gras (rendu Markdown inline). */}
               <Block
@@ -266,8 +269,9 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
                 prose
               />
 
-              {/* Forces / Axes / Priorités */}
-              <div className="grid gap-3 sm:grid-cols-3">
+              {/* Forces / Axes / Priorités — 3 colonnes seulement si la card est
+                  assez large (container query), sinon empilé pour rester lisible. */}
+              <div className="grid gap-3 @2xl:grid-cols-3">
                 <Block icon={ThumbsUp} title="Forces" items={syn.strengths} tone="text-green-600" />
                 <Block
                   icon={TrendingUp}

@@ -155,7 +155,20 @@ export default function DateRangeFilter({
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent
+        align="start"
+        className="w-80"
+        onInteractOutside={e => {
+          // Le calendrier natif de <input type="date"> s'ouvre HORS du DOM du popover :
+          // cliquer un jour est vu comme une interaction "extérieure" et fermait le popover
+          // avant de pouvoir cliquer « Appliquer ». On empêche la fermeture tant qu'un champ
+          // date est actif (calendrier ouvert) ; le clic-ailleurs normal ferme toujours.
+          const active = document.activeElement
+          if (active instanceof HTMLInputElement && active.type === 'date') {
+            e.preventDefault()
+          }
+        }}
+      >
         <div className="space-y-4">
           <p className="text-sm font-semibold">{title}</p>
 

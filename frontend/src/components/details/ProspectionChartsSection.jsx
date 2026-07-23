@@ -1,0 +1,167 @@
+import { useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { BadgeCheck, Calendar, DoorOpen, Target, UserX } from 'lucide-react'
+import PortesProspectionChart from '@/components/charts/PortesProspectionChart'
+import PortesWeeklyChart from '@/components/charts/PortesWeeklyChart'
+import PortesStatusChart from '@/components/charts/PortesStatusChart'
+
+/**
+ * Mini-KPI de prospection (une tuile).
+ */
+function ProspectionMetric({ label, value, detail, icon }) {
+  const IconComponent = icon
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-bold tracking-tight">{value}</p>
+          {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
+          <IconComponent className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Section prospection : 4 mini-KPI + funnel terrain + graphiques (statuts, portes/jour, hebdo).
+ * Extrait de DetailsPage pour être réutilisable (fiche commercial refondue + manager).
+ * Couverture = portes prospectées / capacité déclarée (grille), jamais / portes créées.
+ */
+export default function ProspectionChartsSection({ charts = [], totalDoors }) {
+  const summary = useMemo(() => {
+    const portes = charts.find(chart => chart.props?.portes)?.props?.portes || []
+    const normalizeStatus = status => String(status || '').toUpperCase()
+    const portesProspectees = portes.filter(
+      porte => normalizeStatus(porte.statut) !== 'NON_VISITE'
+    ).length
+    const totalPortes = totalDoors > 0 ? totalDoors : 0
+    const contrats = portes
+      .filter(porte => normalizeStatus(porte.statut) === 'CONTRAT_SIGNE')
+      .reduce((sum, porte) => sum + (porte.nbContrats || 1), 0)
+    const rdv = portes.filter(porte => normalizeStatus(porte.statut) === 'RENDEZ_VOUS_PRIS').length
+    const refus = portes.filter(porte => normalizeStatus(porte.statut) === 'REFUS').length
+    const argumentes = portes.filter(porte => normalizeStatus(porte.statut) === 'ARGUMENTE').length
+    const absents = portes.filter(porte => normalizeStatus(porte.statut) === 'ABSENT').length
+    const couverture = totalPortes > 0 ? Math.round((portesProspectees / totalPortes) * 100) : 0
+    const opportunites = contrats + rdv + refus + argumentes
+    const conversion = opportunites > 0 ? Math.round((contrats / opportunites) * 100) : 0
+    const contact = portesProspectees > 0 ? Math.round((opportunites / portesProspectees) * 100) : 0
+
+    return {
+      totalPortes,
+      portesProspectees,
+      contrats,
+      rdv,
+      refus,
+      argumentes,
+      absents,
+      couverture,
+      conversion,
+      contact,
+      funnel: [
+        { label: 'Portes prospectées', value: portesProspectees, percent: couverture },
+        { label: 'Contacts qualifiés', value: opportunites, percent: contact },
+        {
+          label: 'Rendez-vous',
+          value: rdv,
+          percent: portesProspectees > 0 ? Math.round((rdv / portesProspectees) * 100) : 0,
+        },
+        {
+          label: 'Contrats',
+          value: contrats,
+          percent: portesProspectees > 0 ? Math.round((contrats / portesProspectees) * 100) : 0,
+        },
+      ],
+    }
+  }, [charts, totalDoors])
+
+  const renderChart = (chart, index) => {
+    if (chart.type === 'PortesStatusChart') {
+      return <PortesStatusChart key={index} {...chart.props} />
+    }
+    if (chart.type === 'PortesProspectionChart') {
+      return <PortesProspectionChart key={index} {...chart.props} />
+    }
+    if (chart.type === 'PortesWeeklyChart') {
+      return <PortesWeeklyChart key={index} {...chart.props} />
+    }
+    return null
+  }
+
+  const statusChart = charts.find(chart => chart.type === 'PortesStatusChart')
+  const trendCharts = charts.filter(chart => chart.type !== 'PortesStatusChart')
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ProspectionMetric
+          label="Couverture"
+          value={`${summary.couverture}%`}
+          detail={`${summary.portesProspectees}/${summary.totalPortes} portes prospectées`}
+          icon={DoorOpen}
+        />
+        <ProspectionMetric
+          label="Contrats"
+          value={summary.contrats}
+          detail={`${summary.conversion}% de conversion qualifiée`}
+          icon={BadgeCheck}
+        />
+        <ProspectionMetric
+          label="Rendez-vous"
+          value={summary.rdv}
+          detail="Opportunités à suivre"
+          icon={Calendar}
+        />
+        <ProspectionMetric
+          label="Points de friction"
+          value={summary.refus + summary.argumentes + summary.absents}
+          detail={`${summary.refus} refus · ${summary.absents} absents`}
+          icon={UserX}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <Card className="border-border/60 bg-card xl:col-span-1">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4 text-primary" />
+              Funnel terrain
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {summary.funnel.map((step, index) => (
+              <div key={step.label} className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{step.label}</span>
+                  <span className="text-muted-foreground">
+                    {step.value} · {step.percent}%
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.min(step.percent, 100)}%`,
+                      opacity: 1 - index * 0.12,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="xl:col-span-2">{statusChart && renderChart(statusChart, 0)}</div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">{trendCharts.map(renderChart)}</div>
+    </div>
+  )
+}

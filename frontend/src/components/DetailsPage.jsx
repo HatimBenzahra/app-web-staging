@@ -1214,7 +1214,7 @@ export default function DetailsPage({
               ))
             ) : (
               <Card className="border-border/60 bg-card">
-                <CardContent className="pt-6">
+                <CardContent>
                   <p className="text-muted-foreground text-center py-8">Aucune zone assignée</p>
                 </CardContent>
               </Card>
@@ -1246,7 +1246,7 @@ export default function DetailsPage({
             section.render(data)
           ) : (
             <Card className="border-border/60 bg-card">
-              <CardContent className="pt-6">
+              <CardContent>
                 {section.type === 'grid' && (
                   <div className="grid gap-6 md:grid-cols-2">
                     {section.items.map((item, itemIndex) => (

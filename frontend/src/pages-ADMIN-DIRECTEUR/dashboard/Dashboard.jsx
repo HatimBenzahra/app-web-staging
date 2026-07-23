@@ -650,7 +650,7 @@ function KpiCard({ title, value, description, icon: Icon, trend, color = 'blue' 
   const colors = KPI_COLORS[color] || KPI_COLORS.blue
   return (
     <Card className="relative overflow-hidden border-border/60 bg-card hover:shadow-md transition-shadow duration-200 cursor-default">
-      <CardContent className="pt-6">
+      <CardContent>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-1">
             <p className="truncate text-sm font-medium text-muted-foreground">{title}</p>

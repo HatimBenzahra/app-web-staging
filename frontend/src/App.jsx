@@ -125,7 +125,10 @@ function AdminLayout() {
   }
 
   const breadcrumbs = buildBreadcrumbs()
-  const isWideMapPage = location.pathname === '/adresses'
+  // Carte d'adresses = plein bord. Fiche détail commercial = largeur non plafonnée
+  // (pas de max-w-1400) mais marges confortables conservées (w-11/12), pour le layout 2 colonnes.
+  const isMapPage = location.pathname === '/adresses'
+  const isFullWidthPage = /^\/commerciaux\/\d+$/.test(location.pathname)
 
   return (
     <ErrorBoundary>
@@ -175,7 +178,11 @@ function AdminLayout() {
             </header>
             <div
               className={`flex flex-1 flex-col gap-4 overflow-x-hidden animate-fade-in-content ${
-                isWideMapPage ? 'w-full px-4 py-4' : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
+                isMapPage
+                  ? 'w-full px-4 py-4'
+                  : isFullWidthPage
+                    ? 'mx-auto w-11/12 p-6 pt-6'
+                    : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
               }`}
             >
               <Suspense fallback={null}>
