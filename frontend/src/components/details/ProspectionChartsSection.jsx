@@ -1,16 +1,14 @@
 import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { BadgeCheck, Calendar, DoorOpen, Target, UserX } from 'lucide-react'
+import GameIcon from '@/components/gamification/GameIcon'
 import PortesProspectionChart from '@/components/charts/PortesProspectionChart'
 import PortesWeeklyChart from '@/components/charts/PortesWeeklyChart'
 import PortesStatusChart from '@/components/charts/PortesStatusChart'
 
 /**
- * Mini-KPI de prospection (une tuile).
+ * Mini-KPI de prospection (une tuile). `iconName` = clé Game Icons (cohérence gamification).
  */
-function ProspectionMetric({ label, value, detail, icon }) {
-  const IconComponent = icon
-
+function ProspectionMetric({ label, value, detail, iconName }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -22,7 +20,7 @@ function ProspectionMetric({ label, value, detail, icon }) {
           {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
         </div>
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
-          <IconComponent className="h-4 w-4" />
+          <GameIcon name={iconName} size={20} />
         </div>
       </div>
     </div>
@@ -99,39 +97,39 @@ export default function ProspectionChartsSection({ charts = [], totalDoors }) {
   const trendCharts = charts.filter(chart => chart.type !== 'PortesStatusChart')
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="@container space-y-5">
+      <div className="grid gap-4 @md:grid-cols-2 @3xl:grid-cols-4">
         <ProspectionMetric
           label="Couverture"
           value={`${summary.couverture}%`}
           detail={`${summary.portesProspectees}/${summary.totalPortes} portes prospectées`}
-          icon={DoorOpen}
+          iconName="door"
         />
         <ProspectionMetric
           label="Contrats"
           value={summary.contrats}
           detail={`${summary.conversion}% de conversion qualifiée`}
-          icon={BadgeCheck}
+          iconName="contract"
         />
         <ProspectionMetric
           label="Rendez-vous"
           value={summary.rdv}
           detail="Opportunités à suivre"
-          icon={Calendar}
+          iconName="calendar"
         />
         <ProspectionMetric
           label="Points de friction"
           value={summary.refus + summary.argumentes + summary.absents}
           detail={`${summary.refus} refus · ${summary.absents} absents`}
-          icon={UserX}
+          iconName="brick-wall"
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <Card className="border-border/60 bg-card xl:col-span-1">
+      <div className="grid gap-5 @3xl:grid-cols-3">
+        <Card className="border-border/60 bg-card @3xl:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Target className="h-4 w-4 text-primary" />
+              <GameIcon name="on-target" size={18} className="text-primary" />
               Funnel terrain
             </CardTitle>
           </CardHeader>
@@ -158,10 +156,10 @@ export default function ProspectionChartsSection({ charts = [], totalDoors }) {
           </CardContent>
         </Card>
 
-        <div className="xl:col-span-2">{statusChart && renderChart(statusChart, 0)}</div>
+        <div className="@3xl:col-span-2">{statusChart && renderChart(statusChart, 0)}</div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">{trendCharts.map(renderChart)}</div>
+      <div className="grid gap-5 @2xl:grid-cols-2">{trendCharts.map(renderChart)}</div>
     </div>
   )
 }

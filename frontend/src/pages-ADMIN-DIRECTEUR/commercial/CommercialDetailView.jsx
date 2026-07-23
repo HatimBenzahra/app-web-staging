@@ -12,17 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  ArrowLeft,
-  FileText,
-  FileCheck2,
-  DoorOpen,
-  TrendingUp,
-  Activity,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
+import GameIcon from '@/components/gamification/GameIcon'
 import { MapSkeleton, DetailsPageSkeleton } from '@/components/LoadingSkeletons'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import ProspectionChartsSection from '@/components/details/ProspectionChartsSection'
@@ -54,7 +45,7 @@ function useIsXl() {
   return isXl
 }
 
-function StatTile({ icon: Icon, label, value, hint, valueClassName }) {
+function StatTile({ iconName, label, value, hint, valueClassName }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -67,9 +58,9 @@ function StatTile({ icon: Icon, label, value, hint, valueClassName }) {
           </p>
           {hint && <p className="mt-1 text-xs text-muted-foreground truncate">{hint}</p>}
         </div>
-        {Icon && (
+        {iconName && (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
-            <Icon className="h-4 w-4" />
+            <GameIcon name={iconName} size={20} />
           </div>
         )}
       </div>
@@ -295,7 +286,7 @@ export default function CommercialDetailView() {
                 ) : null}
               </p>
               <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Activity className="h-3.5 w-3.5 shrink-0" />
+                <GameIcon name="stopwatch" size={14} className="shrink-0" />
                 <span className="truncate">
                   Dernière activité : {overview.lastActivityLabel}
                   <span className="opacity-70"> · {overview.lastActivityDesc}</span>
@@ -319,19 +310,19 @@ export default function CommercialDetailView() {
           {/* 4 chiffres clés — signés (terrain) vs validés (back-office) distingués */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
-              icon={FileText}
+              iconName="contract"
               label="Contrats signés"
               value={overview.contratsSignes}
               hint="Déclarés terrain"
             />
             <StatTile
-              icon={FileCheck2}
+              iconName="stamper"
               label="Contrats validés"
               value={overview.contratsValides}
               hint="Confirmés back-office"
             />
-            <StatTile icon={DoorOpen} label="Couverture" value={`${overview.couverture}%`} />
-            <StatTile icon={TrendingUp} label="Points" value={overview.points} />
+            <StatTile iconName="door" label="Couverture" value={`${overview.couverture}%`} />
+            <StatTile iconName="chart" label="Points" value={overview.points} />
           </div>
 
           {/* Infos de contact (repli) */}
@@ -395,13 +386,24 @@ export default function CommercialDetailView() {
               setLeftPct(p => clampSplit(p + 2))
             }
           }}
-          className="hidden cursor-col-resize touch-none select-none items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-primary xl:order-2 xl:flex"
+          className="group relative hidden cursor-col-resize touch-none select-none items-center justify-center self-stretch outline-none xl:order-2 xl:flex"
         >
+          {/* Ligne fine pleine hauteur, discrète au repos, bleue au survol/drag */}
           <div
-            className={`h-16 w-1.5 rounded-full bg-primary transition-opacity ${
-              isDragging ? '' : 'motion-safe:animate-pulse'
+            className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
+              isDragging ? 'bg-primary' : 'bg-border group-hover:bg-primary/50'
             }`}
           />
+          {/* Prise centrale (affordance « glisser ») */}
+          <div
+            className={`relative z-10 flex h-10 w-5 items-center justify-center rounded-full border bg-background shadow-sm transition-colors ${
+              isDragging
+                ? 'border-primary text-primary'
+                : 'border-border text-muted-foreground group-hover:border-primary group-hover:text-primary group-focus-visible:border-primary group-focus-visible:text-primary'
+            }`}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </div>
         </div>
 
         {/* ---- Onglets ---- */}
@@ -452,8 +454,8 @@ export default function CommercialDetailView() {
             </TabsContent>
 
             {/* Terrain (zones + GPS) */}
-            <TabsContent value="terrain" className="space-y-8">
-              <div className="grid gap-5 lg:grid-cols-2">
+            <TabsContent value="terrain" className="@container space-y-8">
+              <div className="grid gap-5 @3xl:grid-cols-2">
                 <div>
                   <SectionTitle>Zone active</SectionTitle>
                   {assignedZones.length > 0 ? (
