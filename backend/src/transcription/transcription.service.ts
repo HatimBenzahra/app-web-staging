@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import axios from 'axios';
 
 const execFileAsync = promisify(execFile);
 
@@ -304,28 +305,17 @@ export class TranscriptionService implements OnModuleDestroy {
 
       const url = `${this.whisperUrl}/transcribe/prospection?language=auto`;
 
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        this.whisperTimeoutMs,
-      );
-
-      const resp = await fetch(url, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
+      // axios (et NON le fetch natif) : le fetch d'undici impose un
+      // `headersTimeout` par défaut de 5 min, indépendant de notre timeout, qui
+      // coupait les transcriptions longues (audio > ~5 min de traitement) avec
+      // « fetch failed ». axios respecte `timeout` de bout en bout.
+      const resp = await axios.post<WhisperResponse>(url, formData, {
+        timeout: this.whisperTimeoutMs,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       });
 
-      clearTimeout(timeout);
-
-      if (!resp.ok) {
-        this.logger.error(
-          `Whisper a répondu ${resp.status} ${resp.statusText}`,
-        );
-        return null;
-      }
-
-      const data = (await resp.json()) as WhisperResponse;
+      const data = resp.data;
 
       this.logger.debug(
         `Whisper : ${data.segments?.length || 0} segments en ${data.processing_time?.toFixed(1)}s`,
@@ -339,12 +329,22 @@ export class TranscriptionService implements OnModuleDestroy {
         text: data.text || '',
       };
     } catch (error) {
-      if (error?.name === 'AbortError') {
-        this.logger.error(
-          `Whisper timeout (> ${this.whisperTimeoutMs}ms) — abandon`,
-        );
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+          this.logger.error(
+            `Whisper timeout (> ${this.whisperTimeoutMs}ms) — abandon`,
+          );
+        } else if (error.response) {
+          this.logger.error(
+            `Whisper a répondu ${error.response.status} ${error.response.statusText}`,
+          );
+        } else {
+          this.logger.error(`Échec appel Whisper: ${error.message}`);
+        }
       } else {
-        this.logger.error(`Échec appel Whisper: ${error?.message || error}`);
+        this.logger.error(
+          `Échec appel Whisper: ${(error as Error)?.message || error}`,
+        );
       }
       return null;
     }

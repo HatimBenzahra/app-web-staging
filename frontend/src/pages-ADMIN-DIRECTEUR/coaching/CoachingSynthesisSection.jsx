@@ -34,7 +34,26 @@ const TREND_META = {
   regresse: { label: 'En baisse', icon: TrendingDown, cls: 'bg-red-500/10 text-red-600' },
 }
 
-function Block({ icon: Icon, title, items, tone }) {
+// Rend le gras Markdown inline (`**texte**`) — le LLM titre ses paragraphes ainsi.
+function renderInlineBold(text) {
+  return String(text)
+    .split(/(\*\*[^*]+\*\*)/g)
+    .map((seg, i) =>
+      seg.startsWith('**') && seg.endsWith('**') ? (
+        <strong key={i} className="font-semibold text-foreground">
+          {seg.slice(2, -2)}
+        </strong>
+      ) : (
+        <span key={i}>{seg}</span>
+      )
+    )
+}
+
+/**
+ * Bloc de liste. `prose` = paragraphes titrés (sans tiret, plus d'air) pour
+ * l'analyse structurée ; sinon liste à tirets (forces / axes / priorités).
+ */
+function Block({ icon: Icon, title, items, tone, prose }) {
   const list = items || []
   if (!list.length) return null
   return (
@@ -43,11 +62,18 @@ function Block({ icon: Icon, title, items, tone }) {
         <Icon className="h-4 w-4" />
         {title}
       </div>
-      <ul className="space-y-1.5">
+      <ul className={prose ? 'space-y-2.5' : 'space-y-1.5'}>
         {list.map((it, i) => (
-          <li key={i} className="flex gap-2 text-sm text-foreground/90">
-            <span className="select-none text-muted-foreground">–</span>
-            <span>{it}</span>
+          <li
+            key={i}
+            className={
+              prose
+                ? 'text-sm leading-relaxed text-foreground/90'
+                : 'flex gap-2 text-sm text-foreground/90'
+            }
+          >
+            {!prose && <span className="select-none text-muted-foreground">–</span>}
+            <span>{renderInlineBold(it)}</span>
           </li>
         ))}
       </ul>
@@ -230,12 +256,14 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
                 </p>
               )}
 
-              {/* Analyse détaillée (tirets fouillés : contrats, portes, durées, refus, absences…) */}
+              {/* Analyse structurée : aperçu → discours → prospection, paragraphes
+                  titrés en gras (rendu Markdown inline). */}
               <Block
                 icon={ClipboardList}
                 title="Analyse détaillée"
                 items={syn.analyse}
                 tone="text-foreground"
+                prose
               />
 
               {/* Forces / Axes / Priorités */}
@@ -283,6 +311,7 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
             refreshReadyCount()
           }
         }}
+        subjectType={subjectType}
         subjectId={subjectId}
         subjectName={subjectName}
       />

@@ -10,6 +10,7 @@ import { SalesPlanService } from './sales-plan.service';
 import { LlmService } from './llm.service';
 import { ScoringService } from './scoring.service';
 import { SynthesisService } from './synthesis.service';
+import { SnapshotBuilderService } from './snapshot-builder.service';
 import { SynthesisResolver } from './synthesis.resolver';
 
 @Module({
@@ -24,6 +25,7 @@ import { SynthesisResolver } from './synthesis.resolver';
     LlmService,
     ScoringService,
     SynthesisService,
+    SnapshotBuilderService,
     SynthesisResolver,
     PrismaService,
   ],
