@@ -128,7 +128,7 @@ function AdminLayout() {
   // Carte d'adresses = plein bord. Fiche détail commercial = largeur non plafonnée
   // (pas de max-w-1400) mais marges confortables conservées (w-11/12), pour le layout 2 colonnes.
   const isMapPage = location.pathname === '/adresses'
-  const isFullWidthPage = /^\/commerciaux\/\d+$/.test(location.pathname)
+  const isFullWidthPage = /^\/(commerciaux|managers)\/\d+$/.test(location.pathname)
 
   return (
     <ErrorBoundary>

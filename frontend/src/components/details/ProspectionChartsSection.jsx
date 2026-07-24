@@ -109,7 +109,7 @@ export default function ProspectionChartsSection({ charts = [], totalDoors }) {
           label="Contrats"
           value={summary.contrats}
           detail={`${summary.conversion}% de conversion qualifiée`}
-          iconName="contract"
+          iconName="contract-doc"
         />
         <ProspectionMetric
           label="Rendez-vous"
