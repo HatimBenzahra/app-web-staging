@@ -129,6 +129,8 @@ function AdminLayout() {
   // (pas de max-w-1400) mais marges confortables conservées (w-11/12), pour le layout 2 colonnes.
   const isMapPage = location.pathname === '/adresses'
   const isFullWidthPage = /^\/(commerciaux|managers)\/\d+$/.test(location.pathname)
+  // Tableau de bord : pleine largeur (pas de plafond 1400px), marges conservées.
+  const isDashboard = location.pathname === '/'
 
   return (
     <ErrorBoundary>
@@ -180,7 +182,7 @@ function AdminLayout() {
               className={`flex flex-1 flex-col gap-4 overflow-x-hidden animate-fade-in-content ${
                 isMapPage
                   ? 'w-full px-4 py-4'
-                  : isFullWidthPage
+                  : isFullWidthPage || isDashboard
                     ? 'mx-auto w-11/12 p-6 pt-6'
                     : 'mx-auto w-11/12 max-w-[1400px] p-6 pt-6'
               }`}
