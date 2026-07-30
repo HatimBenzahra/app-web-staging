@@ -2,7 +2,9 @@ import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users } from 'lucide-react'
 
-const CARD_SHELL = 'gap-0 py-0 overflow-hidden lg:h-[440px]'
+// La hauteur est imposée par la colonne (cf. TerrainToday) : la card s'y partage
+// l'espace avec « Zones assignées », d'où le flex-1 plutôt qu'une hauteur fixe.
+const CARD_SHELL = 'min-h-0 flex-1 gap-0 py-0 overflow-hidden'
 
 function lastSeenLabel(isoDate) {
   if (!isoDate) return null
@@ -18,7 +20,7 @@ export default function ActiveCommercialsCard({ commercials, selectedKey, select
         <CardTitle className="truncate text-sm font-semibold">Sur le terrain</CardTitle>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto px-3 pt-0 pb-3">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto px-3 pt-0 pb-3">
         {commercials.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Users className="h-5 w-5 text-muted-foreground/30" />

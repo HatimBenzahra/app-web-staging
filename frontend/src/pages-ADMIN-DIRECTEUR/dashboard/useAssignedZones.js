@@ -1,0 +1,64 @@
+import { useMemo } from 'react'
+import { useCommercials, useManagers } from '@/services'
+import { UserStatus } from '@/constants/domain/user-status'
+import { useAllCurrentAssignments } from '@/hooks/metier/api/zones'
+import { zoneToGeoJSON, getZoneColor } from '@/pages-ADMIN-DIRECTEUR/zones/zones-utils'
+import { useActorDirectory } from '../gps-tracking/useActorDirectory'
+
+const SUPPORTED_USER_TYPES = new Set(['COMMERCIAL', 'MANAGER'])
+
+/**
+ * Zones actuellement assignées aux commerciaux et managers, prêtes à être
+ * focalisées sur la carte terrain.
+ *
+ * Comme `gpsLatestActorPositions`, la requête `allCurrentAssignments` n'accepte
+ * pas d'`excludeTestUsers` : les utilisateurs de test sont écartés ici, côté
+ * client.
+ */
+export function useAssignedZones() {
+  const { data: assignments, loading } = useAllCurrentAssignments()
+  const { data: allCommercials } = useCommercials()
+  const { data: allManagers } = useManagers()
+  const { resolveActorName } = useActorDirectory()
+
+  // Le client GraphQL maison peut renvoyer `data: null` : le défaut `[]` de
+  // useApiCall ne couvre que `undefined`, d'où la garde explicite.
+  const testUserKeys = useMemo(() => {
+    const keys = new Set()
+    for (const commercial of allCommercials ?? []) {
+      if (commercial?.status === UserStatus.UTILISATEUR_TEST)
+        keys.add(`COMMERCIAL-${Number(commercial.id)}`)
+    }
+    for (const manager of allManagers ?? []) {
+      if (manager?.status === UserStatus.UTILISATEUR_TEST) keys.add(`MANAGER-${Number(manager.id)}`)
+    }
+    return keys
+  }, [allCommercials, allManagers])
+
+  const zones = useMemo(() => {
+    const result = (assignments || [])
+      .filter(a => SUPPORTED_USER_TYPES.has(a?.userType))
+      .filter(a => !testUserKeys.has(`${a.userType}-${Number(a.userId)}`))
+      .map(a => {
+        const geoJson = zoneToGeoJSON(a.zone)
+        return {
+          id: a.id,
+          zoneId: a.zoneId,
+          zoneName: a.zone?.nom || `Zone ${a.zoneId}`,
+          userName: resolveActorName(a.userId, a.userType),
+          userType: a.userType,
+          assignedAt: a.assignedAt,
+          immeublesCount: a.zone?.immeubles?.length ?? 0,
+          geoJson,
+          color: getZoneColor(Number(a.zoneId) || 0),
+          // Une zone sans polygone ni cercle exploitable ne peut pas être focalisée.
+          canFocus: geoJson !== null,
+        }
+      })
+
+    result.sort((a, b) => a.zoneName.localeCompare(b.zoneName))
+    return result
+  }, [assignments, testUserKeys, resolveActorName])
+
+  return { zones, loading }
+}

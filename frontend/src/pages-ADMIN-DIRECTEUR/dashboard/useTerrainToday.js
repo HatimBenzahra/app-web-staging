@@ -126,12 +126,16 @@ export function useTerrainToday() {
     setSelectedKey(current => (current === actor.key ? null : actor.key))
   }, [])
 
+  // Utilisé quand le focus passe à une zone : les deux sélections s'excluent.
+  const clearActor = useCallback(() => setSelectedKey(null), [])
+
   return {
     commercials,
     located,
     selectedKey,
     selectedActor,
     selectActor,
+    clearActor,
     route,
     colorFor,
     isLoading,

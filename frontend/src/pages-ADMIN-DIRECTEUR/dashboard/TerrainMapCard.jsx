@@ -47,14 +47,17 @@ export default function TerrainMapCard({
   selectActor,
   route,
   colorFor,
+  focusedZone,
 }) {
   const mapRef = useRef(null)
   const cameraTargetRef = useRef(null)
 
   const routeColor = colorFor(selectedActor?.userId)
 
-  // Le trajet du commercial sélectionné, sinon l'ensemble de la flotte localisée.
+  // Priorité : la zone focalisée, sinon le trajet du commercial sélectionné,
+  // sinon l'ensemble de la flotte localisée.
   const cameraTarget = useMemo(() => {
+    if (focusedZone?.geoJson) return focusedZone.geoJson.geometry.coordinates[0]
     if (selectedActor) {
       if (route.geoJson) return route.geoJson.geometry.coordinates
       if (selectedActor.hasPosition) return [[selectedActor.longitude, selectedActor.latitude]]
@@ -62,7 +65,7 @@ export default function TerrainMapCard({
     }
     if (located.length === 0) return null
     return located.map(c => [c.longitude, c.latitude])
-  }, [selectedActor, route.geoJson, located])
+  }, [focusedZone, selectedActor, route.geoJson, located])
 
   // La cible passe par un ref pour que `onLoad` applique toujours la dernière
   // connue, même si la carte finit de charger après l'arrivée des données.
@@ -83,10 +86,12 @@ export default function TerrainMapCard({
   }, [cameraTarget, applyCamera])
 
   const overlayMessage = useMemo(() => {
+    // Une zone focalisée est le sujet de la carte : pas de pastille par-dessus.
+    if (focusedZone) return null
     if (located.length === 0) return "Personne sur le terrain aujourd'hui"
     if (selectedActor && route.isEmpty) return 'Aucun trajet enregistré'
     return null
-  }, [located.length, selectedActor, route.isEmpty])
+  }, [focusedZone, located.length, selectedActor, route.isEmpty])
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -115,6 +120,21 @@ export default function TerrainMapCard({
           attributionControl={false}
           onLoad={applyCamera}
         >
+          {focusedZone?.geoJson && (
+            <Source id="focused-zone" type="geojson" data={focusedZone.geoJson}>
+              <Layer
+                id="focused-zone-fill"
+                type="fill"
+                paint={{ 'fill-color': focusedZone.color, 'fill-opacity': 0.25 }}
+              />
+              <Layer
+                id="focused-zone-line"
+                type="line"
+                paint={{ 'line-color': focusedZone.color, 'line-width': 2 }}
+              />
+            </Source>
+          )}
+
           {route.geoJson && (
             <Source id="daily-route" type="geojson" data={route.geoJson}>
               <Layer
