@@ -188,12 +188,7 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
                   Favori
                 </Button>
                 {s3Key && !coachInProgress && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={launchCoaching}
-                    disabled={launching}
-                  >
+                  <Button variant="outline" size="sm" onClick={launchCoaching} disabled={launching}>
                     {launching ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
