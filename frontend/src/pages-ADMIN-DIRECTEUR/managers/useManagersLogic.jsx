@@ -154,7 +154,8 @@ export function useManagersLogic() {
     return filteredManagers
       .map(manager => {
         const directeur = directeurs?.find(d => d.id === manager.directeurId)
-        const rankInfo = toRankInfo(rankByManager.get(manager.id))
+        const rankSnapshot = rankByManager.get(manager.id)
+        const rankInfo = toRankInfo(rankSnapshot)
         const lastActivity = activityByManager.get(manager.id) || null
         const lastActivityAt = getActivityTime(lastActivity)
 
@@ -179,6 +180,10 @@ export function useManagersLogic() {
             </span>
           ),
           points: rankInfo.points,
+          // Le rang exposé EN DONNÉE, en plus du badge JSX historique.
+          rankInfo,
+          // Contrats retenus par le classement backend (statut VALIDE par défaut).
+          contratsRetenus: rankSnapshot?.contratsSignes ?? 0,
         }
       })
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.nom.localeCompare(b.nom, 'fr'))

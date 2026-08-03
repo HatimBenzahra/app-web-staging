@@ -18,6 +18,7 @@ const Dashboard = lazy(() => import('@/pages-ADMIN-DIRECTEUR/dashboard/Dashboard
 const Commerciaux = lazy(() => import('@/pages-ADMIN-DIRECTEUR/commercial/Commerciaux'))
 const Managers = lazy(() => import('@/pages-ADMIN-DIRECTEUR/managers/Managers'))
 const Directeurs = lazy(() => import('@/pages-ADMIN-DIRECTEUR/directeurs/Directeurs'))
+const Equipe = lazy(() => import('@/pages-ADMIN-DIRECTEUR/equipe/Equipe'))
 const Immeubles = lazy(() => import('@/pages-ADMIN-DIRECTEUR/immeubles/Immeubles'))
 const AdressesAcquiscan = lazy(() => import('@/pages-ADMIN-DIRECTEUR/adresses/AdressesAcquiscan'))
 const Zones = lazy(() => import('@/pages-ADMIN-DIRECTEUR/zones/Zones'))
@@ -75,6 +76,7 @@ function AdminLayout() {
   const breadcrumbMap = {
     '': { label: 'Tableau de bord', href: '/' },
     dashboard: { label: 'Tableau de bord', href: '/' },
+    equipe: { label: 'Équipe', href: '/equipe' },
     commerciaux: { label: 'Commerciaux', href: '/commerciaux' },
     managers: { label: 'Managers', href: '/managers' },
     directeurs: { label: 'Directeurs', href: '/directeurs' },
@@ -194,6 +196,14 @@ function AdminLayout() {
                     element={
                       <SectionErrorBoundary>
                         <Dashboard />
+                      </SectionErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/equipe"
+                    element={
+                      <SectionErrorBoundary>
+                        <Equipe />
                       </SectionErrorBoundary>
                     }
                   />

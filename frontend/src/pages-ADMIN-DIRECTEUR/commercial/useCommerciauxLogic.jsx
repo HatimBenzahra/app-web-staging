@@ -171,7 +171,8 @@ export function useCommerciauxLogic() {
         const directeur = directeurs?.find(d => d.id === commercial.directeurId)
         const directeurName = directeur ? `${directeur.prenom} ${directeur.nom}` : 'N/A'
 
-        const rankInfo = toRankInfo(rankByCommercial.get(commercial.id))
+        const rankSnapshot = rankByCommercial.get(commercial.id)
+        const rankInfo = toRankInfo(rankSnapshot)
         const lastActivity = activityByCommercial.get(commercial.id) || null
         const lastActivityAt = getActivityTime(lastActivity)
 
@@ -193,6 +194,11 @@ export function useCommerciauxLogic() {
           status: commercial.status,
           columns,
           rankBadge,
+          // Le rang exposé EN DONNÉE, en plus du badge JSX historique : le tableau de
+          // classement a besoin de l'information, pas d'un rendu déjà figé.
+          rankInfo,
+          // Contrats retenus par le classement backend (statut VALIDE par défaut).
+          contratsRetenus: rankSnapshot?.contratsSignes ?? 0,
           lastActivity,
           lastActivityAt,
           lastActivityLabel: formatRelativeActivityDate(lastActivity?.changedAt),

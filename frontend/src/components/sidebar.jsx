@@ -11,8 +11,6 @@ import {
   Users,
   ArrowLeft,
   LogOut,
-  Shield,
-  UserCog,
   Briefcase,
   LayoutDashboard,
   Tablet,
@@ -55,8 +53,9 @@ const terrainItems = [
   {
     title: 'Zones',
     // En vue simple, l'entrée devient un lien direct « Zones en cours » : /zones EST
-    // déjà cette page, donc aucune route supplémentaire.
+    // déjà cette page, donc aucune route supplémentaire, et l'historique disparaît.
     simpleTitle: 'Zones en cours',
+    simpleHideSubitems: true,
     url: '/zones',
     icon: MapPin,
     entity: 'zones',
@@ -77,14 +76,24 @@ const terrainItems = [
 
 const teamItems = [
   {
-    title: 'Commerciaux',
+    // Une seule entrée pour les trois annuaires. Le parent pointe sur la page la plus
+    // consultée ; en vue simple il perd ses sous-items et devient un lien direct,
+    // comme Zones.
+    title: 'Utilisateurs',
     url: '/commerciaux',
+    // En vue simple, une seule entrée plate vers la page fusionnée
+    // commerciaux + managers ; les directeurs n'y figurent pas.
+    simpleUrl: '/equipe',
+    simpleHideSubitems: true,
     icon: Briefcase,
     entity: 'commerciaux',
     simple: true,
+    subitems: [
+      { title: 'Commerciaux', url: '/commerciaux' },
+      { title: 'Managers', url: '/managers' },
+      { title: 'Directeurs', url: '/directeurs' },
+    ],
   },
-  { title: 'Managers', url: '/managers', icon: UserCog, entity: 'managers', simple: true },
-  { title: 'Directeurs', url: '/directeurs', icon: Shield, entity: 'directeurs', simple: true },
 ]
 
 const performanceItems = [
@@ -453,10 +462,17 @@ export function AppSidebar() {
               <SidebarMenu className="gap-0.5">
                 {group.items.map(item => {
                   const enriched = enrichedItems.find(e => e.title === item.title) || item
-                  // En vue simple, l'entrée perd son sous-menu et peut porter un
-                  // libellé dédié (« Zones » devient « Zones en cours »).
+                  // En vue simple, une entrée peut porter un libellé dédié et masquer
+                  // son sous-menu — mais seulement si elle le demande. Utilisateurs
+                  // garde ses trois sous-onglets, sinon Managers et Directeurs
+                  // deviendraient inatteignables dans cette vue.
                   const displayed = isSimple
-                    ? { ...enriched, title: item.simpleTitle || item.title, subitems: undefined }
+                    ? {
+                        ...enriched,
+                        title: item.simpleTitle || item.title,
+                        url: item.simpleUrl || enriched.url,
+                        subitems: item.simpleHideSubitems ? undefined : enriched.subitems,
+                      }
                     : enriched
                   return renderMenuItem(displayed)
                 })}
