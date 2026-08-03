@@ -27,6 +27,7 @@ import { Link, useLocation } from 'react-router-dom'
 import logoSvg from '@/assets/logo.svg'
 import { useRole } from '@/contexts/userole'
 import { hasPermission } from '@/hooks/metier/permissions/roleFilters'
+import { useSidebarMode, SIDEBAR_MODES } from '@/hooks/ui/use-sidebar-mode'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible'
 import { useDetailsSections } from '@/contexts/DetailsSectionsContext'
 import { cn } from '@/lib/utils'
@@ -46,16 +47,20 @@ import {
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
 
-const mainItems = [{ title: 'Dashboard', url: '/', icon: Home, entity: 'dashboard' }]
+const mainItems = [{ title: 'Dashboard', url: '/', icon: Home, entity: 'dashboard', simple: true }]
 
 const terrainItems = [
   { title: 'Bâtiments', url: '/immeubles', icon: Building2, entity: 'immeubles' },
-  { title: 'Ciblage Acquiscan', url: '/adresses', icon: Target, entity: 'immeubles' },
+  { title: 'Ciblage Acquiscan', url: '/adresses', icon: Target, entity: 'immeubles', simple: true },
   {
     title: 'Zones',
+    // En vue simple, l'entrée devient un lien direct « Zones en cours » : /zones EST
+    // déjà cette page, donc aucune route supplémentaire.
+    simpleTitle: 'Zones en cours',
     url: '/zones',
     icon: MapPin,
     entity: 'zones',
+    simple: true,
     subitems: [
       { title: 'Zones en cours', url: '/zones' },
       { title: 'Historique de zones', url: '/zones/historique' },
@@ -66,18 +71,38 @@ const terrainItems = [
     url: '/gps-tracking',
     icon: Navigation2,
     entity: 'gps-tracking',
+    simple: true,
   },
 ]
 
 const teamItems = [
-  { title: 'Commerciaux', url: '/commerciaux', icon: Briefcase, entity: 'commerciaux' },
-  { title: 'Managers', url: '/managers', icon: UserCog, entity: 'managers' },
-  { title: 'Directeurs', url: '/directeurs', icon: Shield, entity: 'directeurs' },
+  {
+    title: 'Commerciaux',
+    url: '/commerciaux',
+    icon: Briefcase,
+    entity: 'commerciaux',
+    simple: true,
+  },
+  { title: 'Managers', url: '/managers', icon: UserCog, entity: 'managers', simple: true },
+  { title: 'Directeurs', url: '/directeurs', icon: Shield, entity: 'directeurs', simple: true },
 ]
 
 const performanceItems = [
-  { title: 'Statistiques', url: '/statistiques', icon: BarChart3, entity: 'statistics' },
-  { title: 'Classement', url: '/gamification', icon: Trophy, entity: 'gamification', exact: true },
+  {
+    title: 'Statistiques',
+    url: '/statistiques',
+    icon: BarChart3,
+    entity: 'statistics',
+    simple: true,
+  },
+  {
+    title: 'Classement',
+    url: '/gamification',
+    icon: Trophy,
+    entity: 'gamification',
+    exact: true,
+    simple: true,
+  },
   {
     title: 'Bibliothèque',
     url: '/ecoutes/enregistrement',
@@ -137,6 +162,7 @@ export function AppSidebar() {
   const [openMenus, setOpenMenus] = React.useState({})
   const { sections, setFocusedSection } = useDetailsSections()
   const [activeSection, setActiveSection] = React.useState(null)
+  const { mode, setMode, isSimple } = useSidebarMode()
 
   const normalizePath = value => {
     if (!value) return ''
@@ -197,6 +223,24 @@ export function AppSidebar() {
       }, 2000)
     }
   }
+
+  /**
+   * Groupes réellement affichés : un item doit passer les DEUX filtres — la
+   * permission du rôle et, en vue simple, son drapeau `simple`. Aucun ne remplace
+   * l'autre. Les groupes qui se vident disparaissent, ce qui fait tomber tout le
+   * groupe Administration en vue simple.
+   */
+  const visibleGroups = React.useMemo(() => {
+    return navigationGroups
+      .map(group => ({
+        ...group,
+        items: group.items.filter(item => {
+          if (item.entity && !hasPermission(currentRole, item.entity, 'view')) return false
+          return isSimple ? Boolean(item.simple) : true
+        }),
+      }))
+      .filter(group => group.items.length > 0)
+  }, [currentRole, isSimple])
 
   // Enrichir les items du menu avec les sections dynamiques pour les pages de détails
   const enrichedItems = React.useMemo(() => {
@@ -397,32 +441,54 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="gap-1 px-1 py-2">
-        {navigationGroups.map((group, idx) => {
-          const groupVisible = group.items.filter(
-            item => !item.entity || hasPermission(currentRole, item.entity, 'view')
-          )
-          if (groupVisible.length === 0) return null
-          return (
-            <SidebarGroup
-              key={group.label}
-              className={cn('px-2 py-1', idx > 0 && 'mt-2 border-t border-sidebar-border/50 pt-3')}
-            >
-              <SidebarGroupLabel className="h-6 mb-1 px-2 text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">
-                {group.label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {groupVisible.map(item => {
-                    const enriched = enrichedItems.find(e => e.title === item.title) || item
-                    return renderMenuItem(enriched)
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )
-        })}
+        {visibleGroups.map((group, idx) => (
+          <SidebarGroup
+            key={group.label}
+            className={cn('px-2 py-1', idx > 0 && 'mt-2 border-t border-sidebar-border/50 pt-3')}
+          >
+            <SidebarGroupLabel className="h-6 mb-1 px-2 text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {group.items.map(item => {
+                  const enriched = enrichedItems.find(e => e.title === item.title) || item
+                  // En vue simple, l'entrée perd son sous-menu et peut porter un
+                  // libellé dédié (« Zones » devient « Zones en cours »).
+                  const displayed = isSimple
+                    ? { ...enriched, title: item.simpleTitle || item.title, subitems: undefined }
+                    : enriched
+                  return renderMenuItem(displayed)
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter>
+        {/* Bascule de densité de navigation. Contrôle segmenté, cohérent avec celui
+            de la page Bâtiments. */}
+        <div className="mx-2 mb-1 inline-flex items-center rounded-md border border-sidebar-border/60 p-0.5">
+          {[
+            { value: SIDEBAR_MODES.SIMPLE, label: 'Simple' },
+            { value: SIDEBAR_MODES.ADVANCED, label: 'Avancé' },
+          ].map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setMode(option.value)}
+              aria-pressed={mode === option.value}
+              className={cn(
+                'flex-1 rounded-[5px] px-2 py-1 text-[11px] font-medium transition-colors',
+                mode === option.value
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
