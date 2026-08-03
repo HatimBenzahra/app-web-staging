@@ -4,6 +4,7 @@ import { Trophy, TrendingUp, Calendar, DoorOpen } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardLogic } from './useDashboardLogic'
 import TerrainToday from './TerrainToday'
+import ProspectionCharts from './ProspectionCharts'
 
 function AnimatedNumber({ value, duration = 800 }) {
   const [display, setDisplay] = React.useState(0)
@@ -183,6 +184,11 @@ export default function Dashboard() {
       {/* ── Terrain du jour : carte dominante + commerciaux actifs ── */}
       <div className="dash-stagger" style={{ animationDelay: '160ms' }}>
         <TerrainToday />
+      </div>
+
+      {/* ── Graphes de prospection ── */}
+      <div className="dash-stagger" style={{ animationDelay: '240ms' }}>
+        <ProspectionCharts />
       </div>
     </div>
   )

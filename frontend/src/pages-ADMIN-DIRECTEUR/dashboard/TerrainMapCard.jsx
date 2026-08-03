@@ -40,6 +40,15 @@ function ActorMarker({ color, initial, dimmed, selected }) {
   )
 }
 
+/** L'anneau extérieur d'une zone, ou une liste vide si sa géométrie est inexploitable. */
+function zoneRing(zone) {
+  return zone?.geoJson?.geometry?.coordinates?.[0] ?? []
+}
+
+function actorPoints(actors) {
+  return (actors || []).map(actor => [actor.longitude, actor.latitude])
+}
+
 export default function TerrainMapCard({
   located,
   selectedKey,
@@ -47,25 +56,60 @@ export default function TerrainMapCard({
   selectActor,
   route,
   colorFor,
+  zones,
   focusedZone,
+  zoneOfSelectedActor,
+  actorsOfFocusedZone,
 }) {
   const mapRef = useRef(null)
   const cameraTargetRef = useRef(null)
 
   const routeColor = colorFor(selectedActor?.userId)
 
-  // Priorité : la zone focalisée, sinon le trajet du commercial sélectionné,
-  // sinon l'ensemble de la flotte localisée.
-  const cameraTarget = useMemo(() => {
-    if (focusedZone?.geoJson) return focusedZone.geoJson.geometry.coordinates[0]
-    if (selectedActor) {
-      if (route.geoJson) return route.geoJson.geometry.coordinates
-      if (selectedActor.hasPosition) return [[selectedActor.longitude, selectedActor.latitude]]
-      return null
+  /**
+   * Une géométrie par zone, pas par assignation : deux commerciaux affectés à la
+   * même zone produiraient deux polygones superposés, dont les remplissages se
+   * cumuleraient — la zone partagée paraîtrait plus foncée, donc mise en avant,
+   * alors qu'elle ne l'est pas.
+   */
+  const drawableZones = useMemo(() => {
+    const byZoneId = new Map()
+    for (const zone of zones || []) {
+      if (zone.geoJson && !byZoneId.has(zone.zoneId)) byZoneId.set(zone.zoneId, zone)
     }
-    if (located.length === 0) return null
-    return located.map(c => [c.longitude, c.latitude])
-  }, [focusedZone, selectedActor, route.geoJson, located])
+    return Array.from(byZoneId.values())
+  }, [zones])
+
+  /**
+   * On cadre toujours les deux couches ensemble, jamais l'une sans l'autre :
+   * - sans sélection : toutes les zones et tous les acteurs localisés ;
+   * - commercial sélectionné : son trajet (ou sa position) avec sa zone assignée ;
+   * - zone sélectionnée : la zone avec les acteurs qui y sont affectés.
+   */
+  const cameraTarget = useMemo(() => {
+    if (selectedActor) {
+      const actorCoords = route.geoJson
+        ? route.geoJson.geometry.coordinates
+        : selectedActor.hasPosition
+          ? [[selectedActor.longitude, selectedActor.latitude]]
+          : []
+      return [...actorCoords, ...zoneRing(zoneOfSelectedActor)]
+    }
+
+    if (focusedZone) {
+      return [...zoneRing(focusedZone), ...actorPoints(actorsOfFocusedZone)]
+    }
+
+    return [...drawableZones.flatMap(zoneRing), ...actorPoints(located)]
+  }, [
+    selectedActor,
+    route.geoJson,
+    zoneOfSelectedActor,
+    focusedZone,
+    actorsOfFocusedZone,
+    drawableZones,
+    located,
+  ])
 
   // La cible passe par un ref pour que `onLoad` applique toujours la dernière
   // connue, même si la carte finit de charger après l'arrivée des données.
@@ -120,20 +164,42 @@ export default function TerrainMapCard({
           attributionControl={false}
           onLoad={applyCamera}
         >
-          {focusedZone?.geoJson && (
-            <Source id="focused-zone" type="geojson" data={focusedZone.geoJson}>
-              <Layer
-                id="focused-zone-fill"
-                type="fill"
-                paint={{ 'fill-color': focusedZone.color, 'fill-opacity': 0.25 }}
-              />
-              <Layer
-                id="focused-zone-line"
-                type="line"
-                paint={{ 'line-color': focusedZone.color, 'line-width': 2 }}
-              />
-            </Source>
-          )}
+          {/*
+            Toutes les zones assignées sont dessinées en permanence : sélectionner
+            une zone ou un commercial ne fait jamais disparaître le contexte, seule
+            l'emphase change. Les non-focalisées restent très discrètes, sinon
+            plusieurs remplissages superposés brouilleraient contours et marqueurs.
+          */}
+          {drawableZones.map(zone => {
+            // L'emphase suit la zone, pas la ligne cliquée : focaliser l'une des
+            // assignations d'une zone partagée met bien en avant cette zone.
+            const isFocused = focusedZone?.zoneId === zone.zoneId
+            return (
+              <Source
+                key={zone.zoneId}
+                id={`zone-${zone.zoneId}`}
+                type="geojson"
+                data={zone.geoJson}
+              >
+                <Layer
+                  id={`zone-fill-${zone.zoneId}`}
+                  type="fill"
+                  paint={{
+                    'fill-color': zone.color,
+                    'fill-opacity': isFocused ? 0.22 : 0.08,
+                  }}
+                />
+                <Layer
+                  id={`zone-line-${zone.zoneId}`}
+                  type="line"
+                  paint={{
+                    'line-color': zone.color,
+                    'line-width': isFocused ? 3 : 1.5,
+                  }}
+                />
+              </Source>
+            )
+          })}
 
           {route.geoJson && (
             <Source id="daily-route" type="geojson" data={route.geoJson}>

@@ -30,7 +30,8 @@ export default function TerrainToday() {
   const { zones, loading: zonesLoading } = useAssignedZones()
   const [selectedZoneId, setSelectedZoneId] = useState(null)
 
-  // Les deux focus s'excluent : une zone ou un commercial, jamais les deux.
+  // Un seul sujet cadré à la fois — mais les deux couches restent dessinées, donc
+  // sélectionner ne fait jamais disparaître le contexte.
   const handleSelectActor = useCallback(
     actor => {
       setSelectedZoneId(null)
@@ -52,6 +53,26 @@ export default function TerrainToday() {
     () => zones.find(z => z.id === selectedZoneId) ?? null,
     [zones, selectedZoneId]
   )
+
+  // La zone du commercial sélectionné, pour le cadrer avec son terrain.
+  const zoneOfSelectedActor = useMemo(() => {
+    if (!selectedActor) return null
+    return zones.find(z => `${z.userType}-${z.userId}` === selectedActor.key) ?? null
+  }, [zones, selectedActor])
+
+  /**
+   * Les acteurs localisés affectés à la MÊME zone que la ligne focalisée — par
+   * `zoneId` et non par assignation : une zone peut porter plusieurs assignations
+   * (deux commerciaux sur « Montreuil »), et focaliser l'une doit cadrer la zone
+   * avec l'ensemble de ses commerciaux.
+   */
+  const actorsOfFocusedZone = useMemo(() => {
+    if (!focusedZone) return []
+    const keys = new Set(
+      zones.filter(z => z.zoneId === focusedZone.zoneId).map(z => `${z.userType}-${z.userId}`)
+    )
+    return located.filter(actor => keys.has(actor.key))
+  }, [focusedZone, zones, located])
 
   if (isLoading) {
     return (
@@ -84,7 +105,10 @@ export default function TerrainToday() {
         selectActor={handleSelectActor}
         route={route}
         colorFor={colorFor}
+        zones={zonesLoading ? [] : zones}
         focusedZone={focusedZone}
+        zoneOfSelectedActor={zoneOfSelectedActor}
+        actorsOfFocusedZone={actorsOfFocusedZone}
       />
       <div className={SIDE_COLUMN}>
         <ActiveCommercialsCard

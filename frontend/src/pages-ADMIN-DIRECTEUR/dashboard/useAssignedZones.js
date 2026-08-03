@@ -46,6 +46,9 @@ export function useAssignedZones() {
           zoneId: a.zoneId,
           zoneName: a.zone?.nom || `Zone ${a.zoneId}`,
           userName: resolveActorName(a.userId, a.userType),
+          // userId + userType forment la clé de jointure avec les acteurs GPS,
+          // qui permet de cadrer un commercial avec sa zone et inversement.
+          userId: Number(a.userId),
           userType: a.userType,
           assignedAt: a.assignedAt,
           immeublesCount: a.zone?.immeubles?.length ?? 0,
