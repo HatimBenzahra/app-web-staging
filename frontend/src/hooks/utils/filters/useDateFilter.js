@@ -10,10 +10,28 @@ export function useDateFilter() {
   const [appliedStartDate, setAppliedStartDate] = useState('')
   const [appliedEndDate, setAppliedEndDate] = useState('')
 
-  // Fonction pour valider les filtres
-  const handleApplyFilters = () => {
-    setAppliedStartDate(startDate)
-    setAppliedEndDate(endDate)
+  /**
+   * Valide les filtres.
+   *
+   * Accepte des dates explicites, indispensable pour les presets : ils posent les
+   * dates et appliquent dans le même geste. Sans ce paramètre, l'appel se faisait via
+   * une closure capturée avant la mise à jour d'état et appliquait les anciennes
+   * valeurs. Sans argument, on applique le brouillon courant — comportement inchangé
+   * pour le bouton « Appliquer ».
+   *
+   * @param {string} [nextStart]
+   * @param {string} [nextEnd]
+   */
+  const handleApplyFilters = (nextStart, nextEnd) => {
+    const start = nextStart !== undefined ? nextStart : startDate
+    const end = nextEnd !== undefined ? nextEnd : endDate
+
+    // On aligne aussi le brouillon, sinon le panneau réafficherait les anciennes
+    // valeurs alors que la période appliquée a changé.
+    setStartDate(start)
+    setEndDate(end)
+    setAppliedStartDate(start)
+    setAppliedEndDate(end)
   }
 
   // Fonction pour réinitialiser les filtres

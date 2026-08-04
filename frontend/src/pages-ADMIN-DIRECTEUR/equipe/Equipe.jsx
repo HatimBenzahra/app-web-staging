@@ -3,6 +3,7 @@ import { TableSkeleton } from '@/components/LoadingSkeletons'
 import PeopleListToolbar from '@/components/people/PeopleListToolbar'
 import PeopleCardsView from '@/components/people/PeopleCardsView'
 import RankTiersCard from '@/components/people/RankTiersCard'
+import GuideVideoCard from '@/components/guide/GuideVideoCard'
 import { filterPeople } from '@/components/people/people-filters'
 import { UserStatus } from '@/constants/domain/user-status'
 import { useCommerciauxLogic } from '../commercial/useCommerciauxLogic'
@@ -122,7 +123,12 @@ export default function Equipe() {
           emptyLabel="Aucun membre pour ces filtres"
         />
 
-        <RankTiersCard />
+        {/* Colonne latérale : les paliers d'abord — ils expliquent les chiffres de la
+            liste — puis le guide, qui explique le reste du parcours. */}
+        <div className="space-y-6">
+          <RankTiersCard />
+          <GuideVideoCard />
+        </div>
       </div>
     </div>
   )

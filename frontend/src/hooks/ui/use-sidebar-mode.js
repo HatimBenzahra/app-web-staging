@@ -15,12 +15,15 @@ export const SIDEBAR_MODES = {
  * par navigateur et non par compte : un même utilisateur peut retrouver un mode
  * différent sur un autre poste. Le lier au profil demanderait un champ backend.
  *
- * Le défaut est `advanced` : on ne retire rien à personne sans action explicite.
+ * Le défaut est `simple` : c'est la navigation du quotidien, et celle qu'on recommande.
+ * Le mode complet reste à un clic, et le choix est mémorisé — un utilisateur qui a
+ * basculé en `advanced` le retrouve tel quel. Seule l'ABSENCE de préférence retombe sur
+ * `simple`, d'où la comparaison sur `advanced` et non sur `simple`.
  */
 export function useSidebarMode() {
   const [mode, setModeState] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
-    return stored === SIDEBAR_MODES.SIMPLE ? SIDEBAR_MODES.SIMPLE : SIDEBAR_MODES.ADVANCED
+    return stored === SIDEBAR_MODES.ADVANCED ? SIDEBAR_MODES.ADVANCED : SIDEBAR_MODES.SIMPLE
   })
 
   const setMode = useCallback(nextMode => {

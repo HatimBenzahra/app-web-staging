@@ -175,6 +175,24 @@ export function AppSidebar() {
   const [activeSection, setActiveSection] = React.useState(null)
   const { mode, setMode, isSimple } = useSidebarMode()
 
+  /**
+   * Bascule de densité : on enregistre la préférence, puis on RECHARGE vers le tableau
+   * de bord.
+   *
+   * Le rechargement seul ne suffirait pas — il rejouerait la même URL, et l'écran
+   * courant peut très bien avoir disparu de la navigation cible (Coaching IA, Kiosk et
+   * Gestion n'existent pas en vue simple ; /equipe n'existe pas en vue avancée). On
+   * repart donc du Dashboard, seule page présente dans les deux vues.
+   *
+   * `location.assign` et non `navigate` : la sidebar, les permissions et les entrées
+   * dérivées sont reconstruites à froid, sans état résiduel de l'ancienne vue.
+   */
+  const handleModeChange = nextMode => {
+    if (nextMode === mode) return // déjà actif : pas de rechargement inutile
+    setMode(nextMode) // écrit localStorage avant de quitter la page
+    window.location.assign('/')
+  }
+
   const normalizePath = value => {
     if (!value) return ''
     return value.replace(/\/+$/, '') || '/'
@@ -496,7 +514,7 @@ export function AppSidebar() {
             return (
               <SidebarMenuItem key={option.value}>
                 <SidebarMenuButton
-                  onClick={() => setMode(option.value)}
+                  onClick={() => handleModeChange(option.value)}
                   isActive={mode === option.value}
                   aria-pressed={mode === option.value}
                   tooltip={option.label}

@@ -3,6 +3,7 @@ import {
   Loader2,
   RefreshCw,
   ClipboardList,
+  CircleHelp,
   ThumbsUp,
   TrendingUp,
   ListChecks,
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import CoachingService from '@/services/coaching/coaching.service'
 import CoachingSessionsModal from './CoachingSessionsModal'
+import GuideVideoDialog from '@/components/guide/GuideVideoDialog'
 
 const POLL_MS = 5000
 
@@ -92,6 +94,7 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
   const [readyCount, setReadyCount] = useState(null)
   const pollRef = useRef(null)
 
@@ -183,6 +186,18 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
+              </Button>
+              {/* C'est ICI que la question « d'où sortent ces notes ? » se pose — pas sur
+                  la liste d'équipe. Le guide s'ouvre donc directement au chapitre
+                  coaching, résolu par titre côté modale. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setGuideOpen(true)}
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <CircleHelp className="h-3.5 w-3.5" />
+                Comment ça marche ?
               </Button>
             </div>
 
@@ -303,6 +318,13 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
           )}
         </CardContent>
       </Card>
+
+      <GuideVideoDialog
+        open={guideOpen}
+        onOpenChange={setGuideOpen}
+        startAtChapter={/coaching/i}
+        title="Comprendre le bilan coaching"
+      />
 
       <CoachingSessionsModal
         open={sessionsOpen}
