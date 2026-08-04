@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Users } from 'lucide-react'
 import EditModal from '@/components/EditModal'
+import { ActionConfirmation } from '@/components/ActionConfirmation'
 import PersonListCard from './PersonListCard'
 
 /**
@@ -22,10 +23,16 @@ export default function PeopleCardsView({
   editFields,
   onSave,
   editTitle = 'Modifier la fiche',
+  canArchive,
+  onArchive,
   emptyLabel = 'Aucun résultat',
 }) {
   const [editing, setEditing] = useState(null)
+  const [archiving, setArchiving] = useState(null)
+  const [archivePending, setArchivePending] = useState(false)
   const editable = Boolean(canEdit && (editFields || onSave !== undefined))
+  // Le handler peut venir de la prop ou de la personne (liste fusionnée).
+  const archivable = Boolean(canArchive)
 
   if (!people || people.length === 0) {
     return (
@@ -48,6 +55,8 @@ export default function PeopleCardsView({
             showRanking={showRanking}
             canEdit={editable}
             onEdit={setEditing}
+            canArchive={archivable}
+            onArchive={setArchiving}
           />
         ))}
       </div>
@@ -70,6 +79,26 @@ export default function PeopleCardsView({
           }}
         />
       )}
+
+      <ActionConfirmation
+        isOpen={Boolean(archiving)}
+        onClose={() => setArchiving(null)}
+        type="info"
+        title="Archiver ce membre"
+        description="Son statut passera à « Contrat fini ». Il disparaîtra des listes filtrées sur les actifs, mais sa fiche et son historique sont conservés. L'opération est réversible en modifiant son statut."
+        itemName={archiving ? `${archiving.prenom || ''} ${archiving.nom || ''}`.trim() : undefined}
+        confirmText="Archiver"
+        isLoading={archivePending}
+        onConfirm={async () => {
+          setArchivePending(true)
+          try {
+            await (archiving.onArchive || onArchive)(archiving.id)
+            setArchiving(null)
+          } finally {
+            setArchivePending(false)
+          }
+        }}
+      />
     </>
   )
 }

@@ -16,6 +16,7 @@ export default memo(function Commerciaux() {
     refetch,
     commerciauxEditFields,
     handleEditCommercial,
+    handleArchiveCommercial,
   } = useCommerciauxLogic()
 
   const [search, setSearch] = useState('')
@@ -77,12 +78,10 @@ export default memo(function Commerciaux() {
         <PeopleCardsView
           people={cardsPeople}
           detailsPath="/commerciaux"
-          factsOf={person => [
-            { label: 'Manager', value: person.managerName },
-            { label: 'Directeur', value: person.directeurName },
-          ]}
           showRanking={true}
           canEdit={permissions.canEdit}
+          canArchive={permissions.canEdit}
+          onArchive={handleArchiveCommercial}
           editFields={commerciauxEditFields}
           onSave={handleEditCommercial}
           editTitle="Modifier le commercial"

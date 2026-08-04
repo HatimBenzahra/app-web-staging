@@ -8,8 +8,14 @@ import { UserStatus } from '@/constants/domain/user-status'
 import { useManagersLogic } from './useManagersLogic'
 
 export default function Managers() {
-  const { tableData, permissions, managersLoading, managersEditFields, handleEditManager } =
-    useManagersLogic()
+  const {
+    tableData,
+    permissions,
+    managersLoading,
+    managersEditFields,
+    handleEditManager,
+    handleArchiveManager,
+  } = useManagersLogic()
 
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState(UserStatus.ACTIF)
@@ -48,12 +54,10 @@ export default function Managers() {
         <PeopleCardsView
           people={cardsPeople}
           detailsPath="/managers"
-          factsOf={person => [
-            { label: 'Directeur', value: person.directeur },
-            { label: 'Email', value: person.email },
-          ]}
           showRanking={true}
           canEdit={permissions.canEdit}
+          canArchive={permissions.canEdit}
+          onArchive={handleArchiveManager}
           editFields={managersEditFields}
           onSave={handleEditManager}
           editTitle="Modifier le manager"

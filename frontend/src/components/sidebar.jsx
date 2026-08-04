@@ -11,6 +11,8 @@ import {
   Users,
   ArrowLeft,
   LogOut,
+  Minimize2,
+  Maximize2,
   Briefcase,
   LayoutDashboard,
   Tablet,
@@ -482,29 +484,31 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        {/* Bascule de densité de navigation. Contrôle segmenté, cohérent avec celui
-            de la page Bâtiments. */}
-        <div className="mx-2 mb-1 inline-flex items-center rounded-md border border-sidebar-border/60 p-0.5">
+        {/* Bascule de densité de navigation, en primitives shadcn : `SidebarMenuButton`
+            gère seul le mode replié (icône seule) et n'affiche le tooltip que dans cet
+            état, via son `useSidebar()` interne. */}
+        <SidebarMenu>
           {[
-            { value: SIDEBAR_MODES.SIMPLE, label: 'Simple' },
-            { value: SIDEBAR_MODES.ADVANCED, label: 'Avancé' },
-          ].map(option => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setMode(option.value)}
-              aria-pressed={mode === option.value}
-              className={cn(
-                'flex-1 rounded-[5px] px-2 py-1 text-[11px] font-medium transition-colors',
-                mode === option.value
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+            { value: SIDEBAR_MODES.SIMPLE, label: 'Vue simple', icon: Minimize2 },
+            { value: SIDEBAR_MODES.ADVANCED, label: 'Vue avancée', icon: Maximize2 },
+          ].map(option => {
+            const Icon = option.icon
+            return (
+              <SidebarMenuItem key={option.value}>
+                <SidebarMenuButton
+                  onClick={() => setMode(option.value)}
+                  isActive={mode === option.value}
+                  aria-pressed={mode === option.value}
+                  tooltip={option.label}
+                  size="sm"
+                >
+                  <Icon />
+                  <span>{option.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+        </SidebarMenu>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

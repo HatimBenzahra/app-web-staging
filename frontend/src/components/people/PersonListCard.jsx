@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Pencil } from 'lucide-react'
+import { Pencil, Archive } from 'lucide-react'
 import { getStatusMeta } from '@/constants/domain/user-status'
 
 /**
@@ -49,6 +49,8 @@ export default function PersonListCard({
   showRanking = true,
   canEdit,
   onEdit,
+  canArchive,
+  onArchive,
 }) {
   const statusMeta = getStatusMeta(person.status)
   const fullName = `${person.prenom || ''} ${person.nom || ''}`.trim() || `#${person.id}`
@@ -124,6 +126,19 @@ export default function PersonListCard({
               className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
             >
               <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canArchive && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Archiver ${fullName}`}
+              title="Archiver (contrat fini)"
+              onClick={() => onArchive(person)}
+              className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <Archive className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>

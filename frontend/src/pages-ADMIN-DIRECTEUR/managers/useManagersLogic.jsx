@@ -8,7 +8,11 @@ import {
 import { useEntityPage } from '@/hooks/metier/permissions/useRoleBasedData'
 import { useRole } from '@/contexts/userole'
 import { useErrorToast } from '@/hooks/utils/ui/use-error-toast'
-import { USER_STATUS_CONFIG, getStatusFilterOptions } from '@/constants/domain/user-status'
+import {
+  USER_STATUS_CONFIG,
+  UserStatus,
+  getStatusFilterOptions,
+} from '@/constants/domain/user-status'
 import { useStatusBadge } from '@/hooks/utils/ui/useStatusBadge'
 import { useRanking } from '@/hooks/metier/api/gamification'
 import { currentMonthlyPeriodKey, indexRankingByUser, toRankInfo } from '@/lib/rank-wps'
@@ -247,6 +251,18 @@ export function useManagersLogic() {
     [directeurOptions]
   )
 
+  /** Archiver = passer le manager au statut « Contrat fini » (mise à jour partielle). */
+  const handleArchiveManager = async id => {
+    try {
+      await updateManager({ id, status: UserStatus.CONTRAT_FINIE })
+      await refetch()
+      showSuccess('Manager archivé (contrat fini)')
+    } catch (error) {
+      showError(error, 'Managers.handleArchiveManager')
+      throw error
+    }
+  }
+
   const handleEditManager = async editedData => {
     try {
       const updateInput = {
@@ -280,6 +296,7 @@ export function useManagersLogic() {
     managersLoading: managersLoading || lastActivitiesLoading,
     managersEditFields,
     handleEditManager,
+    handleArchiveManager,
     isAdmin,
     statusOptions: getStatusFilterOptions(),
   }

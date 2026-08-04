@@ -28,6 +28,7 @@ export default function Equipe() {
     loading: commerciauxLoading,
     commerciauxEditFields,
     handleEditCommercial,
+    handleArchiveCommercial,
   } = useCommerciauxLogic()
 
   const {
@@ -36,6 +37,7 @@ export default function Equipe() {
     managersLoading,
     managersEditFields,
     handleEditManager,
+    handleArchiveManager,
   } = useManagersLogic()
 
   const [search, setSearch] = useState('')
@@ -50,6 +52,7 @@ export default function Equipe() {
         detailsPath: '/commerciaux',
         editFields: commerciauxEditFields,
         onSaveEdit: handleEditCommercial,
+        onArchive: handleArchiveCommercial,
       })),
       ...(managers || []).map(person => ({
         ...person,
@@ -58,6 +61,7 @@ export default function Equipe() {
         detailsPath: '/managers',
         editFields: managersEditFields,
         onSaveEdit: handleEditManager,
+        onArchive: handleArchiveManager,
       })),
     ]
 
@@ -72,8 +76,10 @@ export default function Equipe() {
     managers,
     commerciauxEditFields,
     handleEditCommercial,
+    handleArchiveCommercial,
     managersEditFields,
     handleEditManager,
+    handleArchiveManager,
   ])
 
   const visiblePeople = useMemo(
@@ -111,6 +117,7 @@ export default function Equipe() {
         <PeopleCardsView
           people={visiblePeople}
           canEdit={commerciauxPermissions.canEdit || managersPermissions.canEdit}
+          canArchive={commerciauxPermissions.canEdit || managersPermissions.canEdit}
           editTitle="Modifier la fiche"
           emptyLabel="Aucun membre pour ces filtres"
         />
