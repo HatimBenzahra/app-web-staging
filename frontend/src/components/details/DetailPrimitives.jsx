@@ -9,11 +9,60 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import GameIcon from '@/components/gamification/GameIcon'
 
-/** Tuile KPI : libellé + valeur + indice, icône Game Icons optionnelle (par `iconName`). */
-export function StatTile({ iconName, label, value, hint, valueClassName }) {
+/**
+ * Écart d'un KPI par rapport à la période précédente.
+ *
+ * `goodDirection` existe parce que « ça monte » n'est pas toujours une bonne
+ * nouvelle : +12 contrats se colore en vert, +12 refus en rouge. Sans ce
+ * paramètre, la couleur mentirait sur la moitié des indicateurs.
+ */
+function DeltaLine({ delta, suffix, goodDirection = 'up', label = 'vs période précédente' }) {
+  if (delta == null || Number.isNaN(delta)) return null
+
+  const rounded = Math.round(delta * 10) / 10
+  if (rounded === 0) {
+    return <p className="mt-1.5 text-xs text-muted-foreground">Stable {label}</p>
+  }
+
+  const isUp = rounded > 0
+  const isGood = goodDirection === 'up' ? isUp : !isUp
+  const formatted = new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: 1,
+    signDisplay: 'always',
+  }).format(rounded)
+
+  return (
+    <p
+      className={`mt-1.5 flex items-center gap-1 text-xs font-semibold tabular-nums ${
+        isGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
+      }`}
+    >
+      {isUp ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      {formatted}
+      {suffix}
+      <span className="font-normal text-muted-foreground">{label}</span>
+    </p>
+  )
+}
+
+/**
+ * Tuile KPI : libellé + valeur + indice, icône Game Icons optionnelle (`iconName`).
+ * `delta` affiche l'écart vs période précédente — un chiffre nu n'informe pas.
+ */
+export function StatTile({
+  iconName,
+  label,
+  value,
+  hint,
+  valueClassName,
+  delta,
+  deltaSuffix,
+  deltaGoodDirection,
+  deltaLabel,
+}) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -21,10 +70,18 @@ export function StatTile({ iconName, label, value, hint, valueClassName }) {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className={`mt-2 text-2xl font-bold tracking-tight ${valueClassName || ''}`}>
+          <p
+            className={`mt-2 text-2xl font-bold tracking-tight tabular-nums ${valueClassName || ''}`}
+          >
             {value}
           </p>
           {hint && <p className="mt-1 text-xs text-muted-foreground truncate">{hint}</p>}
+          <DeltaLine
+            delta={delta}
+            suffix={deltaSuffix}
+            goodDirection={deltaGoodDirection}
+            label={deltaLabel}
+          />
         </div>
         {iconName && (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">

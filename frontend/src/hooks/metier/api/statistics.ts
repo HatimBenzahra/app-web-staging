@@ -7,6 +7,10 @@ import type {
   Statistic,
   TimelinePoint,
   OwnerActivityStatistic,
+  StatsPeriodComparison,
+  StatsEffort,
+  ContratsValidesAggregate,
+  ProspectionPipeline,
   ZoneStatistic,
   TeamLastStatusActivity,
   CreateStatisticInput,
@@ -69,6 +73,55 @@ export function useStatsActivityByOwner(
     () => api.statistics.getStatsActivityByOwner(filters),
     [key],
     'statsActivityByOwner'
+  )
+}
+
+/**
+ * Totaux de la période + période précédente de même durée.
+ * `previous` est absent quand la plage n'est pas bornée des deux côtés.
+ */
+export function useStatsPeriodComparison(
+  filters = {}
+): UseApiState<StatsPeriodComparison> & UseApiActions {
+  const key = JSON.stringify(filters)
+  return useApiCall(
+    () => api.statistics.getStatsPeriodComparison(filters),
+    [key],
+    'statsPeriodComparison'
+  )
+}
+
+/** Effort terrain mesuré (durées de passage renseignées par le mobile). */
+export function useStatsEffort(filters = {}): UseApiState<StatsEffort> & UseApiActions {
+  return useApiCall(
+    () => api.statistics.getStatsEffort(filters),
+    [JSON.stringify(filters)],
+    'statsEffort'
+  )
+}
+
+/** Contrats validés back-office, agrégés et comparés à la période précédente. */
+export function useContratsValidesAggregate(
+  filters = {}
+): UseApiState<ContratsValidesAggregate> & UseApiActions {
+  return useApiCall(
+    () => api.statistics.getContratsValidesAggregate(filters),
+    [JSON.stringify(filters)],
+    'contratsValidesAggregate'
+  )
+}
+
+/**
+ * Stock de travail de prospection à l'instant présent.
+ * Ne reçoit que le périmètre : un stock ne se filtre pas par période.
+ */
+export function useProspectionPipeline(
+  filters = {}
+): UseApiState<ProspectionPipeline> & UseApiActions {
+  return useApiCall(
+    () => api.statistics.getProspectionPipeline(filters),
+    [JSON.stringify(filters)],
+    'prospectionPipeline'
   )
 }
 

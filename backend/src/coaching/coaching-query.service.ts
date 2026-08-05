@@ -14,6 +14,9 @@ import {
   CoachingQueueItemDto,
   CoachingManagementFilter,
   CoachingManagementItemDto,
+  CoachingScoreboardDto,
+  CoachingScoreboardRowDto,
+  CoachingStepAverageDto,
 } from './coaching.dto';
 import { CriterionScore, StepScore } from './coaching.types';
 
@@ -525,6 +528,277 @@ export class CoachingQueryService {
     ];
     out.sort((a, b) => a.subjectName.localeCompare(b.subjectName));
     return out;
+  }
+
+  /**
+   * Comparatif de scoring coaching entre intervenants, sur une période.
+   *
+   * Deux partis pris :
+   *
+   * 1. **Seules les analyses notées comptent.** `INEXPLOITABLE` et les échecs sont
+   *    exclus de la moyenne (leur `score` ne veut rien dire) mais recomptés à part,
+   *    pour que l'UI puisse dire sur quoi la note porte.
+   * 2. **Le profil par étape vient des `subScores`**, pas d'un recalcul. Une étape
+   *    non applicable à un échange n'entre pas dans sa moyenne — sinon un commercial
+   *    qui n'a jamais eu à traiter le closing serait pénalisé sur cette étape.
+   *
+   * La corrélation score ↔ conversion réelle n'est pas faite ici : elle se joue côté
+   * UI en rapprochant ces lignes de `statsActivityByOwner`, qui porte déjà le taux
+   * de conversion par intervenant. Rien à dupliquer.
+   */
+  async coachingScoreboard(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<CoachingScoreboardDto> {
+    const activeVersion = await this.salesPlans.getActiveVersion();
+    const planSteps = activeVersion
+      ? (this.salesPlans.toParsedPlan(activeVersion).steps ?? [])
+      : [];
+
+    const dateWhere = (start?: Date, end?: Date) =>
+      start || end
+        ? {
+            createdAt: {
+              ...(start ? { gte: start } : {}),
+              ...(end ? { lte: end } : {}),
+            },
+          }
+        : {};
+
+    const select = {
+      id: true,
+      commercialId: true,
+      managerId: true,
+      score: true,
+      quality: true,
+      subScores: true,
+      createdAt: true,
+    } as const;
+
+    // Période précédente contiguë et de même durée, pour l'écart de score.
+    const previousRange =
+      startDate && endDate
+        ? (() => {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const span = end.getTime() - start.getTime();
+            if (span < 0) return null;
+            const previousEnd = new Date(start.getTime() - 1);
+            return {
+              start: new Date(previousEnd.getTime() - span),
+              end: previousEnd,
+            };
+          })()
+        : null;
+
+    const [rows, previousRows] = await Promise.all([
+      this.prisma.coachingAnalysis.findMany({
+        where: { status: CoachingStatus.READY, ...dateWhere(startDate, endDate) },
+        select,
+        orderBy: { createdAt: 'desc' },
+      }),
+      previousRange
+        ? this.prisma.coachingAnalysis.findMany({
+            where: {
+              status: CoachingStatus.READY,
+              ...dateWhere(previousRange.start, previousRange.end),
+            },
+            select,
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([] as any[]),
+    ]);
+
+    const subjects = await this.resolveSubjects([...rows, ...previousRows]);
+
+    // Les utilisateurs de test ne doivent pas polluer un comparatif de performance.
+    const productionSubjectKeys = await this.productionSubjectKeys(subjects);
+
+    type Bucket = {
+      subjectId: number;
+      subjectName: string;
+      subjectRole: string;
+      scores: number[];
+      nbLowConfidence: number;
+      nbInexploitable: number;
+      stepTotals: Map<string, { sum: number; count: number }>;
+      derniereAnalyseAt?: Date;
+    };
+
+    const scored = (row: { score: number | null; quality: string | null }) =>
+      row.score != null && row.quality !== CoachingQuality.INEXPLOITABLE;
+
+    const accumulateSteps = (
+      target: Map<string, { sum: number; count: number }>,
+      subScores: unknown,
+    ) => {
+      const steps = (subScores as StepScore[] | null) ?? [];
+      for (const step of steps) {
+        if (!step.applicable || step.score == null) continue;
+        const current = target.get(step.key) ?? { sum: 0, count: 0 };
+        current.sum += step.score;
+        current.count += 1;
+        target.set(step.key, current);
+      }
+    };
+
+    const buckets = new Map<string, Bucket>();
+    const teamScores: number[] = [];
+    const teamSteps = new Map<string, { sum: number; count: number }>();
+
+    for (const row of rows) {
+      const subject = subjects.get(row.id);
+      if (!subject) continue;
+      const key = `${subject.role}:${subject.id}`;
+      if (!productionSubjectKeys.has(key)) continue;
+
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          scores: [],
+          nbLowConfidence: 0,
+          nbInexploitable: 0,
+          stepTotals: new Map(),
+        };
+        buckets.set(key, bucket);
+      }
+
+      if (row.quality === CoachingQuality.INEXPLOITABLE) {
+        bucket.nbInexploitable += 1;
+        continue;
+      }
+      if (row.quality === CoachingQuality.LOW_CONFIDENCE) {
+        bucket.nbLowConfidence += 1;
+      }
+      if (!scored(row)) continue;
+
+      bucket.scores.push(row.score as number);
+      accumulateSteps(bucket.stepTotals, row.subScores);
+      if (!bucket.derniereAnalyseAt || row.createdAt > bucket.derniereAnalyseAt) {
+        bucket.derniereAnalyseAt = row.createdAt;
+      }
+
+      teamScores.push(row.score as number);
+      accumulateSteps(teamSteps, row.subScores);
+    }
+
+    // Moyennes de la période précédente, par sujet et pour l'équipe.
+    const previousBySubject = new Map<string, number[]>();
+    const previousTeamScores: number[] = [];
+    for (const row of previousRows) {
+      const subject = subjects.get(row.id);
+      if (!subject || !scored(row)) continue;
+      const key = `${subject.role}:${subject.id}`;
+      if (!productionSubjectKeys.has(key)) continue;
+
+      const list = previousBySubject.get(key) ?? [];
+      list.push(row.score as number);
+      previousBySubject.set(key, list);
+      previousTeamScores.push(row.score as number);
+    }
+
+    const average = (values: number[]) =>
+      values.length
+        ? Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10
+        : null;
+
+    const buildSteps = (
+      totals: Map<string, { sum: number; count: number }>,
+    ): CoachingStepAverageDto[] =>
+      planSteps.map((step) => {
+        const entry = totals.get(step.key);
+        return {
+          key: step.key,
+          label: step.label,
+          weight: step.weight,
+          score: entry?.count
+            ? Math.round((entry.sum / entry.count) * 10) / 10
+            : null,
+          nbAnalyses: entry?.count ?? 0,
+        };
+      });
+
+    const rowsOut: CoachingScoreboardRowDto[] = [...buckets.entries()]
+      .map(([key, bucket]) => {
+        const scoreMoyen = average(bucket.scores);
+        const scoreMoyenPrecedent = average(previousBySubject.get(key) ?? []);
+        return {
+          subjectId: bucket.subjectId,
+          subjectName: bucket.subjectName,
+          subjectRole: bucket.subjectRole,
+          nbAnalyses: bucket.scores.length,
+          scoreMoyen,
+          scoreMin: bucket.scores.length ? Math.min(...bucket.scores) : null,
+          scoreMax: bucket.scores.length ? Math.max(...bucket.scores) : null,
+          scoreMoyenPrecedent,
+          deltaScore:
+            scoreMoyen != null && scoreMoyenPrecedent != null
+              ? Math.round((scoreMoyen - scoreMoyenPrecedent) * 10) / 10
+              : null,
+          nbLowConfidence: bucket.nbLowConfidence,
+          nbInexploitable: bucket.nbInexploitable,
+          steps: buildSteps(bucket.stepTotals),
+          derniereAnalyseAt: bucket.derniereAnalyseAt?.toISOString() ?? null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          (b.scoreMoyen ?? -1) - (a.scoreMoyen ?? -1) ||
+          b.nbAnalyses - a.nbAnalyses ||
+          a.subjectName.localeCompare(b.subjectName),
+      );
+
+    return {
+      rows: rowsOut,
+      scoreMoyenEquipe: average(teamScores),
+      scoreMoyenEquipePrecedent: average(previousTeamScores),
+      nbAnalyses: teamScores.length,
+      stepsEquipe: buildSteps(teamSteps),
+    };
+  }
+
+  /**
+   * Clés `role:id` des sujets qui ne sont pas des utilisateurs de test.
+   * Un commercial supprimé entre-temps disparaît aussi du comparatif.
+   */
+  private async productionSubjectKeys(
+    subjects: Map<number, { name: string; role: 'commercial' | 'manager'; id: number }>,
+  ): Promise<Set<string>> {
+    const commercialIds = new Set<number>();
+    const managerIds = new Set<number>();
+    for (const subject of subjects.values()) {
+      if (subject.role === 'commercial') commercialIds.add(subject.id);
+      else managerIds.add(subject.id);
+    }
+
+    const [commercials, managers] = await Promise.all([
+      commercialIds.size
+        ? this.prisma.commercial.findMany({
+            where: {
+              id: { in: [...commercialIds] },
+              status: { not: UserStatus.UTILISATEUR_TEST },
+            },
+            select: { id: true },
+          })
+        : Promise.resolve([] as { id: number }[]),
+      managerIds.size
+        ? this.prisma.manager.findMany({
+            where: {
+              id: { in: [...managerIds] },
+              status: { not: UserStatus.UTILISATEUR_TEST },
+            },
+            select: { id: true },
+          })
+        : Promise.resolve([] as { id: number }[]),
+    ]);
+
+    return new Set([
+      ...commercials.map((c) => `commercial:${c.id}`),
+      ...managers.map((m) => `manager:${m.id}`),
+    ]);
   }
 
   private toDto(row: any): CoachingAnalysisDto {

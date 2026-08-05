@@ -16,6 +16,7 @@ import {
   CoachingStatsDto,
   CoachingQueueItemDto,
   CoachingManagementFilter,
+  CoachingScoreboardDto,
   PaginatedCoachingManagement,
   CoachableSubjectDto,
 } from './coaching.dto';
@@ -121,6 +122,16 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachingStats(): Promise<CoachingStatsDto> {
     return this.query.getStats();
+  }
+
+  /** Comparatif de scoring coaching entre intervenants, sur une période. */
+  @Query(() => CoachingScoreboardDto)
+  @Roles('admin', 'directeur')
+  coachingScoreboard(
+    @Args('startDate', { type: () => Date, nullable: true }) startDate?: Date,
+    @Args('endDate', { type: () => Date, nullable: true }) endDate?: Date,
+  ): Promise<CoachingScoreboardDto> {
+    return this.query.coachingScoreboard(startDate, endDate);
   }
 
   @Mutation(() => CoachingConfigDto)

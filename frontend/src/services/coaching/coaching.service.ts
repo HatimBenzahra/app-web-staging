@@ -118,6 +118,32 @@ const COACHABLE_SUBJECTS = `
     coachableSubjects { subjectId subjectName subjectRole }
   }
 `
+const STEP_AVERAGE_FIELDS = `key label weight score nbAnalyses`
+const COACHING_SCOREBOARD = `
+  query CoachingScoreboard($startDate: DateTime, $endDate: DateTime) {
+    coachingScoreboard(startDate: $startDate, endDate: $endDate) {
+      scoreMoyenEquipe
+      scoreMoyenEquipePrecedent
+      nbAnalyses
+      stepsEquipe { ${STEP_AVERAGE_FIELDS} }
+      rows {
+        subjectId
+        subjectName
+        subjectRole
+        nbAnalyses
+        scoreMoyen
+        scoreMin
+        scoreMax
+        scoreMoyenPrecedent
+        deltaScore
+        nbLowConfidence
+        nbInexploitable
+        derniereAnalyseAt
+        steps { ${STEP_AVERAGE_FIELDS} }
+      }
+    }
+  }
+`
 const LAUNCH_MANY = `
   mutation LaunchCoachingAnalyses($s3Keys: [String!]!) {
     launchCoachingAnalyses(s3Keys: $s3Keys)
@@ -354,6 +380,21 @@ export class CoachingService {
       const data = await graphqlClient.request(ACTIVE_PLAN)
       return data.activeSalesPlan || null
     } catch {
+      return null
+    }
+  }
+
+  /**
+   * Comparatif de scoring coaching entre intervenants sur une période.
+   * Les bornes sont optionnelles : sans elles, toute l'historique est prise et
+   * il n'y a pas de période précédente à comparer.
+   */
+  static async scoreboard(startDate?: string, endDate?: string): Promise<any | null> {
+    try {
+      const data = await graphqlClient.request(COACHING_SCOREBOARD, { startDate, endDate })
+      return data.coachingScoreboard || null
+    } catch (error) {
+      console.error('Erreur coachingScoreboard:', error)
       return null
     }
   }

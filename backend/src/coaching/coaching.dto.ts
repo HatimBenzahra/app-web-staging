@@ -93,6 +93,62 @@ export class CoachingStatsDto {
   @Field(() => Float, { nullable: true }) avgScore?: number | null;
 }
 
+/** Score moyen d'une étape du plan de vente, pour un sujet. */
+@ObjectType()
+export class CoachingStepAverageDto {
+  @Field() key: string;
+  @Field() label: string;
+  @Field(() => Int) weight: number;
+  /** Moyenne des scores d'étape (0-100) sur les analyses où elle est applicable. */
+  @Field(() => Float, { nullable: true }) score?: number | null;
+  /** Nombre d'analyses où l'étape était applicable — fiabilité de la moyenne. */
+  @Field(() => Int) nbAnalyses: number;
+}
+
+/**
+ * Une ligne du comparatif de scoring coaching : un commercial ou un manager,
+ * son score moyen sur la période, son évolution, et son profil par étape.
+ */
+@ObjectType()
+export class CoachingScoreboardRowDto {
+  @Field(() => Int) subjectId: number;
+  @Field() subjectName: string;
+  @Field() subjectRole: string; // 'commercial' | 'manager'
+
+  /** Analyses exploitables (score non nul) retenues sur la période. */
+  @Field(() => Int) nbAnalyses: number;
+  @Field(() => Float, { nullable: true }) scoreMoyen?: number | null;
+  @Field(() => Float, { nullable: true }) scoreMin?: number | null;
+  @Field(() => Float, { nullable: true }) scoreMax?: number | null;
+
+  /** Score moyen sur la période précédente de même durée, et son écart. */
+  @Field(() => Float, { nullable: true }) scoreMoyenPrecedent?: number | null;
+  @Field(() => Float, { nullable: true }) deltaScore?: number | null;
+
+  /** Qualité des échanges analysés — contextualise la fiabilité du score. */
+  @Field(() => Int) nbLowConfidence: number;
+  @Field(() => Int) nbInexploitable: number;
+
+  /** Profil par étape du plan de vente : là où le comparatif devient actionnable. */
+  @Field(() => [CoachingStepAverageDto]) steps: CoachingStepAverageDto[];
+
+  @Field(() => String, { nullable: true }) derniereAnalyseAt?: string | null;
+}
+
+/** Comparatif de scoring coaching sur une période. */
+@ObjectType()
+export class CoachingScoreboardDto {
+  @Field(() => [CoachingScoreboardRowDto]) rows: CoachingScoreboardRowDto[];
+
+  /** Score moyen toutes analyses confondues — la ligne de référence de l'équipe. */
+  @Field(() => Float, { nullable: true }) scoreMoyenEquipe?: number | null;
+  @Field(() => Float, { nullable: true }) scoreMoyenEquipePrecedent?: number | null;
+  @Field(() => Int) nbAnalyses: number;
+
+  /** Étapes du plan actif, dans l'ordre — axes du comparatif. */
+  @Field(() => [CoachingStepAverageDto]) stepsEquipe: CoachingStepAverageDto[];
+}
+
 /** Un enregistrement coachable dans l'interface de gestion. */
 @ObjectType()
 export class CoachingManagementItemDto {
