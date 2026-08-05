@@ -1,5 +1,4 @@
 import { lazy, Suspense, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -15,6 +14,7 @@ import BuildingFacadeModal from '@/pages-ADMIN-DIRECTEUR/immeubles/components/Bu
 import CommercialTrajetsSection from './components/CommercialTrajetsSection'
 import CommercialZoneHistorySection from './components/CommercialZoneHistorySection'
 import CommercialContratsSection from './components/CommercialContratsSection'
+import { useBackNavigation } from '@/hooks/ui/use-back-navigation'
 import { useCommercialDetailsLogic } from './useCommercialDetailsLogic'
 
 const AssignedZoneCard = lazy(() => import('@/components/AssignedZoneCard'))
@@ -34,7 +34,7 @@ export default function CommercialDetailView() {
     buildingModal,
   } = useCommercialDetailsLogic()
 
-  const navigate = useNavigate()
+  const goBack = useBackNavigation('/commerciaux')
   const [tab, setTab] = useState('batiments')
 
   if (loading) return <DetailsPageSkeleton />
@@ -56,12 +56,14 @@ export default function CommercialDetailView() {
   return (
     <div className="space-y-6">
       {/* ---- Vue d'ensemble ---- */}
+      {/* Libellé volontairement neutre : on revient d'où l'on vient, ce qui n'est
+          pas toujours la liste des commerciaux (fiche manager, Localisation, stats…). */}
       <button
         type="button"
-        onClick={() => navigate('/commerciaux')}
+        onClick={goBack}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour aux commerciaux
+        <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
       <Card className="border-border/60">

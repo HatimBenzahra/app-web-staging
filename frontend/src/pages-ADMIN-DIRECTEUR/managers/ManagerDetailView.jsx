@@ -1,5 +1,4 @@
 import { lazy, Suspense, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -12,6 +11,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import ProspectionChartsSection from '@/components/details/ProspectionChartsSection'
 import CoachingSynthesisSection from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingSynthesisSection'
 import { AdvancedDataTable } from '@/components/tableau'
+import { useBackNavigation } from '@/hooks/ui/use-back-navigation'
 import { useManagerDetailsLogic } from './useManagerDetailsLogic'
 
 const AssignedZoneCard = lazy(() => import('@/components/AssignedZoneCard'))
@@ -32,7 +32,7 @@ export default function ManagerDetailView() {
     isAdmin,
   } = useManagerDetailsLogic()
 
-  const navigate = useNavigate()
+  const goBack = useBackNavigation('/managers')
   const [tab, setTab] = useState('batiments')
 
   if (managerLoading) return <DetailsPageSkeleton />
@@ -78,12 +78,14 @@ export default function ManagerDetailView() {
   return (
     <div className="space-y-6">
       {/* ---- Vue d'ensemble ---- */}
+      {/* Libellé neutre : on revient d'où l'on vient, pas forcément de la liste
+          des managers (page Équipe, Localisation, Statistiques…). */}
       <button
         type="button"
-        onClick={() => navigate('/managers')}
+        onClick={goBack}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour aux managers
+        <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
       <Card className="border-border/60">
