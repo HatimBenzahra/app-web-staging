@@ -1,7 +1,7 @@
 import React from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Trophy, TrendingUp, Calendar, DoorOpen } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { StatTile } from '@/components/details/DetailPrimitives'
 import { useDashboardLogic } from './useDashboardLogic'
 import TerrainToday from './TerrainToday'
 import ProspectionCharts from './ProspectionCharts'
@@ -36,60 +36,6 @@ function AnimatedNumber({ value, duration = 800 }) {
   )
 }
 
-const KPI_COLORS = {
-  emerald: {
-    iconBg: 'bg-emerald-500/10',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
-  },
-  blue: {
-    iconBg: 'bg-blue-500/10',
-    iconColor: 'text-blue-600 dark:text-blue-400',
-  },
-  amber: {
-    iconBg: 'bg-amber-500/10',
-    iconColor: 'text-amber-600 dark:text-amber-400',
-  },
-  violet: {
-    iconBg: 'bg-violet-500/10',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-  },
-}
-
-// eslint-disable-next-line no-unused-vars -- Icon is used as JSX component
-function KpiCard({ title, value, description, icon: Icon, trend, color = 'blue' }) {
-  const isPositive = trend && trend > 0
-  const colors = KPI_COLORS[color] || KPI_COLORS.blue
-  return (
-    <Card className="relative overflow-hidden border-border/60 bg-card hover:shadow-md transition-shadow duration-200 cursor-default">
-      <CardContent>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1">
-            <p className="truncate text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold tracking-tight">
-              <AnimatedNumber value={value} />
-            </p>
-            {description && <p className="text-xs text-muted-foreground">{description}</p>}
-          </div>
-          <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 ${colors.iconBg}`}
-          >
-            <Icon className={`h-5 w-5 ${colors.iconColor}`} />
-          </div>
-        </div>
-        {trend !== undefined && trend !== null && (
-          <div
-            className={`flex items-center gap-1 mt-3 text-xs font-medium ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}
-          >
-            <TrendingUp className={`h-3 w-3 ${!isPositive ? 'rotate-180' : ''}`} />
-            {isPositive ? '+' : ''}
-            {trend} vs hier
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function Dashboard() {
   const { today, totals, tauxConversion, isLoading } = useDashboardLogic()
 
@@ -104,16 +50,15 @@ export default function Dashboard() {
           <Skeleton className="h-5 w-36" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Même gabarit que `StatTile size="lg"` : icône en tête de libellé. */}
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="rounded-xl border border-border/60 p-6 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-8 w-16" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
-                <Skeleton className="h-11 w-11 rounded-xl" />
+            <div key={i} className="rounded-xl border border-border/60 p-4">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-8 rounded-lg" />
+                <Skeleton className="h-3 w-28" />
               </div>
+              <Skeleton className="mt-2 h-8 w-16" />
+              <Skeleton className="mt-1 h-3 w-20" />
             </div>
           ))}
         </div>
@@ -151,33 +96,42 @@ export default function Dashboard() {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 dash-stagger"
         style={{ animationDelay: '80ms' }}
       >
-        <KpiCard
-          title="Contrats signés"
-          value={totals.contrats}
-          description="Signatures du jour"
+        {/* `StatTile` rend `value` tel quel : l'animation des chiffres reste ici. */}
+        <StatTile
+          label="Contrats signés"
+          value={<AnimatedNumber value={totals.contrats} />}
+          hint="Signatures du jour"
           icon={Trophy}
-          color="emerald"
+          accent="emerald"
+          size="lg"
+          interactive
         />
-        <KpiCard
-          title="Portes prospectées"
-          value={totals.portes}
-          description="Visites effectuées"
+        <StatTile
+          label="Portes prospectées"
+          value={<AnimatedNumber value={totals.portes} />}
+          hint="Visites effectuées"
           icon={DoorOpen}
-          color="blue"
+          accent="blue"
+          size="lg"
+          interactive
         />
-        <KpiCard
-          title="Rendez-vous pris"
-          value={totals.rdv}
-          description="Planifiés aujourd'hui"
+        <StatTile
+          label="Rendez-vous pris"
+          value={<AnimatedNumber value={totals.rdv} />}
+          hint="Planifiés aujourd'hui"
           icon={Calendar}
-          color="amber"
+          accent="amber"
+          size="lg"
+          interactive
         />
-        <KpiCard
-          title="Taux de conversion"
-          value={tauxConversion}
-          description={`${totals.immeubles} bâtiment${totals.immeubles > 1 ? 's' : ''} prospecté${totals.immeubles > 1 ? 's' : ''}`}
+        <StatTile
+          label="Taux de conversion"
+          value={<AnimatedNumber value={tauxConversion} />}
+          hint={`${totals.immeubles} bâtiment${totals.immeubles > 1 ? 's' : ''} prospecté${totals.immeubles > 1 ? 's' : ''}`}
           icon={TrendingUp}
-          color="violet"
+          accent="violet"
+          size="lg"
+          interactive
         />
       </div>
 

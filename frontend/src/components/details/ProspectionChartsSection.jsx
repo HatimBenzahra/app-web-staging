@@ -1,31 +1,10 @@
 import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import GameIcon from '@/components/gamification/GameIcon'
+import { StatTile } from '@/components/details/DetailPrimitives'
 import PortesProspectionChart from '@/components/charts/PortesProspectionChart'
 import PortesWeeklyChart from '@/components/charts/PortesWeeklyChart'
 import PortesStatusChart from '@/components/charts/PortesStatusChart'
-
-/**
- * Mini-KPI de prospection (une tuile). `iconName` = clé Game Icons (cohérence gamification).
- */
-function ProspectionMetric({ label, value, detail, iconName }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-bold tracking-tight">{value}</p>
-          {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
-        </div>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
-          <GameIcon name={iconName} size={20} />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /**
  * Section prospection : 4 mini-KPI + funnel terrain + graphiques (statuts, portes/jour, hebdo).
@@ -99,28 +78,28 @@ export default function ProspectionChartsSection({ charts = [], totalDoors }) {
   return (
     <div className="@container space-y-5">
       <div className="grid gap-4 @md:grid-cols-2 @3xl:grid-cols-4">
-        <ProspectionMetric
+        <StatTile
           label="Couverture"
           value={`${summary.couverture}%`}
-          detail={`${summary.portesProspectees}/${summary.totalPortes} portes prospectées`}
+          hint={`${summary.portesProspectees}/${summary.totalPortes} portes prospectées`}
           iconName="door"
         />
-        <ProspectionMetric
+        <StatTile
           label="Contrats"
           value={summary.contrats}
-          detail={`${summary.conversion}% de conversion qualifiée`}
+          hint={`${summary.conversion}% de conversion qualifiée`}
           iconName="contract-doc"
         />
-        <ProspectionMetric
+        <StatTile
           label="Rendez-vous"
           value={summary.rdv}
-          detail="Opportunités à suivre"
+          hint="Opportunités à suivre"
           iconName="calendar"
         />
-        <ProspectionMetric
+        <StatTile
           label="Points de friction"
           value={summary.refus + summary.argumentes + summary.absents}
-          detail={`${summary.refus} refus · ${summary.absents} absents`}
+          hint={`${summary.refus} refus · ${summary.absents} absents`}
           iconName="brick-wall"
         />
       </div>

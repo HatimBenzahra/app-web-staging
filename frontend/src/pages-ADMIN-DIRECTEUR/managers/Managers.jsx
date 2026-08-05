@@ -49,8 +49,12 @@ export default function Managers() {
       />
 
       {/* minmax(0,1fr) et non 1fr : sinon la colonne refuse de descendre sous la
-          largeur min-content du tableau, la grille déborde et la page scrolle. */}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          largeur min-content du tableau, la grille déborde et la page scrolle.
+
+          Deux colonnes à partir de 1536 px seulement — même raison que sur la page
+          Commerciaux : en dessous, le panneau Paliers ne laissait pas la largeur
+          nécessaire à une rangée `PersonListCard` d'un seul tenant. */}
+      <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <PeopleCardsView
           people={cardsPeople}
           detailsPath="/managers"

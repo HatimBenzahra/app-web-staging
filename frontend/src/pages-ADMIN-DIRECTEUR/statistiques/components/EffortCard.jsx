@@ -68,11 +68,13 @@ export default function EffortCard({ effort }) {
                 hint={`Sur ${formatNumber(mesures)} passage${mesures > 1 ? 's' : ''} mesuré${mesures > 1 ? 's' : ''}`}
               />
               <StatTile
+                iconName="door"
                 label="Échange médian par porte"
                 value={formatDuration(effort?.dureeMedianeParPassageSec)}
                 hint={`Moyenne ${formatDuration(effort?.dureeMoyenneParPassageSec)}`}
               />
               <StatTile
+                iconName="sprint"
                 label="Portes par heure d’échange"
                 value={effort?.passagesParHeure ? formatNumber(effort.passagesParHeure, 1) : '—'}
                 hint="Hors déplacements — pas une cadence terrain"
@@ -84,11 +86,13 @@ export default function EffortCard({ effort }) {
                 hint="Temps de parole investi par signature"
               />
               <StatTile
+                iconName="calendar"
                 label="Échange par rendez-vous"
                 value={formatDuration(effort?.dureeParRdvSec)}
                 hint="Temps de parole investi par RDV pris"
               />
               <StatTile
+                iconName="brick-wall"
                 label="Passages sans durée"
                 value={formatNumber(sansDuree)}
                 hint="Exclus des moyennes"

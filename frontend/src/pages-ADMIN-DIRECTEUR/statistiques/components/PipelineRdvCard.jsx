@@ -62,12 +62,19 @@ export default function PipelineRdvCard({ rdv }) {
                 valueClassName={enRetard > 0 ? 'text-amber-600 dark:text-amber-400' : undefined}
               />
               <StatTile
+                iconName="stopwatch"
                 label="Aujourd’hui"
                 value={formatNumber(rdv?.aujourdhui || 0)}
                 hint="À honorer dans la journée"
               />
-              <StatTile label="À venir" value={formatNumber(rdv?.aVenir || 0)} hint="Date future" />
               <StatTile
+                iconName="stairs-goal"
+                label="À venir"
+                value={formatNumber(rdv?.aVenir || 0)}
+                hint="Date future"
+              />
+              <StatTile
+                iconName="radar-dish"
                 label="Sans date"
                 value={formatNumber(rdv?.sansDate || 0)}
                 hint="RDV posé sans échéance"

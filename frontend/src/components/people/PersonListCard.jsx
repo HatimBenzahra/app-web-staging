@@ -7,9 +7,15 @@ import { getStatusMeta } from '@/constants/domain/user-status'
 /**
  * Une personne en card pleine largeur, empilée en liste.
  *
- * Choisie plutôt qu'un tableau : les blocs se replient (`flex-wrap`) au lieu d'imposer
- * un scroll horizontal, et plutôt qu'une grille de petites cards, qui écrasait
- * l'information.
+ * Choisie plutôt qu'un tableau, qui imposait un scroll horizontal, et plutôt qu'une
+ * grille de petites cards, qui écrasait l'information.
+ *
+ * **Toutes les colonnes sauf l'identité ont une largeur fixe, et la rangée ne se
+ * replie jamais.** C'est la condition pour que palier / rang / points / contrats
+ * s'alignent d'une ligne à l'autre : la version précédente laissait le bloc identité
+ * en `flex-1` et poussait l'activité en `ml-auto`, si bien que « Vu 3 h » et
+ * « Vu 20 juil. 2026 » décalaient les colonnes de plusieurs dizaines de pixels entre
+ * deux lignes voisines. Quand la place manque, c'est le nom qui tronque.
  *
  * Les infos de gamification — palier, rang, points, contrats retenus — viennent de
  * `rankInfo`, issu du snapshot backend via `toRankInfo`, jamais d'un calcul local.
@@ -24,16 +30,21 @@ function initialsOf(person) {
   return `${first}${last}`.toUpperCase() || '?'
 }
 
-/** `subtle` : pour une mention textuelle (« Non classé ») plutôt qu'une valeur chiffrée. */
-function Stat({ label, value, subtle }) {
+/**
+ * `subtle` : pour une mention textuelle (« Non classé ») plutôt qu'une valeur chiffrée.
+ * `width` est imposée par l'appelant — c'est elle qui aligne la colonne entre les lignes.
+ */
+function Stat({ label, value, subtle, width }) {
   return (
-    <div className="min-w-[64px] text-right">
+    <div className={`shrink-0 text-right ${width}`}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      {/* `whitespace-nowrap` sur les deux variantes : un total à cinq chiffres passait
+          à la ligne dans sa colonne et faisait grandir toute la rangée. */}
       <p
         className={
           subtle
             ? 'whitespace-nowrap text-xs font-medium text-muted-foreground'
-            : 'text-sm font-semibold tabular-nums'
+            : 'whitespace-nowrap text-sm font-semibold tabular-nums'
         }
       >
         {value}
@@ -65,8 +76,8 @@ export default function PersonListCard({
 
   return (
     <Card className="group gap-0 py-0 transition-shadow duration-200 hover:shadow-md">
-      <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
-        <div className="flex min-w-[220px] flex-1 items-center gap-3">
+      <CardContent className="flex items-center gap-4 p-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold">
             {initialsOf(person)}
           </div>
@@ -100,22 +111,36 @@ export default function PersonListCard({
         </div>
 
         {showRanking && (
-          <div className="flex items-center gap-5">
+          <div className="flex shrink-0 items-center gap-3">
+            {/* Largeur fixe : sans elle, un palier « Grandmaster » décalerait les trois
+                colonnes suivantes par rapport à une ligne « Bronze ». */}
             <span
-              className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${person.rankInfo?.badgeClasses || ''}`}
+              className={`inline-flex w-24 shrink-0 items-center justify-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${person.rankInfo?.badgeClasses || ''}`}
             >
               {person.rankInfo?.name || '—'}
             </span>
-            <Stat label="Rang" value={rank ? `#${rank}` : 'Non classé'} subtle={!rank} />
-            <Stat label="Points" value={points} />
-            <Stat label="Contrats" value={contrats} />
+            <Stat
+              label="Rang"
+              value={rank ? `#${rank}` : 'Non classé'}
+              subtle={!rank}
+              width="w-[4.5rem]"
+            />
+            <Stat label="Points" value={points} width="w-14" />
+            <Stat label="Contrats" value={contrats} width="w-16" />
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-3">
-          <span className="whitespace-nowrap text-[11px] text-muted-foreground">
-            {person.lastActivityLabel ? `Vu ${person.lastActivityLabel}` : 'Aucune activité'}
-          </span>
+        {/* Masquée sous 1280 px : c'est la colonne la plus redondante de la rangée (la
+            date est sur la fiche) et la seule façon de tenir sur une ligne à cette
+            largeur sans replier. Rien ne passe à la ligne, une colonne disparaît. */}
+        <span className="hidden w-[6.5rem] shrink-0 truncate text-right text-[11px] text-muted-foreground xl:block">
+          {person.lastActivityLabel ? `Vu ${person.lastActivityLabel}` : 'Aucune activité'}
+        </span>
+
+        {/* Zone d'actions toujours rendue : les boutons sont conditionnels, la largeur
+            réservée ne l'est pas — sinon une ligne sans droit d'archivage serait plus
+            courte et casserait l'alignement de toute la liste. */}
+        <div className="flex w-16 shrink-0 items-center justify-end gap-1">
           {canEdit && (
             <Button
               type="button"

@@ -49,6 +49,7 @@ export default function PipelineRepassageCard({ repassages, reprise }) {
             }
           />
           <StatTile
+            iconName="cycle"
             label="Taux de reprise"
             value={passees > 0 ? `${formatNumber(reprise.tauxReprise, 1)} %` : '—'}
             hint={
@@ -58,6 +59,7 @@ export default function PipelineRepassageCard({ repassages, reprise }) {
             }
           />
           <StatTile
+            iconName="brick-wall"
             label="Encore absentes"
             value={formatNumber(reprise?.portesEncoreAbsentes || 0)}
             hint="Passées par « absent » et toujours non conclues"

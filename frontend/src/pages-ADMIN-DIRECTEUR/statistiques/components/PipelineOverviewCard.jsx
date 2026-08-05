@@ -51,6 +51,7 @@ export default function PipelineOverviewCard({ pipeline }) {
                 hint="Total du portefeuille"
               />
               <StatTile
+                iconName="radar-dish"
                 label="Jamais touchées"
                 value={formatNumber(nonVisitees)}
                 hint="Statut « non visité »"

@@ -49,11 +49,75 @@ function DeltaLine({ delta, suffix, goodDirection = 'up', label = 'vs période p
 }
 
 /**
- * Tuile KPI : libellé + valeur + indice, icône Game Icons optionnelle (`iconName`).
- * `delta` affiche l'écart vs période précédente — un chiffre nu n'informe pas.
+ * Teintes de la pastille d'icône. `neutral` est le défaut de toute l'application ;
+ * les teintes nommées viennent des KPI du tableau de bord, qui distinguaient ses
+ * quatre indicateurs par la couleur.
+ */
+const TILE_ACCENTS = {
+  neutral: 'border-border/60 bg-muted/60 text-primary',
+  emerald: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  blue: 'border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  amber: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  violet: 'border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400',
+}
+
+/**
+ * Quatre densités, du plus compact (grilles à 5 colonnes) au chiffre vedette d'une
+ * tuile pleine largeur. Rien d'autre ne varie : même gabarit, même ordre.
+ */
+const TILE_SIZES = {
+  sm: {
+    shell: 'p-3',
+    badge: 'h-6 w-6',
+    glyph: 'h-3.5 w-3.5',
+    glyphSize: 14,
+    label: 'text-[11px]',
+    value: 'mt-1.5 text-xl',
+  },
+  md: {
+    shell: 'p-4',
+    badge: 'h-7 w-7',
+    glyph: 'h-4 w-4',
+    glyphSize: 16,
+    label: 'text-xs',
+    value: 'mt-2 text-2xl',
+  },
+  lg: {
+    shell: 'p-4',
+    badge: 'h-8 w-8',
+    glyph: 'h-4 w-4',
+    glyphSize: 18,
+    label: 'text-xs',
+    value: 'mt-2 text-3xl',
+  },
+  xl: {
+    shell: 'p-5',
+    badge: 'h-9 w-9',
+    glyph: 'h-5 w-5',
+    glyphSize: 20,
+    label: 'text-sm',
+    value: 'mt-2 text-4xl md:text-5xl',
+  },
+}
+
+/**
+ * Tuile KPI : libellé + valeur + indice. **La seule tuile de l'application** — le
+ * tableau de bord, les statistiques, les sections prospection et les fiches détail
+ * en avaient chacun leur copie.
+ *
+ * L'icône est en tête du libellé, pas rejetée à droite en `justify-between` : sur une
+ * colonne étroite, la répartition aux deux bords creusait un trou central, tronquait
+ * le libellé et n'alignait la valeur sur rien.
+ *
+ * `iconName` = clé du pack Game Icons (`GameIcon`), `icon` = composant lucide. `delta`
+ * affiche l'écart vs période précédente — un chiffre nu n'informe pas.
  */
 export function StatTile({
   iconName,
+  icon: Icon,
+  accent = 'neutral',
+  size = 'md',
+  interactive = false,
   label,
   value,
   hint,
@@ -62,33 +126,55 @@ export function StatTile({
   deltaSuffix,
   deltaGoodDirection,
   deltaLabel,
+  footer,
 }) {
+  const dims = TILE_SIZES[size] || TILE_SIZES.md
+  const hasIcon = Boolean(Icon || iconName)
+
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p
-            className={`mt-2 text-2xl font-bold tracking-tight tabular-nums ${valueClassName || ''}`}
+    <div
+      className={`rounded-xl border border-border/60 bg-card ${dims.shell} ${
+        interactive ? 'transition-shadow duration-200 hover:shadow-md' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {/* Pas de créneau réservé quand il n'y a pas d'icône : une place vide se lit
+            comme une icône manquante.
+            RÈGLE D'APPEL, en contrepartie : une grille de tuiles doit être
+            **homogène** — toutes ses tuiles avec icône, ou aucune. Une grille mixte
+            décale le libellé d'une tuile à l'autre, ce qui est précisément le défaut
+            d'alignement que ce composant existe pour éviter. */}
+        {hasIcon && (
+          <span
+            className={`flex ${dims.badge} shrink-0 items-center justify-center rounded-lg border ${
+              TILE_ACCENTS[accent] || TILE_ACCENTS.neutral
+            }`}
           >
-            {value}
-          </p>
-          {hint && <p className="mt-1 text-xs text-muted-foreground truncate">{hint}</p>}
-          <DeltaLine
-            delta={delta}
-            suffix={deltaSuffix}
-            goodDirection={deltaGoodDirection}
-            label={deltaLabel}
-          />
-        </div>
-        {iconName && (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-primary">
-            <GameIcon name={iconName} size={20} />
-          </div>
+            {Icon ? (
+              <Icon className={dims.glyph} />
+            ) : (
+              <GameIcon name={iconName} size={dims.glyphSize} />
+            )}
+          </span>
         )}
+        <p
+          className={`truncate font-medium uppercase tracking-wide text-muted-foreground ${dims.label}`}
+        >
+          {label}
+        </p>
       </div>
+
+      <p className={`font-bold tracking-tight tabular-nums ${dims.value} ${valueClassName || ''}`}>
+        {value}
+      </p>
+      {hint && <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>}
+      <DeltaLine
+        delta={delta}
+        suffix={deltaSuffix}
+        goodDirection={deltaGoodDirection}
+        label={deltaLabel}
+      />
+      {footer}
     </div>
   )
 }

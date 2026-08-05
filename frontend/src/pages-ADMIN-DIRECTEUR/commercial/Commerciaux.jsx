@@ -73,8 +73,14 @@ export default memo(function Commerciaux() {
       />
 
       {/* minmax(0,1fr) et non 1fr : sinon la colonne refuse de descendre sous la
-          largeur min-content du tableau, la grille déborde et la page scrolle. */}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          largeur min-content du tableau, la grille déborde et la page scrolle.
+
+          Deux colonnes seulement à partir de 1536 px : en dessous, les 320 px du
+          panneau Paliers laissaient 546 px à la liste à 1280 px, où une rangée de
+          `PersonListCard` en coûte ~750 — et le conteneur applicatif est en
+          `overflow-x-hidden`, donc la rangée était coupée, pas scrollée. Les paliers
+          sont une légende de référence : ils passent sous la liste. */}
+      <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <PeopleCardsView
           people={cardsPeople}
           detailsPath="/commerciaux"
