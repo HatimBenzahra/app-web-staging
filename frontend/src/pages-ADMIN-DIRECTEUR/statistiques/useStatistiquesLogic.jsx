@@ -16,6 +16,7 @@ import { useDateFilter } from '@/hooks/utils/filters/useDateFilter'
 import { UserStatus } from '@/constants/domain/user-status'
 import CoachingService from '@/services/coaching/coaching.service'
 import { defaultRange, granularityForRange, toIsoEnd, toIsoStart } from './stats-period'
+import { DEFAULT_TAB, TAB_QUERIES } from './stats-tabs'
 
 export const SCOPE_FILTERS = [
   { value: 'all', label: 'Toute l’équipe' },
@@ -42,19 +43,25 @@ const parseOwnerSelection = selectedOwner => {
 
 export function useStatistiquesLogic() {
   const { currentRole } = useRole()
-  const dateFilter = useDateFilter()
+  // Période appliquée dès l'initialisation, et non dans un effet de montage : sinon
+  // le premier rendu part sans bornes de dates, et le backend agrège alors tout
+  // l'historique (`buildStatusHistoryDateWhere` renvoie `{}` sans bornes) pour un
+  // résultat jeté au rendu suivant. Sans bornes, il n'y aurait de surcroît pas de
+  // période précédente et la page perdrait tous ses écarts.
+  const dateFilter = useDateFilter(defaultRange())
   const [scopeType, setScopeType] = useState('all')
   const [selectedOwner, setSelectedOwner] = useState('all')
+  const [tab, setTab] = useState(DEFAULT_TAB)
 
-  // Le filtre démarre sur les 30 derniers jours : sans bornes, il n'existe pas de
-  // période précédente et la page perdrait tous ses écarts.
-  const { handleApplyFilters } = dateFilter
-  useEffect(() => {
-    const { start, end } = defaultRange()
-    handleApplyFilters(start, end)
-    // Volontairement au montage uniquement : ensuite c'est l'utilisateur qui pilote.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  /**
+   * Les requêtes de l'onglet ouvert seulement : celles des onglets fermés ne partent
+   * pas. Une fois l'onglet visité, react-query garde le résultat (staleTime 5 min),
+   * donc y revenir ne relance aucun appel.
+   */
+  const needs = useMemo(() => {
+    const queries = TAB_QUERIES[tab] || []
+    return name => queries.includes(name)
+  }, [tab])
 
   const { appliedStartDate, appliedEndDate } = dateFilter
   const ownerSelection = useMemo(() => parseOwnerSelection(selectedOwner), [selectedOwner])
@@ -96,19 +103,26 @@ export function useStatistiquesLogic() {
     error: comparisonError,
   } = useStatsPeriodComparison(filters)
 
+  // Les requêtes d'onglet fermé ne partent pas (`enabled`). Rappel important : une
+  // requête désactivée reste « pending » pour react-query, donc son `loading` vaut
+  // `true` — il ne faut le lire qu'à travers `needs(...)`, jamais brut.
   const {
     data: timeline,
     loading: timelineLoading,
     error: timelineError,
-  } = useStatsTimeline(filters)
+  } = useStatsTimeline(filters, { enabled: needs('timeline') })
 
   const {
     data: ownerActivity,
     loading: ownerActivityLoading,
     error: ownerActivityError,
-  } = useStatsActivityByOwner(filters)
+  } = useStatsActivityByOwner(filters, { enabled: needs('ownerActivity') })
 
-  const { data: effort, loading: effortLoading, error: effortError } = useStatsEffort(filters)
+  const {
+    data: effort,
+    loading: effortLoading,
+    error: effortError,
+  } = useStatsEffort(filters, { enabled: needs('effort') })
 
   const {
     data: contratsValides,
@@ -120,9 +134,13 @@ export function useStatistiquesLogic() {
     data: pipeline,
     loading: pipelineLoading,
     error: pipelineError,
-  } = useProspectionPipeline(pipelineFilters)
+  } = useProspectionPipeline(pipelineFilters, { enabled: needs('pipeline') })
 
-  const { data: zoneStats, loading: zoneStatsLoading, error: zoneStatsError } = useZoneStatistics()
+  const {
+    data: zoneStats,
+    loading: zoneStatsLoading,
+    error: zoneStatsError,
+  } = useZoneStatistics({ enabled: needs('zoneStats') })
   const { data: rawCommercials, loading: commercialsLoading } = useCommercials()
   const { data: rawManagers, loading: managersLoading } = useManagers()
 
@@ -174,15 +192,29 @@ export function useStatistiquesLogic() {
   // ── Comparatif de scoring coaching ────────────────────────────────────────
   // Réservé aux rôles admin/directeur côté backend : un échec de permission ne
   // doit pas faire tomber la page, il se traduit par une section vide.
+  // Appel REST, donc hors cache react-query : la clé déjà chargée est mémorisée à la
+  // main, sinon passer de l'onglet Coaching à Équipe et revenir relancerait l'appel.
   const [scoreboard, setScoreboard] = useState(null)
-  const [scoreboardLoading, setScoreboardLoading] = useState(true)
+  const [scoreboardLoading, setScoreboardLoading] = useState(false)
+  const scoreboardKeyRef = useRef(null)
+  const scoreboardEnabled = needs('scoreboard')
 
   useEffect(() => {
+    if (!scoreboardEnabled) return
+
+    const key = `${startIso}|${endIso}`
+    if (scoreboardKeyRef.current === key) return
+    scoreboardKeyRef.current = key
+
     let active = true
     setScoreboardLoading(true)
     CoachingService.scoreboard(startIso, endIso)
       .then(data => {
-        if (active) setScoreboard(data)
+        if (!active) return
+        setScoreboard(data)
+        // Le service avale ses erreurs et renvoie `null` : on rouvre la porte à une
+        // nouvelle tentative plutôt que de figer la section vide.
+        if (!data) scoreboardKeyRef.current = null
       })
       .finally(() => {
         if (active) setScoreboardLoading(false)
@@ -191,40 +223,57 @@ export function useStatistiquesLogic() {
     return () => {
       active = false
     }
-  }, [startIso, endIso])
+  }, [startIso, endIso, scoreboardEnabled])
 
-  const fetching =
-    comparisonLoading ||
-    timelineLoading ||
-    ownerActivityLoading ||
-    effortLoading ||
-    contratsValidesLoading ||
-    pipelineLoading ||
-    zoneStatsLoading ||
-    commercialsLoading ||
-    managersLoading
+  /**
+   * Chargement du **bandeau permanent** : la rangée de KPI, seule chose affichée
+   * hors onglets. C'est elle, et elle seule, qui décide du squelette plein écran —
+   * attendre les requêtes des six onglets faisait dépendre le premier affichage de
+   * la plus lente des dix.
+   *
+   * `useCommercials` / `useManagers` n'y figurent pas : ils ne remplissent que les
+   * options du sélecteur d'intervenant, qui peut arriver après.
+   */
+  const headerFetching = comparisonLoading || contratsValidesLoading
+
+  /** Chargement de l'onglet ouvert — les requêtes désactivées sont ignorées. */
+  const tabFetching =
+    (needs('pipeline') && pipelineLoading) ||
+    (needs('timeline') && timelineLoading) ||
+    (needs('effort') && effortLoading) ||
+    (needs('ownerActivity') && ownerActivityLoading) ||
+    (needs('zoneStats') && zoneStatsLoading) ||
+    (needs('scoreboard') && scoreboardLoading)
+
+  const fetching = headerFetching || tabFetching || commercialsLoading || managersLoading
 
   /**
    * Seul le tout premier chargement remplace la page par un squelette.
    *
    * `useApiCall` met `isFetching` dans son `loading`, donc chaque application de
-   * filtre repasse les huit requêtes en chargement. Gater la page entière sur ce
-   * drapeau ferait clignoter tout l'écran à chaque changement de période — sur une
-   * page pilotée par ses filtres, c'est le geste le plus fréquent. Les cartes
-   * gardent donc leurs valeurs pendant le rafraîchissement.
+   * filtre repasse les requêtes en chargement. Gater la page entière sur ce drapeau
+   * ferait clignoter tout l'écran à chaque changement de période — sur une page
+   * pilotée par ses filtres, c'est le geste le plus fréquent. Les cartes gardent
+   * donc leurs valeurs pendant le rafraîchissement.
    */
   const hasLoadedOnce = useRef(false)
-  if (!fetching) hasLoadedOnce.current = true
-  const loading = fetching && !hasLoadedOnce.current
+  if (!headerFetching) hasLoadedOnce.current = true
+  const loading = headerFetching && !hasLoadedOnce.current
+
+  // Même principe par onglet : le squelette d'onglet ne s'affiche qu'à sa première
+  // visite. Ensuite, changer de période garde les cartes affichées.
+  const hasLoadedTab = useRef({})
+  if (!tabFetching) hasLoadedTab.current[tab] = true
 
   const error =
     comparisonError ||
-    timelineError ||
-    ownerActivityError ||
-    effortError ||
     contratsValidesError ||
-    pipelineError ||
-    zoneStatsError
+    (needs('timeline') && timelineError) ||
+    (needs('ownerActivity') && ownerActivityError) ||
+    (needs('effort') && effortError) ||
+    (needs('pipeline') && pipelineError) ||
+    (needs('zoneStats') && zoneStatsError) ||
+    null
 
   const activeFiltersCount = (scopeType !== 'all' ? 1 : 0) + (selectedOwner !== 'all' ? 1 : 0)
 
@@ -252,6 +301,12 @@ export function useStatistiquesLogic() {
     // Rafraîchissement en cours alors que des données sont déjà affichées : la page
     // le signale discrètement plutôt que de se vider.
     fetching: fetching && hasLoadedOnce.current,
+    // Premier chargement des données de l'onglet ouvert : le contenu de l'onglet
+    // montre un squelette, sinon ses cartes annonceraient « aucune donnée » le temps
+    // de la requête.
+    tabLoading: tabFetching && !hasLoadedTab.current[tab],
+    tab,
+    setTab,
     error,
     dateFilter,
     scopeType,

@@ -47,8 +47,18 @@ export function useStatisticsByZone(zoneId: number): UseApiListState<Statistic> 
   }
 }
 
-export function useZoneStatistics(): UseApiListState<ZoneStatistic> & UseApiActions {
-  return useApiCall(() => api.statistics.getZoneStatistics(), [], 'zoneStatistics')
+/**
+ * `options.enabled` sert aux pages à onglets : une requête d'onglet fermé ne part
+ * pas. Attention côté appelant — une requête désactivée reste `pending` pour
+ * react-query, donc son `loading` vaut `true` : il ne faut pas l'agréger dans un
+ * drapeau de chargement global.
+ */
+type ApiCallOptions = { enabled?: boolean }
+
+export function useZoneStatistics(
+  options?: ApiCallOptions
+): UseApiListState<ZoneStatistic> & UseApiActions {
+  return useApiCall(() => api.statistics.getZoneStatistics(), [], 'zoneStatistics', options)
 }
 
 export function useTeamLastStatusActivities(): UseApiListState<TeamLastStatusActivity> &
@@ -60,19 +70,24 @@ export function useTeamLastStatusActivities(): UseApiListState<TeamLastStatusAct
   )
 }
 
-export function useStatsTimeline(filters = {}): UseApiListState<TimelinePoint> & UseApiActions {
+export function useStatsTimeline(
+  filters = {},
+  options?: ApiCallOptions
+): UseApiListState<TimelinePoint> & UseApiActions {
   const key = JSON.stringify(filters)
-  return useApiCall(() => api.statistics.getStatsTimeline(filters), [key], 'statsTimeline')
+  return useApiCall(() => api.statistics.getStatsTimeline(filters), [key], 'statsTimeline', options)
 }
 
 export function useStatsActivityByOwner(
-  filters = {}
+  filters = {},
+  options?: ApiCallOptions
 ): UseApiListState<OwnerActivityStatistic> & UseApiActions {
   const key = JSON.stringify(filters)
   return useApiCall(
     () => api.statistics.getStatsActivityByOwner(filters),
     [key],
-    'statsActivityByOwner'
+    'statsActivityByOwner',
+    options
   )
 }
 
@@ -92,11 +107,15 @@ export function useStatsPeriodComparison(
 }
 
 /** Effort terrain mesuré (durées de passage renseignées par le mobile). */
-export function useStatsEffort(filters = {}): UseApiState<StatsEffort> & UseApiActions {
+export function useStatsEffort(
+  filters = {},
+  options?: ApiCallOptions
+): UseApiState<StatsEffort> & UseApiActions {
   return useApiCall(
     () => api.statistics.getStatsEffort(filters),
     [JSON.stringify(filters)],
-    'statsEffort'
+    'statsEffort',
+    options
   )
 }
 
@@ -116,12 +135,14 @@ export function useContratsValidesAggregate(
  * Ne reçoit que le périmètre : un stock ne se filtre pas par période.
  */
 export function useProspectionPipeline(
-  filters = {}
+  filters = {},
+  options?: ApiCallOptions
 ): UseApiState<ProspectionPipeline> & UseApiActions {
   return useApiCall(
     () => api.statistics.getProspectionPipeline(filters),
     [JSON.stringify(filters)],
-    'prospectionPipeline'
+    'prospectionPipeline',
+    options
   )
 }
 

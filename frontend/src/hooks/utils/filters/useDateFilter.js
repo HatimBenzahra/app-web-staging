@@ -1,14 +1,21 @@
 import { useState } from 'react'
 
 /**
- * Hook pour gérer les filtres de date et filtrer les données par période
+ * Hook pour gérer les filtres de date et filtrer les données par période.
+ *
+ * `initialRange` permet à un appelant de démarrer sur une période déjà appliquée.
+ * C'est indispensable quand des requêtes dépendent des bornes : les poser dans un
+ * `useEffect` après le montage fait partir un premier jeu de requêtes **sans
+ * bornes** (donc sur tout l'historique) dont le résultat est aussitôt jeté.
+ *
+ * @param {{ start?: string, end?: string }} [initialRange] Bornes `YYYY-MM-DD`
  * @returns {Object} Objet contenant les états et fonctions de filtrage
  */
-export function useDateFilter() {
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [appliedStartDate, setAppliedStartDate] = useState('')
-  const [appliedEndDate, setAppliedEndDate] = useState('')
+export function useDateFilter({ start = '', end = '' } = {}) {
+  const [startDate, setStartDate] = useState(start)
+  const [endDate, setEndDate] = useState(end)
+  const [appliedStartDate, setAppliedStartDate] = useState(start)
+  const [appliedEndDate, setAppliedEndDate] = useState(end)
 
   /**
    * Valide les filtres.

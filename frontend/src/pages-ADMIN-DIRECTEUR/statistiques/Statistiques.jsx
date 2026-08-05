@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionTitle } from '@/components/details/DetailPrimitives'
 import { RefreshCw } from 'lucide-react'
 import { useStatistiquesLogic } from './useStatistiquesLogic'
+import { TABS } from './stats-tabs'
 import StatsFilters from './components/StatsFilters'
 import StatsKpiRow from './components/StatsKpiRow'
 import ActivityTrendCard from './components/ActivityTrendCard'
@@ -41,14 +41,21 @@ import PipelineHabitatCard from './components/PipelineHabitatCard'
  * Classement, sur les snapshots WinLeadPlus), la gestion des zones (page Zones), le
  * temps réel du jour (Dashboard).
  */
-const TABS = [
-  { value: 'pipeline', label: 'Pipeline' },
-  { value: 'activite', label: 'Activité' },
-  { value: 'contrats', label: 'Contrats' },
-  { value: 'coaching', label: 'Coaching' },
-  { value: 'equipe', label: 'Équipe' },
-  { value: 'territoire', label: 'Territoire' },
-]
+/**
+ * Squelette du contenu d'un onglet, le temps de sa première requête. Sans lui, les
+ * cartes s'afficheraient d'abord vides et annonceraient « aucune donnée ».
+ */
+function TabSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-[220px] w-full rounded-xl" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Skeleton className="h-[260px] w-full rounded-xl" />
+        <Skeleton className="h-[260px] w-full rounded-xl" />
+      </div>
+    </div>
+  )
+}
 
 function PageSkeleton() {
   return (
@@ -76,6 +83,9 @@ export default function Statistiques() {
   const {
     loading,
     fetching,
+    tabLoading,
+    tab,
+    setTab,
     error,
     dateFilter,
     scopeType,
@@ -99,8 +109,6 @@ export default function Statistiques() {
     scoreboard,
     scoreboardLoading,
   } = useStatistiquesLogic()
-
-  const [tab, setTab] = useState('pipeline')
 
   if (loading) return <PageSkeleton />
 
@@ -162,55 +170,84 @@ export default function Statistiques() {
           se lit maintenant.
         */}
         <TabsContent value="pipeline" className="space-y-6">
-          <PipelineOverviewCard pipeline={pipeline} />
-          <div className="grid gap-6 xl:grid-cols-2">
-            <PipelineRdvCard rdv={pipeline?.rdv} />
-            <PipelineRepassageCard repassages={pipeline?.repassages} reprise={pipeline?.reprise} />
-          </div>
-          <PipelineHabitatCard habitat={pipeline?.habitat} />
+          {tabLoading ? (
+            <TabSkeleton />
+          ) : (
+            <>
+              <PipelineOverviewCard pipeline={pipeline} />
+              <div className="grid gap-6 xl:grid-cols-2">
+                <PipelineRdvCard rdv={pipeline?.rdv} />
+                <PipelineRepassageCard
+                  repassages={pipeline?.repassages}
+                  reprise={pipeline?.reprise}
+                />
+              </div>
+              <PipelineHabitatCard habitat={pipeline?.habitat} />
+            </>
+          )}
         </TabsContent>
 
         {/* Activité : la tendance, puis où vont les portes, puis où ça bloque. */}
         <TabsContent value="activite" className="space-y-6">
-          <ActivityTrendCard timeline={timeline} periodLabel={periodLabel} />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <OutcomesCard current={current} />
-            <ConversionFunnelCard current={current} contratsValides={contratsValides} />
-          </div>
-          <div>
-            <SectionTitle>Effort</SectionTitle>
-            <EffortCard effort={effort} />
-          </div>
+          {tabLoading ? (
+            <TabSkeleton />
+          ) : (
+            <>
+              <ActivityTrendCard timeline={timeline} periodLabel={periodLabel} />
+              <div className="grid gap-6 lg:grid-cols-2">
+                <OutcomesCard current={current} />
+                <ConversionFunnelCard current={current} contratsValides={contratsValides} />
+              </div>
+              <div>
+                <SectionTitle>Effort</SectionTitle>
+                <EffortCard effort={effort} />
+              </div>
+            </>
+          )}
         </TabsContent>
 
         {/* Contrats : l'écart entre ce qui est annoncé et ce qui est confirmé. */}
         <TabsContent value="contrats" className="space-y-6">
-          <SigneVsValideCard
-            timeline={timeline}
-            contratsValides={contratsValides}
-            granularity={granularity}
-          />
+          {tabLoading ? (
+            <TabSkeleton />
+          ) : (
+            <SigneVsValideCard
+              timeline={timeline}
+              contratsValides={contratsValides}
+              granularity={granularity}
+            />
+          )}
         </TabsContent>
 
         {/* Coaching : comparer les intervenants, puis comprendre sur quoi. */}
         <TabsContent value="coaching" className="space-y-6">
-          <CoachingScoreboardCard scoreboard={scoreboard} loading={scoreboardLoading} />
-          <div className="grid gap-6 xl:grid-cols-2">
-            <CoachingStepsCard scoreboard={scoreboard} loading={scoreboardLoading} />
-            <CoachingVsConversionCard scoreboard={scoreboard} ownerActivity={ownerActivity} />
-          </div>
+          {tabLoading ? (
+            <TabSkeleton />
+          ) : (
+            <>
+              <CoachingScoreboardCard scoreboard={scoreboard} loading={scoreboardLoading} />
+              <div className="grid gap-6 xl:grid-cols-2">
+                <CoachingStepsCard scoreboard={scoreboard} loading={scoreboardLoading} />
+                <CoachingVsConversionCard scoreboard={scoreboard} ownerActivity={ownerActivity} />
+              </div>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="equipe" className="space-y-6">
-          <TeamComparisonTable
-            ownerActivity={ownerActivity}
-            scoreboard={scoreboard}
-            current={current}
-          />
+          {tabLoading ? (
+            <TabSkeleton />
+          ) : (
+            <TeamComparisonTable
+              ownerActivity={ownerActivity}
+              scoreboard={scoreboard}
+              current={current}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="territoire" className="space-y-6">
-          <TerritoryCard zoneStats={zoneStats} />
+          {tabLoading ? <TabSkeleton /> : <TerritoryCard zoneStats={zoneStats} />}
         </TabsContent>
       </Tabs>
     </div>
