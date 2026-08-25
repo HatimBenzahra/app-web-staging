@@ -1,11 +1,11 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { SynthesisService } from './synthesis.service';
-import { CoachingConfigService } from './coaching-config.service';
-import { CoachingSynthesisDto, CoachingConfigDto } from './coaching.dto';
+import { CoachingConfigService } from '../coaching-config.service';
+import { CoachingSynthesisDto, CoachingConfigDto } from '../coaching.dto';
 
 type SubjectType = 'commercial' | 'manager';
 

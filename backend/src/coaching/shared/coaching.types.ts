@@ -1,4 +1,4 @@
-import { ViolationSeverity } from './product-sheet.types';
+import { ViolationSeverity } from '../referentiels/product-sheet.types';
 
 /** Statut d'un critère, jugé par le LLM. */
 export type CriterionStatus =
@@ -16,11 +16,7 @@ export interface LlmCriterionResult {
   comment?: string;
 }
 
-/**
- * Sortie normalisée de la passe 1, le jugement du plan (après json-repair).
- * Elle ne porte plus la détection des offres : c'est la passe 0 (mapping) qui la
- * produit, dans un prompt dont c'est la seule question.
- */
+/** Sortie de la passe 1 ; la détection des offres appartient à la passe 0. */
 export interface LlmCoachingOutput {
   criteria: LlmCriterionResult[];
   summary: string;
@@ -31,10 +27,7 @@ export interface LlmCoachingOutput {
   diagnosticScore: number | null; // 0-100 (score LLM, diagnostic uniquement)
 }
 
-/**
- * Écart de conformité produit : ce que le commercial a dit contredit la fiche.
- * Les deux citations sont obligatoires — sans preuve, pas de sanction.
- */
+/** Un écart de conformité : sans ses trois citations, il ne coûte rien. */
 export interface ProductViolation {
   productSlug: string;
   /** Libellé lisible, résolu depuis la fiche (le LLM ne renvoie que le slug). */
@@ -44,11 +37,7 @@ export interface ProductViolation {
   quote: string;
   /** La ligne de la fiche produit que ça contredit. */
   sheetSays: string;
-  /**
-   * La ligne du plan de vente que ça contredit AUSSI. Sans elle, la violation est
-   * rejetée par ScoringService : un commercial qui récite son plan n'est jamais
-   * sanctionné, même si le plan s'écarte de la fiche.
-   */
+  /** Sans elle, la violation est rejetée : réciter son plan n'est jamais une faute. */
   planSays: string;
   why?: string;
 }

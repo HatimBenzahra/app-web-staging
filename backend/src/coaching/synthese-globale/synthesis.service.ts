@@ -1,10 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CoachingStatus } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
-import { LlmService } from './llm.service';
+import { PrismaService } from '../../prisma.service';
+import { LlmService } from '../shared/llm.service';
 import { SnapshotBuilderService } from './snapshot-builder.service';
-import { CoachingSynthesisDto } from './coaching.dto';
+import { CoachingSynthesisDto } from '../coaching.dto';
 import {
   buildSynthesisSystemPrompt,
   buildSynthesisUserPrompt,
@@ -23,12 +23,7 @@ export class SynthesisService {
     private readonly snapshotBuilder: SnapshotBuilderService,
   ) {}
 
-  /**
-   * `where` d'activité coaching d'un sujet : un commercial = lui-même ; un
-   * manager = ses commerciaux (les analyses portent `commercialId`, jamais
-   * `managerId` pour un manager qui ne s'enregistre pas). Miroir de
-   * SnapshotBuilderService.resolveScope pour les chemins lecture/cron.
-   */
+  /** Un manager = ses commerciaux ; miroir de SnapshotBuilderService.resolveScope. */
   private async analysisScopeWhere(
     subjectType: SubjectType,
     subjectId: number,
@@ -41,9 +36,7 @@ export class SynthesisService {
     return { commercialId: { in: team.map((c) => c.id) } };
   }
 
-  // ---------------------------------------------------------------------------
-  // Lecture
-  // ---------------------------------------------------------------------------
+  // --- Lecture ---
 
   async getSynthesis(
     subjectType: SubjectType,
@@ -53,9 +46,7 @@ export class SynthesisService {
       where: { subjectKey: `${subjectType}:${subjectId}` },
     });
     if (!row) return null;
-    // Période couverte = min/max du createdAt (BD) des enregistrements analysés
-    // (status READY) du sujet — équipe pour un manager —, recalculée à chaque
-    // affichage (pas figée).
+    // Période recalculée à chaque affichage, jamais figée.
     const scopeWhere = await this.analysisScopeWhere(subjectType, subjectId);
     const period = await this.prisma.recording.aggregate({
       where: {
@@ -70,9 +61,7 @@ export class SynthesisService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Génération (manuelle : non bloquante + poll côté UI)
-  // ---------------------------------------------------------------------------
+  // --- Génération manuelle : non bloquante, l'UI poll ---
 
   /** Passe la synthèse en ANALYZING et lance la génération en fond. */
   async requestGenerate(
@@ -137,15 +126,9 @@ export class SynthesisService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Cron configurable (tick régulier qui lit la planif en base)
-  // ---------------------------------------------------------------------------
+  // --- Cron : tick régulier qui lit la planif en base ---
 
-  /**
-   * Tick toutes les 10 min : régénère si l'échéance planifiée (rythme + heure,
-   * config éditable) est passée depuis la dernière exécution. Robuste (pas de
-   * reprogrammation dynamique du scheduler), exécuté au plus une fois par créneau.
-   */
+  /** Tick de 10 min qui lit la planif en base, plutôt que de reprogrammer le scheduler. */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async synthesisTick(): Promise<void> {
     if (!this.llm.isConfigured()) return;
@@ -162,10 +145,7 @@ export class SynthesisService {
     );
     if (!scheduled) return;
 
-    // Claim atomique du créneau AVANT de lancer : garantit qu'un seul tick (et
-    // une seule instance) exécute ce créneau, même si regenerateAllActive dure
-    // plus de 10 min — sinon le tick suivant verrait lastRunAt encore ancien et
-    // relancerait une régénération concurrente (double coût LLM).
+    // Claim AVANT de lancer : sinon un tick plus long que 10 min se dédouble.
     const claim = await this.prisma.coachingConfig.updateMany({
       where: {
         id: 1,
@@ -249,9 +229,7 @@ export class SynthesisService {
     const commIds = comm.map((c) => c.commercialId!).filter((x) => x != null);
     const mgrPersoIds = mgrPerso.map((m) => m.managerId!).filter((x) => x != null);
 
-    // Managers découverts via leur ÉQUIPE : un manager n'a quasi jamais
-    // d'analyse à son nom, mais son équipe en a → sinon il ne serait JAMAIS
-    // régénéré par le cron.
+    // Un manager n'a quasi jamais d'analyse à son nom : on le trouve par son équipe.
     const commRows = commIds.length
       ? await this.prisma.commercial.findMany({
           where: { id: { in: commIds } },
@@ -333,11 +311,7 @@ export class SynthesisService {
 
 // --- Helpers ---------------------------------------------------------------
 
-/**
- * Dernière échéance planifiée <= now, selon rythme + heure (config).
- * daily : aujourd'hui à HH:MM, sinon hier. weekly : dernière occurrence du
- * jour choisi à HH:MM. Renvoie null si 'off'.
- */
+/** Dernière échéance planifiée avant maintenant, ou null si la planif est coupée. */
 export function mostRecentScheduled(
   frequency: string,
   hour: number,

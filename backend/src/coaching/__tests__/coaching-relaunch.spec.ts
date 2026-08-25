@@ -1,14 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
-import { CoachingService } from './coaching.service';
+import { CoachingService } from '../coaching.service';
 
-/**
- * Relancer une analyse doit la rejouer sur le plan de vente ACTIF.
- *
- * Vu en production : une analyse créée du temps du plan énergie (v1) restait
- * épinglée à cette version en la relançant. Ses clés produit (`telecom`,
- * `conciergerie`) ne correspondaient à aucune fiche, donc aucune conformité
- * produit n'était jugée — sans erreur, sans message.
- */
+/** Relancer doit rejouer sur le plan ACTIF, pas sur la version périmée épinglée. */
 describe('relaunch — version de plan', () => {
   const active = { id: 10, version: 10 };
 

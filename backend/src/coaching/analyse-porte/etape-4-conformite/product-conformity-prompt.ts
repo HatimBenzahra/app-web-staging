@@ -1,29 +1,17 @@
-import { ForbiddenClaim } from './product-sheet.types';
-import { ProductPrice } from './product-price.service';
+import { ForbiddenClaim } from '../../referentiels/product-sheet.types';
+import { ProductPrice } from '../../referentiels/product-price.service';
 
-/**
- * Contexte d'un produit réellement présenté : ses DEUX référentiels, et les
- * critères de conformité à juger.
- *
- * La règle du module : une affirmation n'est un écart que si elle contredit la
- * fiche produit **et** l'argumentaire du plan de vente. Un commercial qui récite
- * son plan n'est jamais sanctionné — si le plan s'écarte de la fiche, ça se règle
- * entre référentiels, pas sur son dos.
- */
+/** Un écart n'existe que s'il contredit la fiche ET l'argumentaire du plan. */
 export interface ConformityProductContext {
   productKey: string;
   label: string;
   /** Ce que la fiche produit décrit. */
   facts: string[];
-  /** Affirmations connues pour être fausses. Aide au jugement, pas déclencheur. */
+  /** Idées interdites, aide au jugement et non déclencheur. */
   forbidden: ForbiddenClaim[];
   /** Ce que le plan de vente autorise à dire (second référentiel). */
   pitchText?: string;
-  /**
-   * Tarifs en vigueur, résolus depuis WinLead+. Le plan écrit ses montants en
-   * gabarit (« XXXX €/mois ») : sans cette grille, un prix annoncé est confronté
-   * à un texte à trous, et tout montant devient un écart.
-   */
+  /** Sans cette grille, un prix annoncé est confronté au gabarit « XXXX € » du plan. */
   prices: ProductPrice[];
   /** Les critères `requiresProductSheet` de l'étape produit. */
   criteria: Array<{
@@ -100,12 +88,7 @@ function renderProduct(ctx: ConformityProductContext): string {
   }
 
   if (ctx.forbidden.length) {
-    // Présentées comme des EXEMPLES d'idées interdites, jamais comme des phrases à
-    // retrouver. Rendues en liste plate avec leur gravité, le modèle appariait mot
-    // à mot : « vous serez chez Orange avec le réseau Orange » sanctionné parce
-    // qu'il ressemblait à « vous aurez la priorité réseau comme Orange ». Un
-    // commercial ne prononce jamais ces formulations telles quelles — ce qui
-    // compte, c'est l'idée qu'il fait passer.
+    // Des idées, pas des formules : une gravité accolée était recopiée telle quelle.
     lines.push(
       '',
       'IDÉES QUE CE PRODUIT NE PEUT PAS PORTER :',

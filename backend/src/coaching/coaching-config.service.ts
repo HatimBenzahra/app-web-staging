@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { synthesisScheduleLabel } from './synthesis.service';
+import { synthesisScheduleLabel } from './synthese-globale/synthesis.service';
 
 // Statuts porte coachables par défaut (surchargés par la config DB éditable).
 const COACHABLE_STATUTS_DEFAULT = [

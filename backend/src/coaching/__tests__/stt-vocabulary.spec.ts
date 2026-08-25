@@ -1,13 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseSalesPlanMarkdown } from './sales-plan.parser';
-import { parseProductSheetMarkdown } from './product-sheet.parser';
-import { buildSttVocabulary } from './stt-vocabulary';
-import { ParsedSalesPlan } from './sales-plan.types';
-import { ParsedProductSheet } from './product-sheet.types';
+import { parseSalesPlanMarkdown } from '../referentiels/sales-plan.parser';
+import { parseProductSheetMarkdown } from '../referentiels/product-sheet.parser';
+import { buildSttVocabulary } from '../analyse-porte/etape-1-transcription/stt-vocabulary';
+import { ParsedSalesPlan } from '../referentiels/sales-plan.types';
+import { ParsedProductSheet } from '../referentiels/product-sheet.types';
 
-const PLANS_DIR = path.join(__dirname, 'sales-plans');
-const SHEETS_DIR = path.join(__dirname, 'product-sheets');
+const PLANS_DIR = path.join(__dirname, '..', 'referentiels', 'sales-plans');
+const SHEETS_DIR = path.join(__dirname, '..', 'referentiels', 'product-sheets');
 
 const readPlan = (): ParsedSalesPlan =>
   parseSalesPlanMarkdown(
@@ -25,11 +25,7 @@ const readSheets = (): ParsedProductSheet[] =>
         ).sheet,
     );
 
-/**
- * Le vocabulaire remplace celui codé en dur dans `api_stt.py`, resté à l'ère
- * énergie alors que le plan est passé en Telecom. Construit depuis les
- * référentiels, il ne peut plus diverger.
- */
+/** Construit depuis les référentiels, le vocabulaire ne peut plus diverger du plan. */
 describe('vocabulaire STT', () => {
   const vocab = () => buildSttVocabulary(readPlan(), readSheets());
 
@@ -41,9 +37,7 @@ describe('vocabulaire STT', () => {
   });
 
   it('couvre les offres du plan qui n’ont pas de fiche', () => {
-    // La Conciergerie est vendue mais n'a aucune fiche : son nom doit quand même
-    // être connu de Whisper, sinon le mapping travaille sur un transcript qui l'a
-    // perdu.
+    // Vendue sans fiche : son nom doit quand même être connu de Whisper.
     expect(vocab()).toContain('Conciergerie Action Prévoyance');
   });
 
@@ -62,9 +56,7 @@ describe('vocabulaire STT', () => {
     expect(vocab()).toContain('Finanssor');
   });
 
-  // Les expectedSignals sont écrits pour le LLM juge : « questions ouvertes »,
-  // « laisse parler ». Du français courant, que Whisper transcrit déjà bien — les
-  // injecter saturait le plafond et évinçait les vrais noms de marque.
+  // Du français courant écrit pour le juge : il saturait le plafond du prompt.
   it('n’injecte pas les signaux du plan destinés au juge', () => {
     const v = vocab().toLowerCase();
     for (const signal of ['questions ouvertes', 'laisse parler', 'par mois']) {

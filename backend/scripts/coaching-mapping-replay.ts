@@ -18,17 +18,17 @@
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseSalesPlanMarkdown } from '../src/coaching/sales-plan.parser';
-import { parseProductSheetMarkdown } from '../src/coaching/product-sheet.parser';
-import { productKeysFromPlan } from '../src/coaching/prompt';
+import { parseSalesPlanMarkdown } from '../src/coaching/referentiels/sales-plan.parser';
+import { parseProductSheetMarkdown } from '../src/coaching/referentiels/product-sheet.parser';
+import { productKeysFromPlan } from '../src/coaching/analyse-porte/etape-3-plan/plan-prompt';
 import {
   MappingProductOption,
   buildMappingSystemPrompt,
   buildMappingUserPrompt,
-} from '../src/coaching/product-mapping-prompt';
-import { repairMappingOutput } from '../src/coaching/json-repair';
+} from '../src/coaching/analyse-porte/etape-2-mapping/product-mapping-prompt';
+import { repairMappingOutput } from '../src/coaching/shared/json-repair';
 
-const COACHING_DIR = path.join(__dirname, '..', 'src', 'coaching');
+const COACHING_DIR = path.join(__dirname, '..', 'src', 'coaching', 'referentiels');
 const DEFAULT_TRANSCRIPTS = path.join(
   __dirname,
   '..',

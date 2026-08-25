@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../../prisma.service';
 import { parseProductSheetMarkdown } from './product-sheet.parser';
 import {
   ForbiddenClaim,
@@ -30,14 +30,8 @@ export interface ActiveProductSheet {
 }
 
 /**
- * Vue LÉGÈRE d'une fiche : de quoi NOMMER et RECONNAÎTRE l'offre, jamais de quoi
- * la juger. Pas de `facts`, pas de `forbidden`.
- *
- * C'est la seule chose qu'on a le droit de charger pour TOUTES les offres, parce
- * que deux étapes en ont besoin avant de savoir ce qui a été abordé : le
- * vocabulaire soufflé à Whisper (avant la transcription, donc avant tout mapping)
- * et la liste fermée de la passe 0. Le contenu d'une fiche, lui, ne se lit que
- * pour les offres réellement présentées — via `getActiveSheetsFor`.
+ * De quoi nommer et reconnaître une offre, jamais de quoi la juger : c'est la
+ * seule chose qu'on charge pour TOUTES les offres, avant de savoir ce qui a été abordé.
  */
 export interface ProductSheetDescriptor {
   productKey: string;
@@ -46,10 +40,7 @@ export interface ProductSheetDescriptor {
   sttTerms: string[];
 }
 
-/**
- * Charge les fiches produit markdown (dossier product-sheets/) au démarrage et
- * les versionne en DB (clé = sha256), exactement comme SalesPlanService.
- */
+/** Charge les fiches au boot et les versionne par sha256, comme SalesPlanService. */
 @Injectable()
 export class ProductSheetService implements OnModuleInit {
   private readonly logger = new Logger(ProductSheetService.name);
@@ -61,13 +52,15 @@ export class ProductSheetService implements OnModuleInit {
   }
 
   /** Résout le dossier des .md (dist en prod, src en fallback). */
+  /** Sans ce dossier le module démarre sans aucune fiche, avec un simple warn. */
   private resolveSheetsDir(): string | null {
+    const rel = path.join('coaching', 'referentiels', 'product-sheets');
     const candidates = [
       path.join(__dirname, 'product-sheets'),
       // build nest : code compilé sous dist/src/coaching, assets sous dist/coaching
-      path.join(__dirname, '..', '..', 'coaching', 'product-sheets'),
-      path.join(process.cwd(), 'dist', 'coaching', 'product-sheets'),
-      path.join(process.cwd(), 'src', 'coaching', 'product-sheets'),
+      path.join(__dirname, '..', '..', '..', rel),
+      path.join(process.cwd(), 'dist', rel),
+      path.join(process.cwd(), 'src', rel),
     ];
     return candidates.find((dir) => fs.existsSync(dir)) ?? null;
   }
@@ -144,10 +137,7 @@ export class ProductSheetService implements OnModuleInit {
     ]);
   }
 
-  /**
-   * Fiches actives des produits détectés. Un produit sans fiche est simplement
-   * absent du résultat : la passe 2 ne le juge pas, plutôt que de l'inventer.
-   */
+  /** Un produit sans fiche est absent du résultat : la passe 2 ne l'invente pas. */
   async getActiveSheetsFor(
     productKeys: string[],
   ): Promise<ActiveProductSheet[]> {
@@ -161,11 +151,7 @@ export class ProductSheetService implements OnModuleInit {
     }));
   }
 
-  /**
-   * Vues légères des fiches actives : nom, signaux de reconnaissance, termes de
-   * transcription. Volontairement SANS `facts` ni `forbidden` — ce qu'il faut pour
-   * nommer une offre ne donne pas le droit de la juger.
-   */
+  /** Sans `facts` ni `forbidden` : nommer une offre ne donne pas le droit de la juger. */
   async getActiveDescriptors(
     productKeys: string[],
   ): Promise<ProductSheetDescriptor[]> {

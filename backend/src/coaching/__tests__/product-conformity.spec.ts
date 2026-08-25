@@ -1,15 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseSalesPlanMarkdown } from './sales-plan.parser';
-import { parseProductSheetMarkdown } from './product-sheet.parser';
-import { ScoringService } from './scoring.service';
-import { LlmCoachingOutput, ProductViolation } from './coaching.types';
-import { repairConformityOutput } from './json-repair';
-import { buildUserPrompt } from './prompt';
-import { buildConformityUserPrompt } from './product-conformity-prompt';
+import { parseSalesPlanMarkdown } from '../referentiels/sales-plan.parser';
+import { parseProductSheetMarkdown } from '../referentiels/product-sheet.parser';
+import { ScoringService } from '../analyse-porte/etape-5-scoring/scoring.service';
+import { LlmCoachingOutput, ProductViolation } from '../shared/coaching.types';
+import { repairConformityOutput } from '../shared/json-repair';
+import { buildUserPrompt } from '../analyse-porte/etape-3-plan/plan-prompt';
+import { buildConformityUserPrompt } from '../analyse-porte/etape-4-conformite/product-conformity-prompt';
 
-const PLANS_DIR = path.join(__dirname, 'sales-plans');
-const SHEETS_DIR = path.join(__dirname, 'product-sheets');
+const PLANS_DIR = path.join(__dirname, '..', 'referentiels', 'sales-plans');
+const SHEETS_DIR = path.join(__dirname, '..', 'referentiels', 'product-sheets');
 
 const readPlan = () =>
   parseSalesPlanMarkdown(
@@ -46,9 +46,7 @@ describe('plan de vente Telecom', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  // Bug vu en production : `conformite_points_obligatoires` existait dans 4 étapes
-  // produit, et le repli d'appariement de ScoringService importait le verdict de
-  // france_telephone sur Depanssur, Bleubox et Mondial TV.
+  // Une clé partagée faisait importer le verdict d'un produit sur les trois autres.
   it('refuse une clé de critère réutilisée dans une autre étape', () => {
     const source = [
       '---',
@@ -165,8 +163,7 @@ describe('prompt de conformité', () => {
     ],
   };
 
-  // Le prompt porte les DEUX référentiels : sans l'argumentaire du plan, le
-  // modèle ne peut pas produire `planSays`, et toute violation est rejetée.
+  // Sans l'argumentaire du plan, `planSays` est impossible et tout est rejeté.
   it('porte la fiche ET l’argumentaire du plan', () => {
     const prompt = buildConformityUserPrompt(
       [{ ...ctx, pitchText: 'Depanssur vous assiste en cas de panne.' }],
@@ -178,10 +175,7 @@ describe('prompt de conformité', () => {
     expect(prompt).toContain('Depanssur vous assiste en cas de panne.');
   });
 
-  // Le plan écrit ses montants en gabarit (« XXXX €/mois »). Sans la grille
-  // tarifaire, un prix annoncé est confronté à un texte à trous et tout montant
-  // devient un écart — vu en production sur « quatorze euros quatre-vingt-dix »,
-  // qui est pourtant le tarif exact du catalogue.
+  // Sans la grille, un prix annoncé est confronté au gabarit « XXXX € » du plan.
   it('porte la grille tarifaire et interdit d’opposer le gabarit', () => {
     const prompt = buildConformityUserPrompt([ctx], 'transcript');
     expect(prompt).toContain('TARIFS EN VIGUEUR');
@@ -201,14 +195,7 @@ describe('prompt de conformité', () => {
     expect(prompt).toContain('quote');
   });
 
-  // Une étiquette « → grave » collée à la phrase était recopiée telle quelle, et
-  // le modèle appariait par ressemblance de mots. Vu en production : « vous serez
-  // chez Orange avec le réseau Orange » sanctionné comme « vous aurez la priorité
-  // réseau comme Orange ».
-  // Rendues en liste plate avec leur gravité, ces phrases servaient de détecteur
-  // de mots-clés : « vous serez chez Orange avec le réseau Orange » sanctionné
-  // parce qu'il ressemblait à « vous aurez la priorité réseau comme Orange ».
-  // Un commercial ne prononce jamais ces formulations telles quelles.
+  // Une gravité accolée était recopiée telle quelle, et l'appariement se faisait sur les mots.
   it('présente les affirmations interdites comme des EXEMPLES d’idées', () => {
     const prompt = buildConformityUserPrompt([ctx], 'transcript');
     expect(prompt).toContain('présenter Depanssur comme une assurance');
@@ -309,9 +296,7 @@ describe('malus de conformité', () => {
     expect(score([violation({ sheetSays: '' })]).result.malus).toBe(0);
   });
 
-  // Le modèle remplit parfois un champ de citation avec un marqueur d'absence
-  // plutôt que de ne pas émettre l'écart : ça doit compter comme une citation
-  // manquante, pas comme une citation.
+  // Un marqueur d'absence compte comme une citation manquante.
   it.each(['n/a', 'N/A', 'aucun', 'Non applicable', '-', '  néant  ', '?', 'NC'])(
     'rejette un écart dont la citation de la fiche vaut %p',
     (sheetSays) => {

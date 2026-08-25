@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../../prisma.service';
 import {
   ParsedSalesPlanFile,
   parseSalesPlanMarkdown,
@@ -34,14 +34,15 @@ export class SalesPlanService implements OnModuleInit {
     await this.syncPlansFromDisk();
   }
 
-  /** Résout le dossier des .md (dist en prod, src en fallback). */
+  /** Sans ce dossier le module démarre sans aucun plan, avec un simple warn. */
   private resolvePlansDir(): string | null {
+    const rel = path.join('coaching', 'referentiels', 'sales-plans');
     const candidates = [
       path.join(__dirname, 'sales-plans'),
       // build nest : code compilé sous dist/src/coaching, assets sous dist/coaching
-      path.join(__dirname, '..', '..', 'coaching', 'sales-plans'),
-      path.join(process.cwd(), 'dist', 'coaching', 'sales-plans'),
-      path.join(process.cwd(), 'src', 'coaching', 'sales-plans'),
+      path.join(__dirname, '..', '..', '..', rel),
+      path.join(process.cwd(), 'dist', rel),
+      path.join(process.cwd(), 'src', rel),
     ];
     return candidates.find((dir) => fs.existsSync(dir)) ?? null;
   }

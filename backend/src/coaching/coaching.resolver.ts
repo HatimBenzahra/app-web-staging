@@ -5,9 +5,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CoachingService } from './coaching.service';
 import { CoachingConfigService } from './coaching-config.service';
-import { CoachingQueryService } from './coaching-query.service';
-import { SalesPlanService } from './sales-plan.service';
-import { ProductSheetService } from './product-sheet.service';
+import { CoachingQueryService } from './lecture/coaching-query.service';
+import { SalesPlanService } from './referentiels/sales-plan.service';
+import { ProductSheetService } from './referentiels/product-sheet.service';
 import {
   ActiveSalesPlanDto,
   CoachingAnalysesFilter,

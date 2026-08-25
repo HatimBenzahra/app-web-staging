@@ -1,4 +1,4 @@
-import { ParsedSalesPlan } from './sales-plan.types';
+import { ParsedSalesPlan } from '../../referentiels/sales-plan.types';
 
 /** Liste des slugs de produits détectables (dérivée des étapes productDetected:*). */
 export function productKeysFromPlan(plan: ParsedSalesPlan): string[] {
@@ -11,16 +11,8 @@ export function productKeysFromPlan(plan: ParsedSalesPlan): string[] {
 }
 
 /**
- * Sérialise le barème pour la passe 1. Trois filtres :
- *  - les critères `requiresProductSheet` sont exclus (jugés en passe 2, qui a la fiche) ;
- *  - les étapes produit non retenues par la passe 0 (mapping) sont retirées, au lieu
- *    d'être envoyées avec un « évaluée uniquement si … » que le modèle devait
- *    arbitrer lui-même : prompt plus court, moins de critères à émettre, moins de
- *    risque de sortie tronquée ;
- *  - une étape dont il ne reste aucun critère n'est pas rendue.
- *
- * Les étapes retirées restent émises en `non_applicable` par ScoringService, qui
- * parcourt le plan complet — elles ne disparaissent donc pas de la checklist.
+ * Rend le barème sans les critères de conformité ni les étapes des offres non
+ * présentées : ScoringService les émettra quand même en `non_applicable`.
  */
 function renderPlanForPrompt(
   plan: ParsedSalesPlan,
@@ -40,11 +32,7 @@ function renderPlanForPrompt(
     lines.push(`### Étape "${step.key}" — ${step.label}${applic}`);
     for (const c of criteria) {
       lines.push(`- critère "${c.key}" : ${c.label}`);
-      // Des EXEMPLES, jamais une liste à cocher. Rendus en « signaux positifs »,
-      // ils transformaient le jugement en recherche de mots-clés : un commercial
-      // qui dit la même chose autrement était noté absent. Les comportements
-      // (« questions ouvertes », « monologue ») ont été remontés dans le libellé
-      // du critère, là où ils se jugent.
+      // Des exemples, pas une liste à cocher : les comportements vivent dans le libellé.
       if (c.expectedSignals?.length) {
         lines.push(
           `    à quoi ça ressemble, ses mots peuvent différer : ${c.expectedSignals.join(' | ')}`,
@@ -73,11 +61,7 @@ export function buildSystemPrompt(): string {
   ].join('\n');
 }
 
-/**
- * Prompt de la passe 1. `presentedProducts` vient de la passe 0 : ce sont les
- * offres réellement présentées par le commercial, donc les seules étapes produit
- * à faire juger ici.
- */
+/** `presentedProducts` vient de la passe 0 : les seules étapes produit à juger ici. */
 export function buildUserPrompt(
   plan: ParsedSalesPlan,
   transcript: string,

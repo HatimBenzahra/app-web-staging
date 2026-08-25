@@ -5,18 +5,10 @@ import {
   LlmCriterionResult,
   ProductViolation,
 } from './coaching.types';
-import { ViolationSeverity } from './product-sheet.types';
-import { MappedProduct } from './product-mapping-prompt';
+import { ViolationSeverity } from '../referentiels/product-sheet.types';
+import { MappedProduct } from '../analyse-porte/etape-2-mapping/product-mapping-prompt';
 
-/**
- * Réparation/normalisation de la sortie LLM.
- * Les tests de juin ont montré que le modèle (gemma) renvoie parfois :
- *  - du JSON entouré d'une fence markdown ```json
- *  - des tableaux sous forme d'objet indexé
- *  - une "confidence" tantôt 0-1, tantôt 0-100, tantôt une string ("HIGH")
- *  - des clés alias (key/criterionKey, label/title, status en anglais)
- * On tolère tout ça et on ramène à une structure stable.
- */
+/** Ramène la sortie du modèle à une structure stable : fences, alias, échelles. */
 
 const STATUS_ALIASES: Record<string, CriterionStatus> = {
   atteint: 'atteint',
@@ -139,14 +131,7 @@ function normalizeCriterion(raw: any): LlmCriterionResult | null {
   };
 }
 
-/**
- * Slug produit normalisé : minuscules, sans accent, séparateurs unifiés
- * (`Mondial TV` et `mondial-tv` donnent tous deux `mondial_tv`).
- *
- * Ce n'est PLUS ce qui décide de la détection — la passe 0 choisit dans une liste
- * fermée. Ça ne sert qu'à rattraper la clé produit portée par une violation de la
- * passe 2, qui reste du texte produit par le modèle.
- */
+/** Ne décide plus de la détection : sert à rattraper le slug d'une violation. */
 function normalizeProductSlug(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value
@@ -157,20 +142,14 @@ function normalizeProductSlug(value: unknown): string {
     .replace(/[\s\-]+/g, '_');
 }
 
-/**
- * Gravité par défaut : "modere". Une valeur inconnue ne doit jamais faire monter
- * la sanction — on retient le niveau le plus faible.
- */
+/** Une gravité inconnue retombe sur la plus faible, jamais l'inverse. */
 function normalizeSeverity(value: unknown): ViolationSeverity {
   if (typeof value !== 'string') return 'modere';
   const key = value.trim().toLowerCase().replace(/\s+/g, '_');
   return SEVERITY_ALIASES[key] ?? 'modere';
 }
 
-/**
- * Normalise la FORME d'une violation. La RÈGLE (les deux citations exigées) est
- * appliquée par ScoringService — ici on ne fait que typer.
- */
+/** Normalise la forme ; la règle des trois citations est appliquée par ScoringService. */
 function normalizeViolation(raw: any): ProductViolation | null {
   if (!raw || typeof raw !== 'object') return null;
   const productSlug = normalizeProductSlug(
@@ -258,13 +237,8 @@ export function repairConformityOutput(raw: string): LlmConformityOutput {
 }
 
 /**
- * Normalise la sortie de la passe 0 (mapping des offres).
- *
- * `knownKeys` est la liste fermée envoyée au modèle : toute clé absente est
- * REJETÉE, jamais rattrapée par approximation. C'est ce qui remplace l'ancienne
- * détection en texte libre. Les entrées rejetées sont renvoyées à part pour être
- * tracées (log + colonne `productMapping`) : un rejet silencieux nous ramènerait
- * au symptôme d'origine, une analyse qui « rate » sans rien dire.
+ * Toute clé hors de `knownKeys` est rejetée, jamais approximée, et renvoyée à part
+ * pour être tracée — un rejet silencieux ramènerait l'analyse qui « rate » sans rien dire.
  */
 export function repairMappingOutput(
   raw: string,
@@ -321,11 +295,7 @@ export function repairMappingOutput(
   return { products, rejected };
 }
 
-/**
- * Booléen tolérant : le modèle renvoie tantôt `true`, tantôt `"true"`, `"oui"`,
- * `"yes"` ou `1`. Toute autre valeur vaut false — un doute ne doit pas rendre une
- * étape applicable, ce qui coûterait des points au commercial.
- */
+/** Tolérant en entrée, false par défaut : un doute ne doit pas rendre une étape applicable. */
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value === 1;

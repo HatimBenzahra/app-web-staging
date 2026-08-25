@@ -5,8 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "coaching/sales-plans/**/*.md", "watchAssets": true },
-      { "include": "coaching/product-sheets/**/*.md", "watchAssets": true }
+      { "include": "coaching/referentiels/sales-plans/**/*.md", "watchAssets": true },
+      { "include": "coaching/referentiels/product-sheets/**/*.md", "watchAssets": true }
     ]
   }
 }

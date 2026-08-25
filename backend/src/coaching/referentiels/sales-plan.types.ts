@@ -13,11 +13,7 @@ export interface CriterionDef {
   label: string;
   points: number; // barème max du critère (typiquement 100)
   evidenceRequired?: boolean;
-  /**
-   * Exemples de formulations attendues — des ILLUSTRATIONS, pas une liste à
-   * cocher. N'y mettre que ce qui se prononce vraiment : un comportement
-   * (« écoute », « ne coupe pas la parole ») se juge et s'écrit dans `label`.
-   */
+  /** Des illustrations, pas une liste à cocher : un comportement s'écrit dans `label`. */
   expectedSignals?: string[];
   /** Optionnel : restreint l'applicabilité du critère (par défaut = celle de l'étape). */
   appliesWhen?: StepApplicability;
@@ -34,19 +30,9 @@ export interface StepDef {
   weight: number; // poids de l'étape dans le score global
   appliesWhen: StepApplicability;
   criteria: CriterionDef[];
-  /**
-   * Titre de la section du CORPS markdown qui porte l'argumentaire de l'étape,
-   * ex. "Phase 6 — Vente du mobile France Téléphone". Résolu au parsing en
-   * `pitchText`.
-   */
+  /** Titre de la section du corps qui porte l'argumentaire, résolu en `pitchText`. */
   pitchSection?: string;
-  /**
-   * L'argumentaire tel que le plan l'écrit. C'est le SECOND référentiel de la
-   * conformité produit : un écart n'est retenu que s'il contredit la fiche **et**
-   * cet argumentaire. Un commercial qui récite son plan n'est jamais sanctionné,
-   * même si le plan s'écarte de la fiche — ce désaccord-là se règle entre
-   * référentiels, pas sur le dos du commercial.
-   */
+  /** Second référentiel de la conformité : réciter le plan n'est jamais une faute. */
   pitchText?: string;
 }
 
@@ -56,10 +42,7 @@ export interface PlanQuality {
   lowConfidenceBelowSec?: number;
 }
 
-/**
- * Barème du malus de conformité produit, retiré du score après son calcul.
- * Les étapes gardent leur barème intact : le malus s'applique au score global.
- */
+/** Le malus s'applique au score global : les étapes gardent leur barème intact. */
 export interface PlanMalus {
   /** Affirmation juridiquement fausse ou engagement impossible. */
   grave: number;
@@ -79,11 +62,7 @@ export interface ParsedSalesPlan {
   quality: PlanQuality;
   malus: PlanMalus;
   steps: StepDef[];
-  /**
-   * Termes transverses que la transcription doit orthographier juste (marque
-   * ombrelle, offres sans fiche). Le pendant des `sttTerms` d'une fiche, au
-   * niveau du plan. Optionnel.
-   */
+  /** Le pendant des `sttTerms` d'une fiche, pour ce qui n'appartient à aucun produit. */
   sttTerms?: string[];
 }
 

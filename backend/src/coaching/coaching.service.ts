@@ -6,10 +6,10 @@ import {
 } from '@nestjs/common';
 import { CoachingStatus, StatutPorte } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
-import { SalesPlanService } from './sales-plan.service';
-import { LlmService } from './llm.service';
+import { SalesPlanService } from './referentiels/sales-plan.service';
+import { LlmService } from './shared/llm.service';
 import { CoachingConfigService } from './coaching-config.service';
-import { CoachingQueryService } from './coaching-query.service';
+import { CoachingQueryService } from './lecture/coaching-query.service';
 import { CoachingAnalysisDto } from './coaching.dto';
 
 export interface EnqueueCoachingInput {
@@ -19,13 +19,7 @@ export interface EnqueueCoachingInput {
   durationSec?: number | null;
 }
 
-/**
- * Surface de COMMANDES du coaching (pipeline A) : enfilement automatique à
- * l'upload, lancement/relance manuels, favori. La création d'une ligne
- * CoachingAnalysis en PENDING sert de file durable ; le traitement est assuré
- * par AnalysisRunnerService (worker @Cron). Les lectures sont dans
- * CoachingQueryService, la config dans CoachingConfigService.
- */
+/** Commandes du coaching : enfiler, lancer, relancer, marquer favori. */
 @Injectable()
 export class CoachingService {
   private readonly logger = new Logger(CoachingService.name);
@@ -181,11 +175,7 @@ export class CoachingService {
     return this.query.getAnalysis(analysis.id);
   }
 
-  /**
-   * Lancement manuel EN LOT sur des enregistrements existants (interface de
-   * gestion). Idempotent ; renvoie le nombre d'audios enfilés. Comme `launch`,
-   * ces analyses ignorent le gating durée (manual = true).
-   */
+  /** Lancement en lot, idempotent, sans gating de durée. */
   async launchMany(s3Keys: string[]): Promise<number> {
     const keys = [...new Set((s3Keys ?? []).filter(Boolean))];
     let n = 0;
@@ -201,11 +191,7 @@ export class CoachingService {
     return n;
   }
 
-  /**
-   * Marque/démarque une porte comme favorite. UPDATE SQL brut EXPRÈS : le favori
-   * est une métadonnée de coaching, il ne doit PAS bumper `Porte.updatedAt`
-   * (sinon la porte remonte à tort dans les KPIs « modifiées aujourd'hui »).
-   */
+  /** SQL brut EXPRÈS : le favori ne doit pas bumper `Porte.updatedAt`. */
   async setCoachingFavori(porteId: number, favori: boolean): Promise<boolean> {
     await this.prisma.$executeRaw`
       UPDATE "Porte" SET "coachingFavori" = ${favori} WHERE "id" = ${porteId}
@@ -224,19 +210,8 @@ export class CoachingService {
 
   /** Relance manuelle d'une analyse existante (admin/directeur). */
   /**
-   * Relance une analyse SUR LE PLAN DE VENTE ACTIF.
-   *
-   * Une analyse reste épinglée à sa version de plan (`@@unique([s3KeyOriginal,
-   * salesPlanVersionId])`) : c'est ce qui rend les scores comparables dans le
-   * temps. Mais relancer une ligne épinglée à une version périmée la rejouait sur
-   * un référentiel mort — vu en production : un audio rejoué sur le plan v1
-   * (version énergie), dont les clés produit `telecom` / `conciergerie` ne
-   * correspondent à aucune fiche, donc sans la moindre conformité produit.
-   *
-   * On ne touche donc pas à la ligne d'origine — elle reste l'historique de ce
-   * qu'a valu cet échange sur SON référentiel — et on (re)joue l'audio sur la
-   * version active. Le transcript est repris : l'audio n'a pas changé, ça évite
-   * de re-payer Whisper (des dizaines de minutes sur un échange long).
+   * Rejoue l'audio sur le plan ACTIF sans toucher la ligne d'origine, qui reste
+   * l'historique de ce qu'a valu cet échange sur son propre référentiel.
    */
   async relaunch(id: number): Promise<CoachingAnalysisDto> {
     const analysis = await this.prisma.coachingAnalysis.findUnique({
@@ -252,8 +227,7 @@ export class CoachingService {
       error: null,
       attempts: 0,
       nextRetryAt: null,
-      // Relance explicite : l'utilisateur veut cette analyse, quelle que soit la
-      // durée de l'échange. Le gating "pas de parole" reste actif.
+      // Relance explicite : seul le gating de durée est levé.
       manual: true,
     };
 
@@ -278,8 +252,7 @@ export class CoachingService {
         where: { id: existing.id },
         data: {
           ...requeue,
-          // On ne remplace un transcript existant que s'il est vide : celui de la
-          // cible a été produit avec le profil STT du moment, il fait foi.
+          // Le transcript de la cible fait foi : il vient de son propre profil STT.
           ...(existing.transcript?.trim()
             ? {}
             : {

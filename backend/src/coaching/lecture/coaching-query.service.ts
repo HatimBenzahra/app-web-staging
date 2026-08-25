@@ -5,9 +5,9 @@ import {
   StatutPorte,
   UserStatus,
 } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
-import { SalesPlanService } from './sales-plan.service';
-import { CoachingConfigService } from './coaching-config.service';
+import { PrismaService } from '../../prisma.service';
+import { SalesPlanService } from '../referentiels/sales-plan.service';
+import { CoachingConfigService } from '../coaching-config.service';
 import {
   CoachingAnalysesFilter,
   CoachingAnalysisDto,
@@ -18,8 +18,8 @@ import {
   CoachingScoreboardRowDto,
   CoachingStepAverageDto,
   CoachingViolationDto,
-} from './coaching.dto';
-import { CriterionScore, StepScore } from './coaching.types';
+} from '../coaching.dto';
+import { CriterionScore, StepScore } from '../shared/coaching.types';
 
 // Filtre par tranche de durée (secondes) pour la liste de gestion.
 function matchDurationTier(sec: number, tier: string): boolean {
@@ -158,9 +158,7 @@ export class CoachingQueryService {
   }
 
   /**
-   * File interrogeable : audios en attente / en cours (PENDING, TRANSCRIBING,
-   * MAPPING, ANALYZING, et CONFORMITY pour les analyses antérieures), avec le
-   * sujet et la durée. Prochain d'abord.
+   * File des audios en attente ou en cours, le prochain d'abord.
    */
   async coachingQueue(): Promise<CoachingQueueItemDto[]> {
     const rows = await this.prisma.coachingAnalysis.findMany({
@@ -539,20 +537,8 @@ export class CoachingQueryService {
   }
 
   /**
-   * Comparatif de scoring coaching entre intervenants, sur une période.
-   *
-   * Deux partis pris :
-   *
-   * 1. **Seules les analyses notées comptent.** `INEXPLOITABLE` et les échecs sont
-   *    exclus de la moyenne (leur `score` ne veut rien dire) mais recomptés à part,
-   *    pour que l'UI puisse dire sur quoi la note porte.
-   * 2. **Le profil par étape vient des `subScores`**, pas d'un recalcul. Une étape
-   *    non applicable à un échange n'entre pas dans sa moyenne — sinon un commercial
-   *    qui n'a jamais eu à traiter le closing serait pénalisé sur cette étape.
-   *
-   * La corrélation score ↔ conversion réelle n'est pas faite ici : elle se joue côté
-   * UI en rapprochant ces lignes de `statsActivityByOwner`, qui porte déjà le taux
-   * de conversion par intervenant. Rien à dupliquer.
+   * Comparatif entre intervenants : seules les analyses notées comptent, et le
+   * profil par étape vient des `subScores` pour ne pas punir une étape jamais rencontrée.
    */
   async coachingScoreboard(
     startDate?: Date,

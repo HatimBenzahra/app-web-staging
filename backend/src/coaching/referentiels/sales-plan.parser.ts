@@ -59,16 +59,8 @@ function parseCriterion(raw: any, stepKey: string): CriterionDef {
   };
 }
 
-/**
- * Extrait une section du corps markdown par son titre exact (texte du heading,
- * niveau indifférent). La section court jusqu'au heading suivant de niveau
- * équivalent ou supérieur.
- */
-/**
- * Correspondance tolérante des titres : casse, accents, tirets et espaces
- * normalisés. Le frontmatter désigne la section par son titre, et les deux sont
- * édités à la main, à des moments différents.
- */
+/** Extrait une section du corps, jusqu'au heading suivant de niveau égal ou supérieur. */
+/** Titres comparés à la casse, aux accents et aux tirets près : les deux s'éditent à la main. */
 function normalizeHeading(value: string): string {
   return value
     .toLowerCase()
@@ -171,12 +163,8 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
   });
 
   const stepKeys = new Set<string>();
-  // Unicité GLOBALE des clés de critères, pas seulement au sein d'une étape.
-  // ScoringService apparie d'abord sur `stepKey::criterionKey`, puis retombe sur
-  // le seul `criterionKey` quand le LLM omet l'étape. Avec deux critères de même
-  // clé dans des étapes différentes, ce repli importe le verdict d'un AUTRE
-  // produit : vu en production (le commentaire de france_telephone recopié sur
-  // les critères Depanssur, Bleubox et Mondial TV). On l'interdit au parsing.
+  // Unicité GLOBALE : le repli de ScoringService sur la seule clé de critère
+  // importerait sinon le verdict d'un autre produit.
   const allCriterionKeys = new Map<string, string>();
   let totalWeight = 0;
   for (const s of steps) {

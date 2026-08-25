@@ -1,20 +1,11 @@
 /**
- * Passe 0 — mapping des offres.
- *
- * Une seule question posée au LLM : parmi cette liste fermée d'offres, lesquelles
- * apparaissent dans l'échange, et laquelle a été RÉELLEMENT présentée par le
- * commercial ?
- *
- * C'est le correctif de fond de l'instabilité observée : la détection était
- * auparavant une sous-tâche du prompt de jugement (29 critères + rédaction), et
- * renvoyait du texte libre re-normalisé à coups de regex avant comparaison stricte
- * aux clés du plan. Ici le modèle choisit une clé DANS la liste qu'on lui donne, et
- * le backend rejette tout ce qui n'y est pas.
+ * Passe 0 : une seule question, et une clé choisie dans une liste FERMÉE que le
+ * backend valide — c'est ce qui rend la détection des offres reproductible.
  */
 
 /** Une offre proposable, telle que présentée au modèle. */
 export interface MappingProductOption {
-  /** La clé du plan (`productDetected:<key>`) — la seule valeur acceptée en retour. */
+  /** Clé du plan, seule valeur acceptée en retour. */
   key: string;
   label: string;
   /** Ce qui permet de reconnaître l'offre à l'oreille, pas ce qu'elle vaut. */
@@ -24,12 +15,7 @@ export interface MappingProductOption {
 /** Ce que la passe 0 retient d'une offre. */
 export interface MappedProduct {
   key: string;
-  /**
-   * true = le COMMERCIAL a présenté l'offre. Une offre seulement mentionnée par le
-   * prospect (« j'ai déjà une box ») reste à false : elle ne rend pas l'étape
-   * applicable, sinon ses critères sortiraient `absent` = 0 et feraient baisser le
-   * score à tort.
-   */
+  /** Une offre évoquée par le prospect reste à false : elle ne rend pas l'étape applicable. */
   presentedByCommercial: boolean;
   /** Citation verbatim qui justifie la détection. */
   evidence: string;

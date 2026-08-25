@@ -1,54 +1,52 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CoachingQuality, CoachingStatus, StatutPorte } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
-import { TranscriptionService } from '../transcription/transcription.service';
-import { SalesPlanService } from './sales-plan.service';
-import { LlmService } from './llm.service';
-import { ScoringService } from './scoring.service';
-import { buildSystemPrompt, buildUserPrompt, productKeysFromPlan } from './prompt';
+import { PrismaService } from '../../prisma.service';
+import { TranscriptionService } from '../../transcription/transcription.service';
+import { SalesPlanService } from '../referentiels/sales-plan.service';
+import { LlmService } from '../shared/llm.service';
+import { ScoringService } from './etape-5-scoring/scoring.service';
+import { buildSystemPrompt, buildUserPrompt, productKeysFromPlan } from './etape-3-plan/plan-prompt';
 import {
   repairConformityOutput,
   repairLlmOutput,
   repairMappingOutput,
-} from './json-repair';
+} from '../shared/json-repair';
 import {
   LlmCoachingOutput,
   LlmCriterionResult,
   ProductViolation,
-} from './coaching.types';
+} from '../shared/coaching.types';
 import {
   ProductSheetDescriptor,
   ProductSheetService,
-} from './product-sheet.service';
-import { ProductPriceService } from './product-price.service';
+} from '../referentiels/product-sheet.service';
+import { ProductPriceService } from '../referentiels/product-price.service';
 import {
   MappedProduct,
   MappingProductOption,
   buildMappingSystemPrompt,
   buildMappingUserPrompt,
-} from './product-mapping-prompt';
+} from './etape-2-mapping/product-mapping-prompt';
 import {
   ConformityProductContext,
   buildConformitySystemPrompt,
   buildConformityUserPrompt,
-} from './product-conformity-prompt';
-import { ParsedSalesPlan } from './sales-plan.types';
-import { buildSttVocabulary } from './stt-vocabulary';
+} from './etape-4-conformite/product-conformity-prompt';
+import { ParsedSalesPlan } from '../referentiels/sales-plan.types';
+import { buildSttVocabulary } from './etape-1-transcription/stt-vocabulary';
 
 const MAX_ATTEMPTS = 3;
 
 /**
- * Moteur d'exécution du pipeline A (analyse par enregistrement) :
- * worker de file (@Cron), claim atomique, pipeline transcription→LLM→scoring,
- * politique de retry/backoff et limiteur de concurrence. Les jobs vivent en
- * base (table CoachingAnalysis) : résilient au crash, non bloquant (hors HTTP).
+ * Worker de file du pipeline par porte : claim atomique, transcription, 3 passes
+ * LLM, scoring — les jobs vivent en base, donc résistent au crash du process.
  */
 @Injectable()
 export class AnalysisRunnerService {
   private readonly logger = new Logger(AnalysisRunnerService.name);
 
-  // Limiteur de concurrence maison (même pattern que TranscriptionService).
+  // Limiteur maison, même pattern que TranscriptionService.
   private readonly maxConcurrency = Number(
     process.env.COACHING_CONCURRENCY ?? 2,
   );
@@ -80,17 +78,9 @@ export class AnalysisRunnerService {
     if (next) next();
   }
 
-  /**
-   * Délai au-delà duquel un job "en cours" est considéré comme bloqué (process
-   * mort) et requeue. DOIT dépasser le pire cas légitime de traitement
-   * (Whisper + LLM + marge), sinon un job encore vivant serait re-claimé →
-   * double transcription.
-   */
+  /** Seuil de requeue : le baisser fait re-claimer un job vivant, donc re-transcrire. */
   private staleJobMs(): number {
-    // Le pire cas légitime reste DEUX timeouts LLM : la passe 0 (mapping), puis
-    // la plus lente des passes 1 et 2, qui tournent en parallèle. Ne pas réduire
-    // ce seuil sous prétexte que les passes sont parallèles, sinon un job encore
-    // vivant est re-claimé → double transcription.
+    // Pire cas légitime : le mapping, puis la plus lente des deux passes parallèles.
     return (
       this.transcription.whisperTimeoutMs +
       2 * this.llm.timeoutMs +
@@ -98,19 +88,12 @@ export class AnalysisRunnerService {
     );
   }
 
-  /**
-   * Worker de file : prend les jobs PENDING dus et les traite. Résilient
-   * (les jobs vivent en base) et non bloquant (traité hors requête HTTP).
-   */
+  /** Prend les jobs PENDING dus et les traite, hors requête HTTP. */
   @Cron(CronExpression.EVERY_10_SECONDS)
   async processQueue(): Promise<void> {
     if (!this.llm.isConfigured()) return;
     try {
-      // Requeue des jobs réellement bloqués (process mort) : uniquement au-delà
-      // du pire cas légitime (Whisper + LLM + marge), sinon on re-claimerait un
-      // job encore en cours = double transcription. Chaque requeue passe par
-      // fail() → compte une tentative et bascule FAILED au-delà de MAX_ATTEMPTS
-      // (évite les zombies éternels qui monopolisent un slot).
+      // Requeue via fail() : compte une tentative, donc pas de zombie éternel.
       const staleBefore = new Date(Date.now() - this.staleJobMs());
       const stale = await this.prisma.coachingAnalysis.findMany({
         where: {
@@ -119,9 +102,7 @@ export class AnalysisRunnerService {
               CoachingStatus.TRANSCRIBING,
               CoachingStatus.MAPPING,
               CoachingStatus.ANALYZING,
-              // CONFORMITY n'est plus écrit (la conformité tourne pendant
-              // ANALYZING), mais des lignes antérieures le portent encore : les
-              // omettre laisserait un job mort bloqué pour toujours.
+              // CONFORMITY n'est plus écrit mais reste porté par les analyses antérieures.
               CoachingStatus.CONFORMITY,
             ],
           },
@@ -148,7 +129,7 @@ export class AnalysisRunnerService {
       });
 
       for (const c of candidates) {
-        // Claim atomique PENDING → TRANSCRIBING (évite le double traitement).
+        // Claim atomique : c'est lui qui empêche le double traitement.
         const claimed = await this.prisma.coachingAnalysis.updateMany({
           where: { id: c.id, status: CoachingStatus.PENDING },
           data: { status: CoachingStatus.TRANSCRIBING },
@@ -173,27 +154,19 @@ export class AnalysisRunnerService {
       const plan = this.salesPlans.toParsedPlan(analysis.salesPlanVersion);
       const q = plan.quality;
 
-      // Vues LÉGÈRES des fiches (nom, signaux, termes) — pas leur contenu. Deux
-      // étapes en ont besoin avant de savoir ce qui a été abordé : le vocabulaire
-      // Whisper, qui précède la transcription, et la liste fermée de la passe 0.
-      // Le contenu des fiches n'est lu qu'après le mapping, pour les seules
-      // offres présentées.
+      // Le NOM des fiches pour toutes les offres ; leur CONTENU seulement après le mapping.
       const descriptors = await this.productSheets.getActiveDescriptors(
         productKeysFromPlan(plan),
       );
-      // Lancement manuel : on ignore tout gating sur la DURÉE (l'utilisateur
-      // veut analyser cet audio quoi qu'il arrive). Le gating "pas de parole"
-      // (longueur du transcript) reste actif.
+      // Lancement manuel : seul le gating de durée est ignoré, pas celui de parole.
       const manual = analysis.manual === true;
 
-      // Réutilise le transcript déjà stocké (ex. retry après un échec LLM) pour
-      // ne pas re-payer download S3 + Whisper. Sinon, transcrit maintenant.
+      // Transcript déjà stocké : un retry LLM ne re-paie pas Whisper.
       let transcript = (analysis.transcript ?? '').trim();
       let durationSec = analysis.transcriptDurationSec ?? 0;
 
       if (!transcript) {
-        // 0. Pré-gating sur la durée CONNUE (DB) — évite une transcription
-        // inutile (download S3 + Whisper) quand l'audio est trop court.
+        // 0. Pré-gating sur la durée connue : évite une transcription inutile.
         const known = await this.prisma.recordingSegment.aggregate({
           where: { s3KeyOriginal: analysis.s3KeyOriginal },
           _max: { durationSec: true },
@@ -214,11 +187,7 @@ export class AnalysisRunnerService {
 
         // 1. Transcription (Whisper depuis S3)
         await this.setStatus(id, CoachingStatus.TRANSCRIBING);
-        // Le coaching porte son propre profil de transcription : réglages de
-        // décodage ET vocabulaire, ce dernier construit depuis SES référentiels
-        // (plan actif + fiches actives). Whisper reste générique — aucun nom de
-        // marque n'est stocké côté STT, donc aucune dérive possible quand une
-        // fiche change.
+        // Le coaching porte son profil STT : Whisper reste générique, sans nom de marque.
         const stt = await this.transcription.transcribeS3Object(
           analysis.s3KeyOriginal,
           {
@@ -232,8 +201,7 @@ export class AnalysisRunnerService {
         transcript = (stt.text ?? '').trim();
         durationSec = stt.durationSec ?? knownDuration ?? 0;
 
-        // Persiste le transcript dès maintenant : si le LLM échoue plus bas, le
-        // retry réutilisera ce transcript au lieu de relancer Whisper.
+        // Persisté tout de suite : un échec LLM ne doit pas re-payer Whisper.
         if (transcript) {
           await this.prisma.coachingAnalysis.update({
             where: { id },
@@ -242,8 +210,7 @@ export class AnalysisRunnerService {
         }
       }
 
-      // 2. Gating post-transcription : longueur du transcript (+ durée réelle
-      // en repli). En manuel, on n'applique QUE le gating "pas de parole".
+      // 2. Gating post-transcription : longueur du transcript, durée en repli.
       const tooShort =
         (!manual &&
           q.minDurationSec != null &&
@@ -258,35 +225,23 @@ export class AnalysisRunnerService {
         return;
       }
 
-      // 3. Passe 0 — mapping des offres. Un prompt court, une seule question, une
-      // liste fermée de clés : c'est ce qui rend la détection reproductible. Tant
-      // qu'elle n'a pas répondu, ni le jugement du plan ni la conformité ne savent
-      // quelles étapes produit sont concernées.
+      // 3. Passe 0 — mapping : rien en aval ne sait quelles offres traiter avant elle.
       await this.setStatus(id, CoachingStatus.MAPPING);
       const mapping = await this.runMappingPass(id, plan, descriptors, transcript);
-      // Seules les offres PRÉSENTÉES PAR LE COMMERCIAL rendent une étape
-      // applicable. Une offre que le prospect évoque (« j'ai déjà une box ») ne
-      // doit pas entrer au dénominateur : ses critères sortiraient absent = 0.
+      // Une offre évoquée par le prospect n'entre pas au dénominateur.
       const presented = mapping
         .filter((m) => m.presentedByCommercial)
         .map((m) => m.key);
 
-      // 4. Passes 1 et 2 EN PARALLÈLE : le jugement du plan et la conformité
-      // produit ne s'échangent rien, ils ne dépendaient tous deux que du mapping.
-      //
-      // Promise.all, pas allSettled : un critère absent de la sortie LLM vaut
-      // `absent` = 0 et compte au dénominateur. Publier une seule des deux passes
-      // donnerait un score FAUX, pas un score partiel — mieux vaut échouer et
-      // laisser le retry rejouer les deux (le transcript est déjà en base).
+      // 4. Passes 1 et 2 en parallèle, en fail-fast : publier une seule des deux
+      // donnerait un score FAUX, un critère manquant valant 0 au dénominateur.
       await this.setStatus(id, CoachingStatus.ANALYZING);
       const [llmOut, conformity] = await Promise.all([
         this.runPlanPass(plan, transcript, presented),
         this.runConformityPass(plan, presented, transcript),
       ]);
 
-      // 5. Scoring backend (source de vérité). Les critères des deux passes sont
-      // concaténés : ScoringService reçoit la même liste qu'avant, simplement
-      // produite en deux temps.
+      // 5. Scoring backend : les critères des deux passes, en une seule liste.
       const contractSigned = analysis.statutPorte === StatutPorte.CONTRAT_SIGNE;
       const scoring = this.scoring.computeScore(
         plan,
@@ -313,9 +268,7 @@ export class AnalysisRunnerService {
           malus: scoring.malus,
           violations: scoring.violations as unknown as object,
           detectedProducts: presented as unknown as object,
-          // Trace complète de la passe 0, y compris les offres vues mais NON
-          // présentées par le commercial : sans ça, un « il a raté l'offre » reste
-          // indiagnosticable après coup.
+          // Trace de la passe 0, offres non présentées comprises, pour le diagnostic.
           productMapping: mapping as unknown as object,
           productSheetVersions: conformity.sheetVersionIds as unknown as object,
           subScores: scoring.subScores as unknown as object,
@@ -344,19 +297,9 @@ export class AnalysisRunnerService {
     }
   }
 
-  /**
-   * Passe 0 — mapping des offres.
-   *
-   * Le modèle choisit dans une LISTE FERMÉE de clés, et le backend rejette tout ce
-   * qui n'y figure pas. C'est la correction de l'instabilité historique : la
-   * détection était une sous-tâche noyée dans le prompt de jugement, et renvoyait
-   * du texte libre (« Pack Depanssur », « france-telephone », « mobile France
-   * Téléphone ») re-normalisé à coups de regex avant comparaison stricte aux clés
-   * du plan — un run tombait juste, le suivant non.
-   *
-   * Les offres du plan qui n'ont pas de fiche active restent proposées : sans ça,
-   * un trou de référentiel rendrait l'étape à jamais non applicable. Elles sont
-   * simplement décrites avec ce que le plan en dit.
+/**
+   * Passe 0 : le modèle choisit dans une liste fermée, et les offres sans fiche y
+   * restent — sinon un trou de référentiel rendrait l'étape à jamais inapplicable.
    */
   private async runMappingPass(
     id: number,
@@ -376,8 +319,7 @@ export class AnalysisRunnerService {
       options.map((o) => o.key),
     );
 
-    // Une clé hors liste est un signal, pas un détail : c'est exactement ce qui
-    // faisait rater des analyses en silence.
+    // Une clé hors liste est le symptôme même des analyses ratées en silence.
     if (rejected.length > 0) {
       this.logger.warn(
         `Analyse ${id} — mapping : clé(s) hors liste ignorée(s) : ${rejected.join(', ')}`,
@@ -394,10 +336,7 @@ export class AnalysisRunnerService {
     return products;
   }
 
-  /**
-   * La liste fermée soumise à la passe 0 : toutes les offres du plan, décrites par
-   * leur fiche quand elle existe, par leur étape sinon.
-   */
+  /** Toutes les offres du plan, décrites par leur fiche ou, à défaut, par leur étape. */
   private buildMappingOptions(
     plan: ParsedSalesPlan,
     descriptors: ProductSheetDescriptor[],
@@ -406,9 +345,7 @@ export class AnalysisRunnerService {
 
     return productKeysFromPlan(plan).map((key) => {
       const descriptor = byProductKey.get(key);
-      // Les `identifiers` décrivent l'offre à l'oreille. Sans eux, le libellé
-      // seul reste exploitable — on ne va PAS chercher les `facts` : la passe 0
-      // doit reconnaître l'offre, pas la juger.
+      // Sans `identifiers`, le libellé suffit : la passe 0 reconnaît, elle ne juge pas.
       if (descriptor && descriptor.identifiers.length > 0) {
         return {
           key,
@@ -445,16 +382,9 @@ export class AnalysisRunnerService {
     return repairLlmOutput(raw);
   }
 
-  /**
-   * Passe 2 — conformité produit.
-   *
-   * N'injecte que la fiche des offres RÉELLEMENT présentées, retenues par la passe
-   * 0, et demande une seule chose : ce que le commercial a dit de ce produit est-il
-   * conforme à la fiche ?
-   *
-   * Une offre présentée sans fiche ne peut pas être jugée : ses critères de
-   * conformité sont marqués `non_applicable` plutôt que laissés absents, sinon
-   * ScoringService les noterait 0 et sanctionnerait un trou de référentiel.
+/**
+   * Passe 2 : seules les offres présentées sont jugées, et celles sans fiche
+   * sortent en `non_applicable` — sinon un trou de référentiel coûterait 0.
    */
   private async runConformityPass(
     plan: ParsedSalesPlan,
@@ -465,8 +395,7 @@ export class AnalysisRunnerService {
     violations: ProductViolation[];
     sheetVersionIds: number[];
   }> {
-    // Fabriqué à chaque appel : un littéral partagé exposerait les mêmes tableaux
-    // à tous les appelants.
+    // Fabriqué à chaque appel : un littéral partagé exposerait les mêmes tableaux.
     const empty = () => ({
       criteria: [] as LlmCriterionResult[],
       violations: [] as ProductViolation[],
@@ -485,9 +414,7 @@ export class AnalysisRunnerService {
     });
     if (steps.length === 0) return empty();
 
-    // C'est SEULEMENT ici qu'on lit le contenu des fiches, et uniquement celles
-    // des offres réellement présentées : le jugement de conformité est la seule
-    // étape qui a besoin de `facts` et `forbidden`.
+    // Seule étape qui a besoin de `facts` et `forbidden`, et seulement pour les offres présentées.
     const sheets = await this.productSheets.getActiveSheetsFor(
       steps.map((step) => /^productDetected:(.+)$/.exec(step.appliesWhen)![1]),
     );
@@ -501,8 +428,7 @@ export class AnalysisRunnerService {
       const criteria = step.criteria.filter((c) => c.requiresProductSheet);
       const active = byProductKey.get(productKey);
 
-      // Sans fiche, il n'y a rien à opposer au discours : on ne juge pas, et on
-      // ne pénalise pas un trou de référentiel.
+      // Sans fiche, rien à opposer au discours : on ne juge pas, on ne pénalise pas.
       if (!active) {
         this.logger.warn(
           `Produit "${productKey}" présenté mais sans fiche active : conformité non jugée`,
@@ -526,9 +452,7 @@ export class AnalysisRunnerService {
         // Tarifs résolus à l'exécution : une fiche ne porte jamais de prix.
         prices: await this.productPrices.resolve(active.sheet.winleadplus),
         forbidden: active.sheet.forbidden,
-        // Second référentiel. Absent → le modèle ne peut pas citer le plan, donc
-        // aucune violation ne passera le filtre de ScoringService : c'est le
-        // comportement voulu, on ne sanctionne pas sur un seul référentiel.
+        // Absent, aucune violation ne passera le filtre : c'est voulu.
         pitchText: step.pitchText,
         criteria: criteria.map((c) => ({
           stepKey: step.key,
@@ -549,9 +473,7 @@ export class AnalysisRunnerService {
     );
     const out = repairConformityOutput(raw);
 
-    // Une violation sur un produit non soumis est écartée : le LLM n'a pas à
-    // sanctionner un produit dont on ne lui a pas donné les référentiels.
-    // Au passage on résout le libellé lisible : le modèle ne renvoie que le slug.
+    // Un produit non soumis est écarté, et le libellé résolu : le modèle ne rend qu'un slug.
     const labels = new Map(contexts.map((c) => [c.productKey, c.label]));
     const violations = out.violations
       .filter((v) => labels.has(v.productSlug))
@@ -599,7 +521,7 @@ export class AnalysisRunnerService {
       });
       const attempts = (cur?.attempts ?? 0) + 1;
       if (attempts < MAX_ATTEMPTS) {
-        // Retry avec backoff : le job repasse PENDING, repris par le worker.
+        // Retry avec backoff : le job repasse PENDING.
         await this.prisma.coachingAnalysis.update({
           where: { id },
           data: {

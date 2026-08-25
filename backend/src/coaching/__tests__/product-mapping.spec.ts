@@ -1,13 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseSalesPlanMarkdown } from './sales-plan.parser';
-import { parseProductSheetMarkdown } from './product-sheet.parser';
-import { repairMappingOutput } from './json-repair';
-import { buildMappingUserPrompt } from './product-mapping-prompt';
-import { buildUserPrompt, productKeysFromPlan } from './prompt';
+import { parseSalesPlanMarkdown } from '../referentiels/sales-plan.parser';
+import { parseProductSheetMarkdown } from '../referentiels/product-sheet.parser';
+import { repairMappingOutput } from '../shared/json-repair';
+import { buildMappingUserPrompt } from '../analyse-porte/etape-2-mapping/product-mapping-prompt';
+import { buildUserPrompt, productKeysFromPlan } from '../analyse-porte/etape-3-plan/plan-prompt';
 
-const PLANS_DIR = path.join(__dirname, 'sales-plans');
-const SHEETS_DIR = path.join(__dirname, 'product-sheets');
+const PLANS_DIR = path.join(__dirname, '..', 'referentiels', 'sales-plans');
+const SHEETS_DIR = path.join(__dirname, '..', 'referentiels', 'product-sheets');
 
 const readPlan = () =>
   parseSalesPlanMarkdown(
@@ -18,13 +18,7 @@ const KEYS = ['depanssur', 'france_telephone', 'bleubox', 'mondial_tv'];
 
 const json = (products: unknown[]) => JSON.stringify({ products });
 
-/**
- * La passe 0 remplace une détection en texte libre, re-normalisée à coups de regex
- * puis comparée en égalité stricte aux clés du plan. C'était la cause de
- * l'instabilité : « Pack Depanssur » ou « france-telephone » ne retombaient pas sur
- * la clé attendue, la passe 2 ne partait pas, et l'étape produit sortait du
- * dénominateur — le tout en silence.
- */
+/** La détection en texte libre ratait la clé un run sur deux, en silence. */
 describe('mapping des offres (passe 0)', () => {
   it('retient une clé de la liste fermée', () => {
     const { products, rejected } = repairMappingOutput(
@@ -122,9 +116,7 @@ describe('mapping des offres (passe 0)', () => {
   });
 });
 
-// L'agent ne lit pas le CONTENU des fiches pour mapper : il lui faut de quoi
-// reconnaitre l'offre, pas de quoi la juger. Le contenu (facts, forbidden) n'est
-// charge qu'apres, pour les seules offres presentees.
+// Mapper demande de quoi reconnaître l'offre, pas de quoi la juger.
 describe('prompt de mapping', () => {
   const options = [
     { key: 'depanssur', label: 'Pack Depanssur', identifiers: ['assistance dépannage'] },
@@ -162,8 +154,7 @@ describe('fiches produit — signaux de reconnaissance', () => {
     expect(readSheet(file).identifiers.length).toBeGreaterThan(0);
   });
 
-  // Sans identifiers, la passe 0 retombe sur le seul libellé — jamais sur les
-  // `facts` : reconnaître une offre ne justifie pas d'en lire le contenu.
+  // Repli sur le seul libellé, jamais sur les `facts`.
   it('identifiers est optionnel (repli sur le libellé côté runner)', () => {
     const source = [
       '---',

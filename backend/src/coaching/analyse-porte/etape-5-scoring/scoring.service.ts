@@ -6,8 +6,8 @@ import {
   ProductViolation,
   ScoringResult,
   StepScore,
-} from './coaching.types';
-import { ParsedSalesPlan, StepApplicability } from './sales-plan.types';
+} from '../../shared/coaching.types';
+import { ParsedSalesPlan, StepApplicability } from '../../referentiels/sales-plan.types';
 
 export interface ScoringContext {
   contractSigned: boolean;
@@ -25,11 +25,7 @@ const STATUS_FRACTION: Record<string, number> = {
 
 @Injectable()
 export class ScoringService {
-  /**
-   * Calcule le score coaching à partir du plan et du jugement du LLM.
-   * score = Σ(stepRaw × poids) / Σ(poids des étapes applicables) × 100.
-   * Seules les étapes/critères applicables entrent au dénominateur.
-   */
+  /** score = Σ(étape × poids) / Σ(poids applicables) × 100, puis moins le malus. */
   computeScore(
     plan: ParsedSalesPlan,
     llm: LlmCoachingOutput,
@@ -61,8 +57,7 @@ export class ScoringService {
       let obtained = 0;
       let possible = 0;
 
-      // On émet TOUS les critères du plan (checklist complète) ; les critères
-      // non applicables sont marqués non_applicable et n'entrent pas dans le score.
+      // Tous les critères sont émis (checklist complète), les non applicables à 0.
       for (const crit of step.criteria) {
         const critApplicable =
           stepApplicable && applies(crit.appliesWhen ?? step.appliesWhen);
@@ -143,20 +138,9 @@ export class ScoringService {
     };
   }
 
-  /**
-   * Malus de conformité produit, retiré du score global après son calcul.
-   *
-   * Un écart n'est retenu que s'il porte ses TROIS citations : ce que le commercial
-   * a dit, la ligne de la fiche que ça contredit, ET la ligne du plan de vente que
-   * ça contredit aussi. Même logique qu'`evidenceRequired` : pas de preuve, pas de
-   * sanction.
-   *
-   * La troisième est le garde-fou décisif : un commercial qui récite son
-   * argumentaire ne peut pas être sanctionné, puisque le plan ne se contredit pas
-   * lui-même. Vu en production sans elle : « vous allez être chez Orange avec le
-   * réseau Orange » sanctionné −15 alors que le plan dit « en partenariat avec les
-   * réseaux Orange et Bouygues […] en conservant la qualité de votre réseau
-   * actuel, ou en l'améliorant ».
+/**
+   * Malus retiré du score après calcul, et seulement si l'écart porte ses TROIS
+   * citations — sans `planSays`, un commercial qui récite son plan serait puni.
    */
   private computeMalus(
     plan: ParsedSalesPlan,
@@ -182,15 +166,7 @@ export class ScoringService {
   }
 }
 
-/**
- * Marqueurs d'absence que le LLM met quand il n'a rien à citer. Ils doivent être
- * traités comme une citation MANQUANTE, pas comme une citation.
- *
- * Vu en production : le plan de vente ne fixe aucun tarif mobile (il écrit
- * « XXXX €/mois »), le modèle ne peut donc pas citer le plan — et remplit
- * `planSays: "n/a"` au lieu de ne pas émettre la violation. Sans ce filtre, un
- * tarif annoncé était sanctionné alors que le plan ne le contredisait pas.
- */
+/** Ce que le LLM écrit quand il n'a rien à citer : une citation manquante, pas une citation. */
 const NON_CITATIONS = new Set([
   'n/a',
   'na',
@@ -227,21 +203,10 @@ function normalizeCitation(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
-/**
- * Gabarits du plan de vente : les montants et volumes y sont écrits « XXXX € »,
- * « XXXX Go », parce qu'ils dépendent du forfait choisi. Une ligne qui en contient
- * ne peut contredire aucun chiffre annoncé — elle n'en porte aucun.
- *
- * Vu en production : « Désormais, vous passerez à XXXX €/mois » cité comme preuve
- * contre un commercial qui annonçait 14,90 €, soit le tarif exact du catalogue.
- */
+/** Une ligne de plan à trous (« XXXX €/mois ») ne contredit aucun chiffre annoncé. */
 const PLACEHOLDER = /x{3,}/i;
 
-/**
- * Une citation réelle : ni un marqueur d'absence, ni un gabarit à trous. Trois
- * lettres minimum — un référentiel cité fait toujours plusieurs mots, jamais
- * « - » ni « ? ».
- */
+/** Une citation réelle : ni marqueur d'absence, ni gabarit, ni « - ». */
 export function isCitation(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const normalized = normalizeCitation(value);

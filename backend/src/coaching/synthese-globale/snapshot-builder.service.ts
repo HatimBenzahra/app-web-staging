@@ -1,42 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { CoachingStatus, UserType } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
-import { calculateStatsForStatus } from '../porte/porte-status.constants';
+import { PrismaService } from '../../prisma.service';
+import { calculateStatsForStatus } from '../../porte/porte-status.constants';
 
 type SubjectType = 'commercial' | 'manager';
 
-// Détail par session envoyé au LLM : TOUTES les sessions analysées (pour coller
-// au compteur « N sessions analysées » et au modal). Plafond de sécurité HAUT,
-// uniquement pour ne pas dépasser la fenêtre de contexte du vLLM sur un cas
-// extrême (plusieurs centaines d'analyses) ; l'agrégat, lui, couvre 100 %.
+// Plafond de sécurité pour la fenêtre de contexte ; l'agrégat, lui, couvre 100 %.
 const SESSIONS_DETAIL_MAX = 80;
 const MAX_JOURS = 90; // plafond dur de la ventilation "activité par jour"
 const RECAP_MAX_COMMERCIAUX = 30; // plafond du récap équipe (manager)
 
 /**
- * Construit l'agrégat DB (« snapshot ») envoyé au LLM pour la synthèse coaching.
- * 100 % DB : aucune conclusion, uniquement des FAITS chiffrés — le LLM ne fait
- * que rédiger. Deux sujets possibles :
- *  - commercial : son activité perso.
- *  - manager : l'activité AGRÉGÉE de son équipe (ses commerciaux) + un récap
- *    factuel par commercial + un petit bloc "activité perso manager".
- *
- * Source de vérité de l'activité terrain = `StatusHistorique` (1 ligne par
- * changement de statut porte) : couvre TOUTES les portes (pas seulement celles
- * enregistrées) et porte la date/durée de chaque passage → permet la
- * ventilation par jour, les baselines "habituel", et la date de début.
+ * Agrégat 100 % DB envoyé au LLM de synthèse : que des faits chiffrés, pour un
+ * commercial ou pour l'équipe d'un manager, l'activité venant de `StatusHistorique`.
  */
 @Injectable()
 export class SnapshotBuilderService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Résout le périmètre du sujet :
-   *  - `activityWhere` : filtre des données d'activité (analyses, historique,
-   *    contrats). Commercial = lui ; manager = ses commerciaux (commercialId in team).
-   *  - `ownerWhere` : le sujet lui-même (zone/quartiers assignés).
-   *  - `teamIds`/`teamNames` : non-null uniquement pour un manager.
-   */
+  /** Périmètre du sujet : lui-même pour un commercial, son équipe pour un manager. */
   private async resolveScope(subjectType: SubjectType, subjectId: number) {
     if (subjectType === 'commercial') {
       return {
@@ -99,6 +81,9 @@ export class SnapshotBuilderService {
         strengths: true,
         improvements: true,
         criterionResults: true,
+        // La récurrence des écarts est ce que la synthèse doit voir.
+        violations: true,
+        malus: true,
         transcriptDurationSec: true,
         porteId: true,
         commercialId: true,
@@ -163,15 +148,55 @@ export class SnapshotBuilderService {
       }
     }
 
+    // Conformité produit : des comptes, jamais les citations — le détail vit porte par porte.
+    const violMap = new Map<
+      string,
+      { produit: string; contredit: string; grave: number; modere: number }
+    >();
+    let nbEchangesAvecEcart = 0;
+    let malusTotal = 0;
+
+    for (const a of analyses) {
+      const viols = (a.violations as any[]) ?? [];
+      if (viols.length > 0) nbEchangesAvecEcart++;
+      malusTotal += typeof a.malus === 'number' ? a.malus : 0;
+
+      for (const v of viols) {
+        const produit = v.productLabel || v.productSlug || 'produit inconnu';
+        // La ligne de fiche contredite fait office de famille d'écart.
+        const contredit = String(v.sheetSays ?? '').slice(0, 120);
+        const key = `${produit}::${contredit}`;
+        const cur =
+          violMap.get(key) ?? { produit, contredit, grave: 0, modere: 0 };
+        if (v.severity === 'grave') cur.grave++;
+        else cur.modere++;
+        violMap.set(key, cur);
+      }
+    }
+
+    const conformite = {
+      nbEcarts: [...violMap.values()].reduce(
+        (n, v) => n + v.grave + v.modere,
+        0,
+      ),
+      nbEchangesAvecEcart,
+      nbEchangesAvecProduit: analyses.filter(
+        (a) => ((a.violations as any[]) ?? []).length > 0 || a.malus != null,
+      ).length,
+      malusMoyen: analyses.length ? round(malusTotal / analyses.length) : 0,
+      // Les plus fréquentes d'abord : c'est ce qui se corrige en formation.
+      recurrents: [...violMap.values()]
+        .sort((a, b) => b.grave + b.modere - (a.grave + a.modere))
+        .slice(0, 6),
+    };
+
     const statutsCoaches: Record<string, number> = {};
     for (const a of analyses) {
       if (!a.statutPorte) continue;
       statutsCoaches[a.statutPorte] = (statutsCoaches[a.statutPorte] ?? 0) + 1;
     }
 
-    // --- Activité terrain via StatusHistorique -------------------------------
-    // Statut COURANT par porte = dernier événement (history trié asc → écrase).
-    // Durée par porte = SOMME des passages (temps total de prospection).
+    // --- Activité terrain via StatusHistorique : dernier statut, durée cumulée ---
     const latestParPorte = new Map<number, string>();
     const dureeParPorte = new Map<number, number>();
     for (const h of history) {
@@ -385,11 +410,7 @@ export class SnapshotBuilderService {
         })),
     }));
 
-    // --- Contrats (type via Offre, par mois) ---------------------------------
-    // `points` = valeur configurée de l'offre (gamification : init = prix arrondi,
-    // ajustable admin ; c'est ce qui pondère les classements). Permet de juger le
-    // MIX par VALEUR, pas seulement par nombre — quelles offres il signe le plus
-    // vs lesquelles rapportent le plus.
+    // --- Contrats : `points` = valeur de l'offre, pour juger le mix par VALEUR ---
     const parTypeMap = new Map<
       string,
       {
@@ -522,6 +543,7 @@ export class SnapshotBuilderService {
         scoreMin: scores.length ? Math.min(...scores) : null,
         scoreMax: scores.length ? Math.max(...scores) : null,
         criteres: [...critMap.values()],
+        conformite,
         statutsCoaches,
       },
       activite: {

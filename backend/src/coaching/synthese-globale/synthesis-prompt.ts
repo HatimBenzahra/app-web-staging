@@ -1,9 +1,6 @@
 /**
- * Prompt de la SYNTHÈSE GLOBALE (hors pipeline audio) : bilan qualitatif d'un
- * commercial/manager. OBJET PRINCIPAL = le discours vs le plan de vente (ce que
- * le commercial dit / ne dit pas, exemples cités) ; les contrats et les données
- * de prospection ÉCLAIRENT ce constat sans en être l'objet. Le LLM ne fait QUE
- * rédiger à partir du snapshot — il n'invente rien.
+ * Bilan qualitatif d'un commercial ou d'un manager : l'objet est le discours face
+ * au plan, le reste l'éclaire, et le LLM ne fait que rédiger le snapshot.
  */
 
 export function buildSynthesisSystemPrompt(): string {
@@ -29,6 +26,18 @@ export function buildSynthesisSystemPrompt(): string {
     '  atteint/partiel/absent → révèle ses forces et ses manques SYSTÉMATIQUES de discours',
     '  (ex. « découverte du besoin absente sur 9 sessions sur 12 »).',
     '- `coaching.scoreMoyen`/`tendance` = niveau global et évolution.',
+    '',
+    'DONNÉES — CONFORMITÉ PRODUIT (ce qu’il a affirmé de FAUX sur les offres) :',
+    "- `coaching.conformite.recurrents[]` = familles d'écarts, les plus fréquentes d'abord :",
+    "  `produit`, `contredit` (la ligne de fiche démentie), `grave`/`modere` (combien de fois).",
+    "- `coaching.conformite.nbEcarts`, `nbEchangesAvecEcart`, `malusMoyen` = ampleur du phénomène.",
+    "- Un écart ISOLÉ ne se commente pas : c'est une maladresse. Un écart RÉCURRENT se commente",
+    '  toujours — le même point démenti plusieurs fois est un besoin de FORMATION produit, pas',
+    "  un problème de motivation. Dis lequel, sur combien d'échanges, et sur quelle offre.",
+    "- Ces écarts sont DÉJÀ déduits du score (`malusMoyen`) : ne les recompte pas dans le calcul,",
+    '  explique-les.',
+    "- Si `nbEcarts` vaut 0, ne consacre AUCUN paragraphe au sujet : ne rien avoir à redire est la",
+    '  norme, pas une performance à saluer.',
     '',
     'DONNÉES — CONTRATS (fait partie du plan de vente) :',
     '- `contrats.parType` = contrats VALIDÉS par offre/catégorie : `count` (nombre), `pointsUnite`',
@@ -63,6 +72,9 @@ export function buildSynthesisSystemPrompt(): string {
     '    • puis 2 à 4 paragraphes DISCOURS (le plus important) : un titre en gras par aspect de',
     "      l'échange (ce qu'il maîtrise vs OMET SYSTÉMATIQUEMENT, où il « fait gaffe »), en CITANT des",
     '      exemples concrets tirés de `commentaire`/`preuves` des sessions, chiffrés « X/N sessions ».',
+    "    • si `coaching.conformite.nbEcarts` > 0 : UN paragraphe « **Conformité produit.** » —",
+    '      ce qui a été affirmé de faux, sur quelle offre, combien de fois, et ce que ça coûte',
+    '      au client (pas au score).',
     '    • puis 1 à 3 paragraphes PROSPECTION (section détaillée à part entière) : rythme et régularité',
     '      vs sa baseline, conversion, jours atypiques, refus/absents (reliés au discours), valeur des',
     '      ventes signées (mix par valeur), zone si elle éclaire.',

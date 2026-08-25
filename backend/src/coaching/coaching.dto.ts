@@ -43,11 +43,7 @@ export class CoachingViolationDto {
   @Field(() => String, { nullable: true }) why?: string | null;
 }
 
-/**
- * Ce que la passe 0 (mapping) a retenu d'une offre, y compris quand elle n'a été
- * évoquée que par le prospect. Sert au diagnostic : sans cette trace, une offre
- * ratée reste invisible après coup.
- */
+/** Ce que la passe 0 a retenu, offres seulement évoquées comprises, pour le diagnostic. */
 @ObjectType()
 export class CoachingMappedProductDto {
   @Field() key: string;

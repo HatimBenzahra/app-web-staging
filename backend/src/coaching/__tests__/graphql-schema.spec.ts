@@ -4,15 +4,10 @@ import {
   GraphQLSchemaFactory,
 } from '@nestjs/graphql';
 import { printSchema } from 'graphql';
-import { CoachingResolver } from './coaching.resolver';
-import { SynthesisResolver } from './synthesis.resolver';
+import { CoachingResolver } from '../coaching.resolver';
+import { SynthesisResolver } from '../synthese-globale/synthesis.resolver';
 
-/**
- * Garde-fou contre le piège NestJS code-first : un `@Field({ nullable: true })`
- * sur un type string/union nullable sans thunk explicite passe `nest build` mais
- * fait crasher le schéma au RUNTIME (UndefinedTypeError). Ce test construit le
- * schéma pour de vrai, sans DB, et vérifie la surface du coaching.
- */
+/** Un `@Field` nullable sans thunk passe le build et crashe au runtime : on construit le schéma pour de vrai. */
 describe('schéma GraphQL coaching', () => {
   let sdl: string;
 
@@ -57,8 +52,7 @@ describe('schéma GraphQL coaching', () => {
     },
   );
 
-  // Les trois citations doivent remonter jusqu'à l'écran : sans la ligne du plan,
-  // un manager ne peut pas discuter l'écart avec son commercial.
+  // Sans la ligne du plan à l'écran, un manager ne peut pas discuter l'écart.
   it.each(['quote', 'sheetSays', 'planSays'])(
     'expose CoachingViolationDto.%s',
     (field) => {
