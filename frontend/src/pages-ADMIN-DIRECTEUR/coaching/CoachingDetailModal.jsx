@@ -6,7 +6,7 @@ import CoachingDetail from './CoachingDetail'
 export default function CoachingDetailModal({ open, onOpenChange, analysis }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[94vh] w-[97vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-none lg:ml-[9.5rem] lg:w-[calc(100vw-19rem)]">
+      <DialogContent className="flex h-[94vh] w-[97vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-none lg:ml-[9.5rem] lg:w-[calc(100vw-19rem)] ">
         {analysis ? (
           <CoachingDetail analysis={analysis} onClose={() => onOpenChange?.(false)} />
         ) : (

@@ -149,7 +149,13 @@ describe('prompt de conformité', () => {
     productKey: 'depanssur',
     label: 'Pack Depanssur',
     facts: ['une assistance, pas une assurance'],
-    forbidden: [{ say: "c'est une assurance", severity: 'grave' as const }],
+    prices: [{ label: 'Pack Depanssur', price: 9.9 }],
+    forbidden: [
+      {
+        say: 'présenter Depanssur comme une assurance, ou laisser le client le croire',
+        severity: 'grave' as const,
+      },
+    ],
     criteria: [
       {
         stepKey: 'prod_depanssur',
@@ -159,11 +165,57 @@ describe('prompt de conformité', () => {
     ],
   };
 
-  it('ne contient que la fiche, jamais le plan de vente', () => {
-    const prompt = buildConformityUserPrompt([ctx], 'transcript');
-    expect(prompt).toContain('FICHE PRODUIT — Pack Depanssur');
+  // Le prompt porte les DEUX référentiels : sans l'argumentaire du plan, le
+  // modèle ne peut pas produire `planSays`, et toute violation est rejetée.
+  it('porte la fiche ET l’argumentaire du plan', () => {
+    const prompt = buildConformityUserPrompt(
+      [{ ...ctx, pitchText: 'Depanssur vous assiste en cas de panne.' }],
+      'transcript',
+    );
+    expect(prompt).toContain('PRODUIT — Pack Depanssur');
     expect(prompt).toContain('une assistance, pas une assurance');
-    expect(prompt).not.toMatch(/plan de vente/i);
+    expect(prompt).toContain('PLAN DE VENTE');
+    expect(prompt).toContain('Depanssur vous assiste en cas de panne.');
+  });
+
+  // Le plan écrit ses montants en gabarit (« XXXX €/mois »). Sans la grille
+  // tarifaire, un prix annoncé est confronté à un texte à trous et tout montant
+  // devient un écart — vu en production sur « quatorze euros quatre-vingt-dix »,
+  // qui est pourtant le tarif exact du catalogue.
+  it('porte la grille tarifaire et interdit d’opposer le gabarit', () => {
+    const prompt = buildConformityUserPrompt([ctx], 'transcript');
+    expect(prompt).toContain('TARIFS EN VIGUEUR');
+    expect(prompt).toContain('9,90 € / mois');
+    expect(prompt).toMatch(/gabarit/);
+  });
+
+  it('n’affiche pas de bloc tarifaire quand aucun prix n’est résolu', () => {
+    const prompt = buildConformityUserPrompt([{ ...ctx, prices: [] }], 'transcript');
+    expect(prompt).not.toContain('TARIFS EN VIGUEUR');
+  });
+
+  it('exige les trois citations', () => {
+    const prompt = buildConformityUserPrompt([ctx], 'transcript');
+    expect(prompt).toContain('planSays');
+    expect(prompt).toContain('sheetSays');
+    expect(prompt).toContain('quote');
+  });
+
+  // Une étiquette « → grave » collée à la phrase était recopiée telle quelle, et
+  // le modèle appariait par ressemblance de mots. Vu en production : « vous serez
+  // chez Orange avec le réseau Orange » sanctionné comme « vous aurez la priorité
+  // réseau comme Orange ».
+  // Rendues en liste plate avec leur gravité, ces phrases servaient de détecteur
+  // de mots-clés : « vous serez chez Orange avec le réseau Orange » sanctionné
+  // parce qu'il ressemblait à « vous aurez la priorité réseau comme Orange ».
+  // Un commercial ne prononce jamais ces formulations telles quelles.
+  it('présente les affirmations interdites comme des EXEMPLES d’idées', () => {
+    const prompt = buildConformityUserPrompt([ctx], 'transcript');
+    expect(prompt).toContain('présenter Depanssur comme une assurance');
+    expect(prompt).toMatch(/IDÉES QUE CE PRODUIT NE PEUT PAS PORTER/);
+    expect(prompt).toMatch(/pas des formules à retrouver/);
+    // ni gravité accolée, ni injonction à retrouver la formule
+    expect(prompt).not.toMatch(/»\s*→\s*(grave|modere)/);
   });
 
   it('ne nomme aucune source technique', () => {
@@ -190,6 +242,7 @@ describe('malus de conformité', () => {
     severity: 'grave',
     quote: 'vous êtes couvert à 100 %',
     sheetSays: 'une assistance, pas une assurance',
+    planSays: 'Depanssur est une assistance en cas de panne du logement',
     ...over,
   });
 
@@ -204,6 +257,32 @@ describe('malus de conformité', () => {
       }),
     };
   };
+
+  // Le garde-fou décisif : sans citation du plan, l'écart ne coûte rien. Un
+  // commercial qui récite son argumentaire est insanctionnable par construction.
+  it('ignore une violation sans citation du plan de vente', () => {
+    const { result } = score([violation({ planSays: '' })]);
+    expect(result.malus).toBe(0);
+    expect(result.violations).toHaveLength(0);
+    expect(result.score).toBe(result.scoreBeforeMalus);
+  });
+
+  it.each(['n/a', 'aucune', '—'])(
+    'ignore un planSays marqueur d’absence (%s)',
+    (marker) => {
+      const { result } = score([violation({ planSays: marker })]);
+      expect(result.malus).toBe(0);
+    },
+  );
+
+  // Une ligne de plan à trous ne contredit aucun chiffre : elle n'en porte aucun.
+  it('ignore une violation dont le plan cité est un gabarit', () => {
+    const { result } = score([
+      violation({ planSays: 'Désormais, vous passerez à XXXX €/mois' }),
+    ]);
+    expect(result.malus).toBe(0);
+    expect(result.violations).toHaveLength(0);
+  });
 
   it('ne retire rien sans violation', () => {
     const { result } = score();

@@ -57,6 +57,17 @@ describe('schéma GraphQL coaching', () => {
     },
   );
 
+  // Les trois citations doivent remonter jusqu'à l'écran : sans la ligne du plan,
+  // un manager ne peut pas discuter l'écart avec son commercial.
+  it.each(['quote', 'sheetSays', 'planSays'])(
+    'expose CoachingViolationDto.%s',
+    (field) => {
+      const block = /type CoachingViolationDto \{([^}]*)\}/.exec(sdl);
+      expect(block).not.toBeNull();
+      expect(block![1]).toContain(field);
+    },
+  );
+
   it('expose la requête des fiches produit', () => {
     expect(sdl).toContain('coachingProductSheets');
   });

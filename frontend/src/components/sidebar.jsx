@@ -411,7 +411,7 @@ export function AppSidebar() {
                         asChild
                         isActive={isActiveRoute(subitem.url, item.subitems)}
                       >
-                        <Link to={jsubitem.url}>
+                        <Link to={subitem.url}>
                           <span>{subitem.title}</span>
                         </Link>
                       </SidebarMenuSubButton>

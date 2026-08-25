@@ -186,6 +186,7 @@ function normalizeViolation(raw: any): ProductViolation | null {
     severity: normalizeSeverity(raw.severity ?? raw.gravite ?? raw.gravity),
     quote: asText(raw.quote ?? raw.citation ?? raw.said ?? raw.evidence),
     sheetSays: asText(raw.sheetSays ?? raw.sheet ?? raw.ficheDit ?? raw.fiche),
+    planSays: asText(raw.planSays ?? raw.plan ?? raw.planDit ?? raw.argumentaire),
     why: asText(raw.why ?? raw.raison ?? raw.comment) || undefined,
   };
 }

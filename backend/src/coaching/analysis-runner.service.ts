@@ -17,7 +17,11 @@ import {
   LlmCriterionResult,
   ProductViolation,
 } from './coaching.types';
-import { ActiveProductSheet, ProductSheetService } from './product-sheet.service';
+import {
+  ProductSheetDescriptor,
+  ProductSheetService,
+} from './product-sheet.service';
+import { ProductPriceService } from './product-price.service';
 import {
   MappedProduct,
   MappingProductOption,
@@ -30,6 +34,7 @@ import {
   buildConformityUserPrompt,
 } from './product-conformity-prompt';
 import { ParsedSalesPlan } from './sales-plan.types';
+import { buildSttVocabulary } from './stt-vocabulary';
 
 const MAX_ATTEMPTS = 3;
 
@@ -57,6 +62,7 @@ export class AnalysisRunnerService {
     private readonly llm: LlmService,
     private readonly scoring: ScoringService,
     private readonly productSheets: ProductSheetService,
+    private readonly productPrices: ProductPriceService,
   ) {}
 
   private async acquireSlot(): Promise<void> {
@@ -166,6 +172,15 @@ export class AnalysisRunnerService {
 
       const plan = this.salesPlans.toParsedPlan(analysis.salesPlanVersion);
       const q = plan.quality;
+
+      // Vues LÉGÈRES des fiches (nom, signaux, termes) — pas leur contenu. Deux
+      // étapes en ont besoin avant de savoir ce qui a été abordé : le vocabulaire
+      // Whisper, qui précède la transcription, et la liste fermée de la passe 0.
+      // Le contenu des fiches n'est lu qu'après le mapping, pour les seules
+      // offres présentées.
+      const descriptors = await this.productSheets.getActiveDescriptors(
+        productKeysFromPlan(plan),
+      );
       // Lancement manuel : on ignore tout gating sur la DURÉE (l'utilisateur
       // veut analyser cet audio quoi qu'il arrive). Le gating "pas de parole"
       // (longueur du transcript) reste actif.
@@ -199,8 +214,16 @@ export class AnalysisRunnerService {
 
         // 1. Transcription (Whisper depuis S3)
         await this.setStatus(id, CoachingStatus.TRANSCRIBING);
+        // Le coaching porte son propre profil de transcription : réglages de
+        // décodage ET vocabulaire, ce dernier construit depuis SES référentiels
+        // (plan actif + fiches actives). Whisper reste générique — aucun nom de
+        // marque n'est stocké côté STT, donc aucune dérive possible quand une
+        // fiche change.
         const stt = await this.transcription.transcribeS3Object(
           analysis.s3KeyOriginal,
+          {
+            initialPrompt: buildSttVocabulary(plan, descriptors),
+          },
         );
         if (!stt) {
           await this.fail(id, 'Transcription indisponible (Whisper)');
@@ -240,10 +263,7 @@ export class AnalysisRunnerService {
       // qu'elle n'a pas répondu, ni le jugement du plan ni la conformité ne savent
       // quelles étapes produit sont concernées.
       await this.setStatus(id, CoachingStatus.MAPPING);
-      const sheets = await this.productSheets.getActiveSheetsFor(
-        productKeysFromPlan(plan),
-      );
-      const mapping = await this.runMappingPass(id, plan, sheets, transcript);
+      const mapping = await this.runMappingPass(id, plan, descriptors, transcript);
       // Seules les offres PRÉSENTÉES PAR LE COMMERCIAL rendent une étape
       // applicable. Une offre que le prospect évoque (« j'ai déjà une box ») ne
       // doit pas entrer au dénominateur : ses critères sortiraient absent = 0.
@@ -261,7 +281,7 @@ export class AnalysisRunnerService {
       await this.setStatus(id, CoachingStatus.ANALYZING);
       const [llmOut, conformity] = await Promise.all([
         this.runPlanPass(plan, transcript, presented),
-        this.runConformityPass(plan, sheets, presented, transcript),
+        this.runConformityPass(plan, presented, transcript),
       ]);
 
       // 5. Scoring backend (source de vérité). Les critères des deux passes sont
@@ -341,10 +361,10 @@ export class AnalysisRunnerService {
   private async runMappingPass(
     id: number,
     plan: ParsedSalesPlan,
-    sheets: ActiveProductSheet[],
+    descriptors: ProductSheetDescriptor[],
     transcript: string,
   ): Promise<MappedProduct[]> {
-    const options = this.buildMappingOptions(plan, sheets);
+    const options = this.buildMappingOptions(plan, descriptors);
     if (options.length === 0) return [];
 
     const raw = await this.llm.chatJson(
@@ -380,22 +400,24 @@ export class AnalysisRunnerService {
    */
   private buildMappingOptions(
     plan: ParsedSalesPlan,
-    sheets: ActiveProductSheet[],
+    descriptors: ProductSheetDescriptor[],
   ): MappingProductOption[] {
-    const byProductKey = new Map(sheets.map((s) => [s.sheet.productKey, s]));
+    const byProductKey = new Map(descriptors.map((d) => [d.productKey, d]));
 
     return productKeysFromPlan(plan).map((key) => {
-      const active = byProductKey.get(key);
-      if (active) {
+      const descriptor = byProductKey.get(key);
+      // Les `identifiers` décrivent l'offre à l'oreille. Sans eux, le libellé
+      // seul reste exploitable — on ne va PAS chercher les `facts` : la passe 0
+      // doit reconnaître l'offre, pas la juger.
+      if (descriptor && descriptor.identifiers.length > 0) {
         return {
           key,
-          label: active.sheet.label,
-          // Les `identifiers` décrivent l'offre à l'oreille ; sans eux, les
-          // premiers `facts` font un repli acceptable.
-          identifiers: active.sheet.identifiers.length
-            ? active.sheet.identifiers
-            : active.sheet.facts.slice(0, 3),
+          label: descriptor.label,
+          identifiers: descriptor.identifiers,
         };
+      }
+      if (descriptor) {
+        return { key, label: descriptor.label, identifiers: [] };
       }
 
       // Pas de fiche : le plan reste une description exploitable de l'offre.
@@ -436,7 +458,6 @@ export class AnalysisRunnerService {
    */
   private async runConformityPass(
     plan: ParsedSalesPlan,
-    sheets: ActiveProductSheet[],
     presented: string[],
     transcript: string,
   ): Promise<{
@@ -464,6 +485,12 @@ export class AnalysisRunnerService {
     });
     if (steps.length === 0) return empty();
 
+    // C'est SEULEMENT ici qu'on lit le contenu des fiches, et uniquement celles
+    // des offres réellement présentées : le jugement de conformité est la seule
+    // étape qui a besoin de `facts` et `forbidden`.
+    const sheets = await this.productSheets.getActiveSheetsFor(
+      steps.map((step) => /^productDetected:(.+)$/.exec(step.appliesWhen)![1]),
+    );
     const byProductKey = new Map(sheets.map((s) => [s.sheet.productKey, s]));
 
     const contexts: ConformityProductContext[] = [];
@@ -496,7 +523,13 @@ export class AnalysisRunnerService {
         productKey,
         label: active.sheet.label,
         facts: active.sheet.facts,
+        // Tarifs résolus à l'exécution : une fiche ne porte jamais de prix.
+        prices: await this.productPrices.resolve(active.sheet.winleadplus),
         forbidden: active.sheet.forbidden,
+        // Second référentiel. Absent → le modèle ne peut pas citer le plan, donc
+        // aucune violation ne passera le filtre de ScoringService : c'est le
+        // comportement voulu, on ne sanctionne pas sur un seul référentiel.
+        pitchText: step.pitchText,
         criteria: criteria.map((c) => ({
           stepKey: step.key,
           criterionKey: c.key,

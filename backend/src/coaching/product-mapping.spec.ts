@@ -122,6 +122,9 @@ describe('mapping des offres (passe 0)', () => {
   });
 });
 
+// L'agent ne lit pas le CONTENU des fiches pour mapper : il lui faut de quoi
+// reconnaitre l'offre, pas de quoi la juger. Le contenu (facts, forbidden) n'est
+// charge qu'apres, pour les seules offres presentees.
 describe('prompt de mapping', () => {
   const options = [
     { key: 'depanssur', label: 'Pack Depanssur', identifiers: ['assistance dépannage'] },
@@ -139,6 +142,13 @@ describe('prompt de mapping', () => {
     expect(prompt).not.toMatch(/critère/i);
     expect(prompt).not.toMatch(/atteint|partiel/i);
   });
+
+  it('n’expose pas le contenu jugeable d’une fiche', () => {
+    const prompt = buildMappingUserPrompt(options, 'transcript');
+    // Ni les affirmations autorisées, ni les affirmations sensibles : la passe 0
+    // reconnaît une offre, elle ne la juge pas.
+    expect(prompt).not.toMatch(/affirmation|gravité|grave|modere/i);
+  });
 });
 
 describe('fiches produit — signaux de reconnaissance', () => {
@@ -152,7 +162,9 @@ describe('fiches produit — signaux de reconnaissance', () => {
     expect(readSheet(file).identifiers.length).toBeGreaterThan(0);
   });
 
-  it('identifiers est optionnel (repli sur facts côté runner)', () => {
+  // Sans identifiers, la passe 0 retombe sur le seul libellé — jamais sur les
+  // `facts` : reconnaître une offre ne justifie pas d'en lire le contenu.
+  it('identifiers est optionnel (repli sur le libellé côté runner)', () => {
     const source = [
       '---',
       'slug: x',

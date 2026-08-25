@@ -39,6 +39,7 @@ export class CoachingViolationDto {
   @Field() severity: string; // 'grave' | 'modere'
   @Field() quote: string; // ce que le commercial a dit
   @Field() sheetSays: string; // la ligne de la fiche que ça contredit
+  @Field() planSays: string; // la ligne du plan de vente que ça contredit aussi
   @Field(() => String, { nullable: true }) why?: string | null;
 }
 

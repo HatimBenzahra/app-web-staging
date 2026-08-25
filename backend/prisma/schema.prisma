@@ -633,6 +633,7 @@ model ProductSheetVersion {
   contentHash String   @unique
   facts       Json // affirmations autorisées
   identifiers Json     @default("[]") // signaux de reconnaissance de l'offre (passe 0, mapping)
+  sttTerms    Json     @default("[]") // termes à orthographier juste (initial_prompt Whisper)
   forbidden   Json // affirmations sensibles + gravité
   winleadplus Json? // résolution du prix depuis la table Offre (jamais de prix en dur)
   rawMarkdown String

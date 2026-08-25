@@ -4,6 +4,13 @@ label: Mondial TV
 appliesTo: productDetected:mondial_tv
 winleadplus:
   match: { fournisseur: "MONDIAL TV" }
+sttTerms:
+  # Termes que la TRANSCRIPTION doit orthographier juste (noms de marque, sigles,
+  # chiffres-clés). Injectés dans l'initial_prompt de Whisper, nulle part ailleurs.
+  # Pas de français courant ici : ça n'aide pas le décodeur et ça sature le prompt.
+  - "Mondial TV"
+  - "OTT"
+  - "télévision connectée"
 identifiers:
   # Signaux de RECONNAISSANCE de l'offre pour la passe 0 (mapping), pas des
   # arguments de vente. Décrire ce qu'on entend dans l'échange plutôt que le nom
@@ -28,18 +35,18 @@ facts:
   - "produit non adapté à une personne sans connexion internet, ni à une personne vulnérable sans capacité de consentement clair"
   - "les coordonnées du service client ne sont communiquées qu'une fois validées par la direction"
 forbidden:
-  - { say: "Netflix est inclus", severity: grave }
-  - { say: "Disney+ est inclus", severity: grave }
-  - { say: "le bouquet beIN Sports est inclus", severity: grave }
-  - { say: "Canal+ payant est inclus", severity: grave }
-  - { say: "toutes les chaînes payantes sont incluses", severity: grave }
-  - { say: "ça fonctionne sans internet", severity: grave }
-  - { say: "Mondial TV remplace votre abonnement internet", severity: grave }
-  - { say: "la qualité sera parfaite partout", severity: grave }
-  - { say: "le catalogue ne changera jamais", severity: grave }
-  - { say: "une chaîne précise est garantie sans vérification du catalogue", severity: modere }
-  - { say: "un nombre de chaînes supérieur à ce que portent les référentiels", severity: modere }
-  - { say: "plus d'un mois offert", severity: modere }
+  # IDÉES que le produit ne peut pas porter — pas des phrases à retrouver mot pour
+  # mot. Un commercial ne dira jamais « zéro reste à charge » tel quel ; il dira
+  # « ça vous coûte rien de plus ». C'est l'idée qui compte, avec ses mots à lui.
+  - { say: "laisser croire qu'un service de streaming payant (Netflix, Disney+, Canal+, beIN…) est compris", severity: grave }
+  - { say: "laisser croire que les chaînes payantes sont comprises dans l'abonnement", severity: grave }
+  - { say: "laisser croire que le service fonctionne sans connexion internet", severity: grave }
+  - { say: "présenter Mondial TV comme un remplacement de l'abonnement internet du client", severity: grave }
+  - { say: "garantir une qualité d'image parfaite quelles que soient les conditions", severity: grave }
+  - { say: "présenter le catalogue de chaînes comme définitif et non susceptible d'évoluer", severity: grave }
+  - { say: "garantir la présence d'une chaîne précise sans avoir vérifié le catalogue à jour", severity: modere }
+  - { say: "annoncer un nombre de chaînes supérieur à ce que porte le catalogue", severity: modere }
+  - { say: "annoncer plus d'un mois offert", severity: modere }
 ---
 
 # Mondial TV — fiche produit

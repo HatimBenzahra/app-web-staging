@@ -146,16 +146,27 @@ export class ScoringService {
   /**
    * Malus de conformité produit, retiré du score global après son calcul.
    *
-   * Un écart n'est retenu que s'il porte ses DEUX citations : ce que le commercial
-   * a dit, et la ligne de la fiche que ça contredit. Même logique
-   * qu'`evidenceRequired` : pas de preuve, pas de sanction.
+   * Un écart n'est retenu que s'il porte ses TROIS citations : ce que le commercial
+   * a dit, la ligne de la fiche que ça contredit, ET la ligne du plan de vente que
+   * ça contredit aussi. Même logique qu'`evidenceRequired` : pas de preuve, pas de
+   * sanction.
+   *
+   * La troisième est le garde-fou décisif : un commercial qui récite son
+   * argumentaire ne peut pas être sanctionné, puisque le plan ne se contredit pas
+   * lui-même. Vu en production sans elle : « vous allez être chez Orange avec le
+   * réseau Orange » sanctionné −15 alors que le plan dit « en partenariat avec les
+   * réseaux Orange et Bouygues […] en conservant la qualité de votre réseau
+   * actuel, ou en l'améliorant ».
    */
   private computeMalus(
     plan: ParsedSalesPlan,
     raw: ProductViolation[],
   ): { malus: number; violations: ProductViolation[] } {
     const violations = raw.filter(
-      (v) => isCitation(v.quote) && isCitation(v.sheetSays),
+      (v) =>
+        isCitation(v.quote) &&
+        isCitation(v.sheetSays) &&
+        isCitation(v.planSays),
     );
 
     const total = violations.reduce(
@@ -217,12 +228,24 @@ function normalizeCitation(value: string): string {
 }
 
 /**
- * Une citation réelle, pas un marqueur d'absence. Trois lettres minimum : un
- * référentiel cité fait toujours plusieurs mots, jamais « - » ni « ? ».
+ * Gabarits du plan de vente : les montants et volumes y sont écrits « XXXX € »,
+ * « XXXX Go », parce qu'ils dépendent du forfait choisi. Une ligne qui en contient
+ * ne peut contredire aucun chiffre annoncé — elle n'en porte aucun.
+ *
+ * Vu en production : « Désormais, vous passerez à XXXX €/mois » cité comme preuve
+ * contre un commercial qui annonçait 14,90 €, soit le tarif exact du catalogue.
+ */
+const PLACEHOLDER = /x{3,}/i;
+
+/**
+ * Une citation réelle : ni un marqueur d'absence, ni un gabarit à trous. Trois
+ * lettres minimum — un référentiel cité fait toujours plusieurs mots, jamais
+ * « - » ni « ? ».
  */
 export function isCitation(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const normalized = normalizeCitation(value);
   if (normalized.length < 3) return false;
+  if (PLACEHOLDER.test(normalized)) return false;
   return !NON_CITATIONS.has(normalized);
 }

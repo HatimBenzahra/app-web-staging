@@ -13,8 +13,12 @@ export interface CriterionDef {
   label: string;
   points: number; // barème max du critère (typiquement 100)
   evidenceRequired?: boolean;
+  /**
+   * Exemples de formulations attendues — des ILLUSTRATIONS, pas une liste à
+   * cocher. N'y mettre que ce qui se prononce vraiment : un comportement
+   * (« écoute », « ne coupe pas la parole ») se juge et s'écrit dans `label`.
+   */
   expectedSignals?: string[];
-  negativeSignals?: string[];
   /** Optionnel : restreint l'applicabilité du critère (par défaut = celle de l'étape). */
   appliesWhen?: StepApplicability;
   /**
@@ -30,6 +34,20 @@ export interface StepDef {
   weight: number; // poids de l'étape dans le score global
   appliesWhen: StepApplicability;
   criteria: CriterionDef[];
+  /**
+   * Titre de la section du CORPS markdown qui porte l'argumentaire de l'étape,
+   * ex. "Phase 6 — Vente du mobile France Téléphone". Résolu au parsing en
+   * `pitchText`.
+   */
+  pitchSection?: string;
+  /**
+   * L'argumentaire tel que le plan l'écrit. C'est le SECOND référentiel de la
+   * conformité produit : un écart n'est retenu que s'il contredit la fiche **et**
+   * cet argumentaire. Un commercial qui récite son plan n'est jamais sanctionné,
+   * même si le plan s'écarte de la fiche — ce désaccord-là se règle entre
+   * référentiels, pas sur le dos du commercial.
+   */
+  pitchText?: string;
 }
 
 export interface PlanQuality {
@@ -61,6 +79,12 @@ export interface ParsedSalesPlan {
   quality: PlanQuality;
   malus: PlanMalus;
   steps: StepDef[];
+  /**
+   * Termes transverses que la transcription doit orthographier juste (marque
+   * ombrelle, offres sans fiche). Le pendant des `sttTerms` d'une fiche, au
+   * niveau du plan. Optionnel.
+   */
+  sttTerms?: string[];
 }
 
 /** Payload stocké dans SalesPlanVersion.criteria (JSON). */
@@ -71,4 +95,5 @@ export interface SalesPlanCriteriaPayload {
   steps: StepDef[];
   context?: string;
   language?: string;
+  sttTerms?: string[];
 }

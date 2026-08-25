@@ -5,6 +5,17 @@ appliesTo: productDetected:depanssur
 # Rattachement à l'offre (résolution du tarif hors de cette fiche).
 winleadplus:
   match: { fournisseur: "DEPANSSUR" }
+sttTerms:
+  # Termes que la TRANSCRIPTION doit orthographier juste (noms de marque, sigles,
+  # chiffres-clés). Injectés dans l'initial_prompt de Whisper, nulle part ailleurs.
+  # Pas de français courant ici : ça n'aide pas le décodeur et ça sature le prompt.
+  - "Depanssur"
+  - "Pack Depanssur"
+  - "MesDépanneurs"
+  - "MesDepanneurs.fr"
+  - "Box Économie Énergie"
+  - "Kit Économie d'Eau"
+  - "ACS"
 identifiers:
   # Signaux de RECONNAISSANCE de l'offre pour la passe 0 (mapping), pas des
   # arguments de vente. Décrire ce qu'on entend dans l'échange plutôt que le nom
@@ -35,17 +46,19 @@ facts:
   - "date d'effet au premier prélèvement ; équipements expédiés sous 15 jours après ce prélèvement"
   - "service client : 01 70 13 24 41, du lundi au vendredi"
 forbidden:
-  - { say: "c'est une assurance", severity: grave }
-  - { say: "vous êtes couvert", severity: grave }
-  - { say: "vous êtes assuré", severity: grave }
-  - { say: "tout est remboursé", severity: grave }
-  - { say: "zéro reste à charge", severity: grave }
-  - { say: "remboursement automatique", severity: grave }
-  - { say: "garantie illimitée", severity: grave }
-  - { say: "on refait votre installation", severity: grave }
-  - { say: "un plafond supérieur à 150 € par univers ou 450 € par an", severity: modere }
-  - { say: "un pourcentage d'économie d'électricité supérieur à 30 %", severity: modere }
-  - { say: "un pourcentage d'économie d'eau supérieur à 60 %", severity: modere }
+  # IDÉES que le produit ne peut pas porter — pas des phrases à retrouver mot pour
+  # mot. Un commercial ne dira jamais « zéro reste à charge » tel quel ; il dira
+  # « ça vous coûte rien de plus ». C'est l'idée qui compte, avec ses mots à lui.
+  - { say: "présenter Depanssur comme une assurance, ou laisser le client le croire", severity: grave }
+  - { say: "laisser croire que le client est couvert ou assuré, quel que soit le mot employé", severity: grave }
+  - { say: "promettre une prise en charge intégrale, sans reste à charge possible", severity: grave }
+  - { say: "promettre un remboursement automatique, sans passer par Depanssur ni par le contrat", severity: grave }
+  - { say: "présenter la prise en charge comme illimitée ou sans plafond", severity: grave }
+  - { say: "laisser croire que Depanssur refait, rénove ou met aux normes une installation", severity: grave }
+  - { say: "annoncer une prise en charge au-delà de 150 € par univers, ou de 450 € par an", severity: modere }
+  - { say: "annoncer une économie d'électricité supérieure à 30 %, ou la présenter comme certaine", severity: modere }
+  - { say: "annoncer une économie d'eau supérieure à 60 %, ou la présenter comme certaine", severity: modere }
+  - { say: "chiffrer en euros une économie que la formation ne chiffre pas", severity: modere }
 ---
 
 # Pack Depanssur — fiche produit

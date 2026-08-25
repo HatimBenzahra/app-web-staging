@@ -10,6 +10,7 @@ import RecordingSegmentPlayer from '@/components/RecordingSegmentPlayer'
 import CoachingService from '@/services/coaching/coaching.service'
 import CoachingResultPanel from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingResultPanel'
 import { isInProgress } from '@/pages-ADMIN-DIRECTEUR/coaching/CoachingComponents'
+import AnalysisProgress from '@/pages-ADMIN-DIRECTEUR/coaching/AnalysisProgress'
 import { cn } from '@/lib/utils'
 
 // Cadence de suivi d'une analyse en cours, alignée sur les autres écrans coaching.
@@ -151,10 +152,7 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
       Chargement du coaching…
     </div>
   ) : coachInProgress ? (
-    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      Analyse en cours…
-    </div>
+    <AnalysisProgress analysis={analysis} />
   ) : analysis ? (
     <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
       {analysis.status === 'FAILED'
@@ -171,8 +169,22 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[94vh] w-[97vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-none lg:ml-[9.5rem] lg:w-[calc(100vw-19rem)]">
-        <DialogHeader className="border-b p-6 pb-4">
+      <DialogContent
+        className={cn(
+          'flex flex-col gap-0 overflow-hidden p-0',
+          // `sm:max-w-none` ne vit QUE dans la branche large : porté par la base,
+          // il neutralisait le `max-w-2xl` du mode compact (une règle sous media
+          // query l'emporte sur une utilitaire sans variante, quel que soit
+          // l'ordre des classes) — le modal restait pleine largeur pour rien.
+          //
+          // w-[97vw] collait aussi aux deux bords : sous le point de rupture lg,
+          // le modal est simplement centré, donc c'est la largeur qui fait la marge.
+          showPanel
+            ? 'h-[94vh] w-[94vw] sm:max-w-none lg:ml-[9.5rem] lg:w-[calc(100vw-23rem)]'
+            : 'max-h-[88vh] w-[90vw] sm:max-w-2xl'
+        )}
+      >
+        <DialogHeader className="border-b py-4 pl-6 pr-8">
           <div className="flex flex-wrap items-start gap-2">
             <div className="flex items-center gap-2">
               <DoorOpen className="h-4 w-4 text-primary" />
@@ -225,7 +237,7 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
         {/* Un seul split pour tout le corps : l'enregistrement ouvre la colonne
             de gauche et le plan de vente démarre en haut de celle de droite. En
             deux blocs empilés, la moitié haute droite restait vide. */}
-        <div className="@container flex min-h-0 flex-1 flex-col px-6 py-4">
+        <div className="@container flex min-h-0 flex-1 flex-col py-4 pl-6 pr-8">
           {showPanel ? (
             <CoachingResultPanel
               analysis={analysis}
@@ -234,11 +246,9 @@ export default function PorteDetailModal({ door, open, onOpenChange, address = '
               lead={recordingBlock}
             />
           ) : (
-            <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto @4xl:grid-cols-2">
-              <div className="min-w-0 space-y-4">
-                {recordingBlock}
-                {coachingState}
-              </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              {recordingBlock}
+              {coachingState}
             </div>
           )}
         </div>

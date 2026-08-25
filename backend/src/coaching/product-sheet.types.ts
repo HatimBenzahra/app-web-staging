@@ -38,6 +38,13 @@ export interface ParsedProductSheet {
   appliesTo: StepApplicability;
   /** Le slug produit seul, ex. `depanssur` — la clé de jointure avec detectedProducts. */
   productKey: string;
+  /**
+   * Termes que la TRANSCRIPTION doit orthographier juste : noms de marque,
+   * sigles, chiffres-clés. Injectés dans `initial_prompt` (passe Whisper), et
+   * nulle part ailleurs. N'y mettre que ce que Whisper risque de déformer — le
+   * français courant n'a rien à y faire, il ne ferait que saturer le prompt.
+   */
+  sttTerms: string[];
   /** Ce que la formation autorise à affirmer. */
   facts: string[];
   /**

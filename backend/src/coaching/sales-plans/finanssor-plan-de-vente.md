@@ -15,6 +15,21 @@ context: >
   complétude, relecture du contrat sur tablette et confort de vente après signature.
   1 audio = 1 porte = 1 échange. Toutes les offres ne sont pas proposées à chaque
   porte : un module produit n'est évalué que s'il a été réellement abordé.
+# Termes transverses que la TRANSCRIPTION doit orthographier juste. Le pendant des
+# `sttTerms` d'une fiche, pour ce qui n'appartient à aucun produit : marque
+# ombrelle, offres sans fiche. Pas de français courant — ça sature le prompt sans
+# aider le décodeur.
+sttTerms:
+  - "Finanssor"
+  - "groupe Finanssor"
+  - "France Téléphone"
+  - "Conciergerie Action Prévoyance"
+  - "Action Prévoyance"
+  - "Bleufix"
+  - "RIB"
+  - "IBAN"
+  - "mandat SEPA"
+
 quality:
   # En-dessous de ces seuils, l'échange est jugé non exploitable / faible confiance.
   minDurationSec: 45          # < 45s d'échange réel → INEXPLOITABLE
@@ -42,21 +57,19 @@ steps:
     appliesWhen: always
     criteria:
       - key: presentation
-        label: Se présente clairement (France Téléphone / Groupe Finanssor), dynamique, souriant, directif
+        label: Se présente clairement (France Téléphone / Groupe Finanssor), dynamique, souriant, directif — ni hésitant, ni agressif
         points: 100
         evidenceRequired: true
         expectedSignals: ["bonjour madame", "bonjour monsieur", "c'est France Téléphone", "groupe finanssor", "on est chargé de voir"]
-        negativeSignals: ["ne se présente pas", "hésitant", "agressif"]
       - key: phrase_accroche
         label: Déroule une phrase d'accroche maîtrisée (lignes téléphoniques, nouvelles tarifications revues à la baisse, « 2 petites minutes »)
         points: 100
         evidenceRequired: true
         expectedSignals: ["lignes téléphoniques", "nouvelles tarifications", "revues à la baisse", "2 petites minutes", "tout le monde dans l'immeuble"]
       - key: gestion_objection_porte
-        label: Gère les objections réflexes à la porte pour obtenir l'entrée (absorbe, reformule, rebondit)
+        label: Gère les objections réflexes à la porte pour obtenir l'entrée (absorbe, reformule, rebondit) — sans argumenter le produit sur le palier ni abandonner à la première objection
         points: 100
         expectedSignals: ["justement je suis là pour", "je ne vous ai encore rien expliqué", "si vous pouvez en bénéficier"]
-        negativeSignals: ["argumente le produit à la porte", "abandonne à la première objection"]
 
   - key: climat_confiance
     label: Créer un climat de confiance
@@ -64,10 +77,9 @@ steps:
     appliesWhen: always
     criteria:
       - key: ecoute_active
-        label: Observe et écoute deux fois plus qu'il ne parle ; fait parler le prospect de lui
+        label: Observe et écoute deux fois plus qu'il ne parle ; fait parler le prospect de lui, sans monologuer ni lui couper la parole
         points: 100
-        expectedSignals: ["comment ça se passe pour vous", "questions ouvertes", "laisse parler"]
-        negativeSignals: ["monologue", "coupe la parole"]
+        expectedSignals: ["comment ça se passe pour vous", "et vous, vous êtes plutôt"]
       - key: valorisation
         label: Valorise le prospect et complimente avec justesse, sans flatterie excessive
         points: 100
@@ -95,6 +107,7 @@ steps:
     label: "Produit : mobile France Téléphone"
     weight: 12
     appliesWhen: productDetected:france_telephone
+    pitchSection: "Phase 6 — Vente du mobile France Téléphone"
     criteria:
       - key: ft_structure_6temps
         label: Déroule la trame en 6 temps (présentation, proposition chiffrée, conservation des services, accompagnement, sans risque, souscription)
@@ -120,15 +133,15 @@ steps:
     appliesWhen: always
     criteria:
       - key: demande_naturelle
-        label: Demande le RIB en deux temps, de façon naturelle et affirmative (pas sous forme de question)
+        label: Demande le RIB en deux temps, de façon naturelle et affirmative — sans hésiter ni le formuler comme une question
         points: 100
         expectedSignals: ["sur quel compte", "les références de votre compte"]
-        negativeSignals: ["n'ose pas demander", "formule interrogative hésitante"]
 
   - key: prod_depanssur
     label: "Produit : Pack Depanssur"
     weight: 10
     appliesWhen: productDetected:depanssur
+    pitchSection: "Phase 8 — Pack DEPANSSUR"
     criteria:
       - key: dep_structure_6temps
         label: Déroule la trame en 6 temps du pack Depanssur
@@ -147,6 +160,7 @@ steps:
     label: "Produit : Bleubox (internet 4G/5G)"
     weight: 10
     appliesWhen: productDetected:bleubox
+    pitchSection: "Phase 9 — Vente de la Bleubox"
     criteria:
       - key: bbx_structure_6temps
         label: Déroule la trame en 6 temps de la Bleubox
@@ -165,6 +179,7 @@ steps:
     label: "Produit : Conciergerie Action Prévoyance"
     weight: 8
     appliesWhen: productDetected:conciergerie
+    pitchSection: "Phase 10 — Conciergerie Action Prévoyance"
     criteria:
       - key: conc_presentation_service
         label: Présente les deux volets (assistant personnel à distance, réductions dans les enseignes partenaires)
@@ -180,6 +195,7 @@ steps:
     label: "Produit : Mondial TV"
     weight: 8
     appliesWhen: productDetected:mondial_tv
+    pitchSection: "Phase 11 — Mondial TV, le cadeau digital"
     criteria:
       - key: mtv_presentation_service
         label: Présente Mondial TV comme un service de télévision connectée multi-écrans
@@ -229,9 +245,8 @@ steps:
     appliesWhen: contractSigned
     criteria:
       - key: reste_apres_signature
-        label: Reste avec le client après la signature pour sécuriser la vente et répondre aux questions
+        label: Reste avec le client après la signature pour sécuriser la vente et répondre aux questions, sans partir précipitamment
         points: 100
-        negativeSignals: ["part précipitamment", "conclut et s'en va"]
 ---
 
 # Plan de vente — Groupe Finanssor, version Telecom

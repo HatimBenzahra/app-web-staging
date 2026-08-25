@@ -40,11 +40,15 @@ function renderPlanForPrompt(
     lines.push(`### Étape "${step.key}" — ${step.label}${applic}`);
     for (const c of criteria) {
       lines.push(`- critère "${c.key}" : ${c.label}`);
+      // Des EXEMPLES, jamais une liste à cocher. Rendus en « signaux positifs »,
+      // ils transformaient le jugement en recherche de mots-clés : un commercial
+      // qui dit la même chose autrement était noté absent. Les comportements
+      // (« questions ouvertes », « monologue ») ont été remontés dans le libellé
+      // du critère, là où ils se jugent.
       if (c.expectedSignals?.length) {
-        lines.push(`    signaux positifs : ${c.expectedSignals.join(' | ')}`);
-      }
-      if (c.negativeSignals?.length) {
-        lines.push(`    signaux négatifs : ${c.negativeSignals.join(' | ')}`);
+        lines.push(
+          `    à quoi ça ressemble, ses mots peuvent différer : ${c.expectedSignals.join(' | ')}`,
+        );
       }
       if (c.evidenceRequired) {
         lines.push(`    (preuve obligatoire : cite une phrase du transcript)`);

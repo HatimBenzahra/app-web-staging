@@ -316,6 +316,21 @@ body {
     animation-delay: 2.5s;
   }
 
+  /* Barre d'avancement indeterminee : une etape du pipeline coaching tourne,
+     mais on ne connait pas sa progression reelle — on l'affiche sans mentir. */
+  @keyframes progress-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
+    }
+  }
+
+  .animate-progress-slide {
+    animation: progress-slide 1.6s ease-in-out infinite;
+  }
+
   /* Shimmer sweep animation for skeleton loading states */
   @keyframes shimmer {
     0% {

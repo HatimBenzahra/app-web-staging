@@ -223,21 +223,93 @@ export class CoachingService {
   }
 
   /** Relance manuelle d'une analyse existante (admin/directeur). */
+  /**
+   * Relance une analyse SUR LE PLAN DE VENTE ACTIF.
+   *
+   * Une analyse reste épinglée à sa version de plan (`@@unique([s3KeyOriginal,
+   * salesPlanVersionId])`) : c'est ce qui rend les scores comparables dans le
+   * temps. Mais relancer une ligne épinglée à une version périmée la rejouait sur
+   * un référentiel mort — vu en production : un audio rejoué sur le plan v1
+   * (version énergie), dont les clés produit `telecom` / `conciergerie` ne
+   * correspondent à aucune fiche, donc sans la moindre conformité produit.
+   *
+   * On ne touche donc pas à la ligne d'origine — elle reste l'historique de ce
+   * qu'a valu cet échange sur SON référentiel — et on (re)joue l'audio sur la
+   * version active. Le transcript est repris : l'audio n'a pas changé, ça évite
+   * de re-payer Whisper (des dizaines de minutes sur un échange long).
+   */
   async relaunch(id: number): Promise<CoachingAnalysisDto> {
     const analysis = await this.prisma.coachingAnalysis.findUnique({
       where: { id },
     });
     if (!analysis) throw new NotFoundException('Analyse coaching introuvable');
-    await this.prisma.coachingAnalysis.update({
-      where: { id },
-      data: {
-        status: CoachingStatus.PENDING,
-        error: null,
-        attempts: 0,
-        nextRetryAt: null,
+
+    const version = await this.salesPlans.getActiveVersion();
+    if (!version) throw new NotFoundException('Aucun plan de vente actif');
+
+    const requeue = {
+      status: CoachingStatus.PENDING,
+      error: null,
+      attempts: 0,
+      nextRetryAt: null,
+      // Relance explicite : l'utilisateur veut cette analyse, quelle que soit la
+      // durée de l'échange. Le gating "pas de parole" reste actif.
+      manual: true,
+    };
+
+    // Déjà sur le plan actif : simple remise en file.
+    if (analysis.salesPlanVersionId === version.id) {
+      await this.prisma.coachingAnalysis.update({ where: { id }, data: requeue });
+      return this.query.getAnalysis(id);
+    }
+
+    const existing = await this.prisma.coachingAnalysis.findUnique({
+      where: {
+        s3KeyOriginal_salesPlanVersionId: {
+          s3KeyOriginal: analysis.s3KeyOriginal,
+          salesPlanVersionId: version.id,
+        },
       },
+      select: { id: true, transcript: true },
     });
-    return this.query.getAnalysis(id);
+
+    if (existing) {
+      await this.prisma.coachingAnalysis.update({
+        where: { id: existing.id },
+        data: {
+          ...requeue,
+          // On ne remplace un transcript existant que s'il est vide : celui de la
+          // cible a été produit avec le profil STT du moment, il fait foi.
+          ...(existing.transcript?.trim()
+            ? {}
+            : {
+                transcript: analysis.transcript,
+                transcriptDurationSec: analysis.transcriptDurationSec,
+              }),
+        },
+      });
+      return this.query.getAnalysis(existing.id);
+    }
+
+    const created = await this.prisma.coachingAnalysis.create({
+      data: {
+        recordingId: analysis.recordingId,
+        porteId: analysis.porteId,
+        commercialId: analysis.commercialId,
+        managerId: analysis.managerId,
+        s3KeyOriginal: analysis.s3KeyOriginal,
+        statutPorte: analysis.statutPorte,
+        salesPlanVersionId: version.id,
+        transcript: analysis.transcript,
+        transcriptDurationSec: analysis.transcriptDurationSec,
+        ...requeue,
+      },
+      select: { id: true },
+    });
+    this.logger.log(
+      `Analyse ${id} relancée sur le plan actif v${version.version} → nouvelle analyse ${created.id}`,
+    );
+    return this.query.getAnalysis(created.id);
   }
 
   private asStatut(value?: string | null): StatutPorte | null {

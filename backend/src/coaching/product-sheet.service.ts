@@ -18,6 +18,7 @@ type ProductSheetVersionRow = {
   productKey: string;
   facts: unknown;
   identifiers: unknown;
+  sttTerms: unknown;
   forbidden: unknown;
   winleadplus: unknown;
 };
@@ -26,6 +27,23 @@ type ProductSheetVersionRow = {
 export interface ActiveProductSheet {
   versionId: number;
   sheet: ParsedProductSheet;
+}
+
+/**
+ * Vue LÉGÈRE d'une fiche : de quoi NOMMER et RECONNAÎTRE l'offre, jamais de quoi
+ * la juger. Pas de `facts`, pas de `forbidden`.
+ *
+ * C'est la seule chose qu'on a le droit de charger pour TOUTES les offres, parce
+ * que deux étapes en ont besoin avant de savoir ce qui a été abordé : le
+ * vocabulaire soufflé à Whisper (avant la transcription, donc avant tout mapping)
+ * et la liste fermée de la passe 0. Le contenu d'une fiche, lui, ne se lit que
+ * pour les offres réellement présentées — via `getActiveSheetsFor`.
+ */
+export interface ProductSheetDescriptor {
+  productKey: string;
+  label: string;
+  identifiers: string[];
+  sttTerms: string[];
 }
 
 /**
@@ -99,6 +117,7 @@ export class ProductSheetService implements OnModuleInit {
         contentHash,
         facts: sheet.facts,
         identifiers: sheet.identifiers,
+        sttTerms: sheet.sttTerms,
         forbidden: sheet.forbidden as unknown as object,
         winleadplus: (sheet.winleadplus ?? null) as unknown as object,
         rawMarkdown,
@@ -142,6 +161,34 @@ export class ProductSheetService implements OnModuleInit {
     }));
   }
 
+  /**
+   * Vues légères des fiches actives : nom, signaux de reconnaissance, termes de
+   * transcription. Volontairement SANS `facts` ni `forbidden` — ce qu'il faut pour
+   * nommer une offre ne donne pas le droit de la juger.
+   */
+  async getActiveDescriptors(
+    productKeys: string[],
+  ): Promise<ProductSheetDescriptor[]> {
+    if (productKeys.length === 0) return [];
+    const rows = await this.prisma.productSheetVersion.findMany({
+      where: { productKey: { in: productKeys }, isActive: true },
+      select: {
+        productKey: true,
+        label: true,
+        identifiers: true,
+        sttTerms: true,
+      },
+    });
+    return rows.map((row) => ({
+      productKey: row.productKey,
+      label: row.label,
+      identifiers: Array.isArray(row.identifiers)
+        ? (row.identifiers as string[])
+        : [],
+      sttTerms: Array.isArray(row.sttTerms) ? (row.sttTerms as string[]) : [],
+    }));
+  }
+
   /** Toutes les fiches actives — alimente l'onglet Produits en lecture seule. */
   async listActiveSheets() {
     return this.prisma.productSheetVersion.findMany({
@@ -161,6 +208,7 @@ export class ProductSheetService implements OnModuleInit {
       identifiers: Array.isArray(row.identifiers)
         ? (row.identifiers as string[])
         : [],
+      sttTerms: Array.isArray(row.sttTerms) ? (row.sttTerms as string[]) : [],
       forbidden: Array.isArray(row.forbidden)
         ? (row.forbidden as ForbiddenClaim[])
         : [],

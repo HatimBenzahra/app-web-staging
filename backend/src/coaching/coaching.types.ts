@@ -44,6 +44,12 @@ export interface ProductViolation {
   quote: string;
   /** La ligne de la fiche produit que ça contredit. */
   sheetSays: string;
+  /**
+   * La ligne du plan de vente que ça contredit AUSSI. Sans elle, la violation est
+   * rejetée par ScoringService : un commercial qui récite son plan n'est jamais
+   * sanctionné, même si le plan s'écarte de la fiche.
+   */
+  planSays: string;
   why?: string;
 }
 

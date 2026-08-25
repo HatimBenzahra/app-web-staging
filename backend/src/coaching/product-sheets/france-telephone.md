@@ -4,6 +4,18 @@ label: Mobile France Téléphone (Bleutel)
 appliesTo: productDetected:france_telephone
 winleadplus:
   match: { fournisseur: "BLEUTEL" }
+sttTerms:
+  # Termes que la TRANSCRIPTION doit orthographier juste (noms de marque, sigles,
+  # chiffres-clés). Injectés dans l'initial_prompt de Whisper, nulle part ailleurs.
+  # Pas de français courant ici : ça n'aide pas le décodeur et ça sature le prompt.
+  - "France Téléphone"
+  - "Bleutel"
+  - "RIO"
+  - "3179"
+  - "eSIM"
+  - "MVNO"
+  - "portabilité"
+  - "Bouygues Telecom"
 identifiers:
   # Signaux de RECONNAISSANCE de l'offre pour la passe 0 (mapping), pas des
   # arguments de vente. Décrire ce qu'on entend dans l'échange plutôt que le nom
@@ -31,12 +43,16 @@ facts:
   - "devoir de conseil : recommander le forfait adapté au profil et au budget, tout dire sur le prix, la durée et les conditions de résiliation"
   - "RGPD : collecter le strict nécessaire, jamais de copie de carte bancaire, aucune photo de pièce d'identité non protégée"
 forbidden:
-  - { say: "vous aurez la priorité réseau comme Orange", severity: grave }
-  - { say: "aucune coupure garantie quelle que soit la situation", severity: grave }
-  - { say: "vous n'avez rien à payer même si vous êtes engagé ailleurs", severity: grave }
-  - { say: "Bleutel possède son propre réseau d'antennes", severity: modere }
-  - { say: "une quantité de données supérieure au forfait souscrit", severity: modere }
-  - { say: "une portabilité en moins de 3 jours ouvrés garantie", severity: modere }
+  # IDÉES que le produit ne peut pas porter — pas des phrases à retrouver mot pour
+  # mot. Un commercial ne dira jamais « zéro reste à charge » tel quel ; il dira
+  # « ça vous coûte rien de plus ». C'est l'idée qui compte, avec ses mots à lui.
+  - { say: "laisser croire que le client aura la même priorité réseau qu'un abonné de l'opérateur propriétaire des antennes", severity: grave }
+  - { say: "garantir une absence totale de coupure, quelles que soient les circonstances", severity: grave }
+  - { say: "laisser croire qu'un engagement en cours chez l'opérateur actuel ne coûtera rien", severity: grave }
+  - { say: "présenter Bleutel comme propriétaire de son propre réseau d'antennes", severity: modere }
+  - { say: "annoncer plus de données que ce que porte le forfait souscrit", severity: modere }
+  - { say: "garantir un délai de portabilité plus court que celui prévu", severity: modere }
+  - { say: "annoncer un tarif qui ne figure pas dans la grille en vigueur", severity: modere }
 ---
 
 # Mobile France Téléphone — fiche produit (Bleutel)

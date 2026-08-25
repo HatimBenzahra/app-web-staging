@@ -66,6 +66,19 @@ function parseIdentifiers(raw: unknown, slug: string): string[] {
     .filter((v) => v.length > 0);
 }
 
+/** Termes à orthographier juste pour la transcription. Optionnel. */
+function parseSttTerms(raw: unknown, slug: string): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new ProductSheetParseError(
+      `Fiche ${slug} : sttTerms doit être une liste`,
+    );
+  }
+  return raw
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter((v) => v.length > 0);
+}
+
 function parseForbidden(raw: unknown, slug: string): ForbiddenClaim[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
@@ -135,6 +148,7 @@ export function parseProductSheetMarkdown(
     productKey: appliesTo.slice('productDetected:'.length),
     facts: parseFacts(data.facts, slug),
     identifiers: parseIdentifiers(data.identifiers, slug),
+    sttTerms: parseSttTerms(data.sttTerms, slug),
     forbidden: parseForbidden(data.forbidden, slug),
     winleadplus: parseWinLeadPlus(data.winleadplus, slug),
   };

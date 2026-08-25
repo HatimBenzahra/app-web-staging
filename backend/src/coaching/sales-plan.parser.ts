@@ -52,9 +52,6 @@ function parseCriterion(raw: any, stepKey: string): CriterionDef {
     expectedSignals: Array.isArray(raw?.expectedSignals)
       ? raw.expectedSignals.map(String)
       : undefined,
-    negativeSignals: Array.isArray(raw?.negativeSignals)
-      ? raw.negativeSignals.map(String)
-      : undefined,
     appliesWhen: raw?.appliesWhen
       ? normalizeApplies(raw.appliesWhen)
       : undefined,
@@ -67,18 +64,33 @@ function parseCriterion(raw: any, stepKey: string): CriterionDef {
  * niveau indifférent). La section court jusqu'au heading suivant de niveau
  * équivalent ou supérieur.
  */
+/**
+ * Correspondance tolérante des titres : casse, accents, tirets et espaces
+ * normalisés. Le frontmatter désigne la section par son titre, et les deux sont
+ * édités à la main, à des moments différents.
+ */
+function normalizeHeading(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[—–-]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function extractMarkdownSection(
   body: string,
   heading: string,
 ): string | null {
   const lines = body.split('\n');
-  const target = heading.trim();
+  const target = normalizeHeading(heading);
   let startIdx = -1;
   let level = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const m = /^(#{1,6})\s+(.*)$/.exec(lines[i]);
-    if (m && m[2].trim() === target) {
+    if (m && normalizeHeading(m[2]) === target) {
       startIdx = i + 1;
       level = m[1].length;
       break;
@@ -122,6 +134,10 @@ function parseStep(raw: any): StepDef {
     weight,
     appliesWhen: normalizeApplies(raw?.appliesWhen),
     criteria,
+    pitchSection:
+      typeof raw?.pitchSection === 'string' && raw.pitchSection.trim()
+        ? raw.pitchSection.trim()
+        : undefined,
   };
 }
 
@@ -140,7 +156,19 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
     throw new SalesPlanParseError('Aucune étape (steps) définie dans le plan');
   }
 
-  const steps = data.steps.map(parseStep);
+  const steps: StepDef[] = data.steps.map(parseStep).map((step: StepDef) => {
+    if (!step.pitchSection) return step;
+    const pitchText = extractMarkdownSection(
+      parsed.content ?? '',
+      step.pitchSection,
+    );
+    if (!pitchText) {
+      throw new SalesPlanParseError(
+        `Étape ${step.key} : section d'argumentaire "${step.pitchSection}" introuvable dans le corps du plan`,
+      );
+    }
+    return { ...step, pitchText };
+  });
 
   const stepKeys = new Set<string>();
   // Unicité GLOBALE des clés de critères, pas seulement au sein d'une étape.
@@ -178,6 +206,11 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
     scoringScale: asNumber(data.scoringScale, 100),
     language: typeof data.language === 'string' ? data.language : 'fr',
     context: typeof data.context === 'string' ? data.context : undefined,
+    sttTerms: Array.isArray(data.sttTerms)
+      ? data.sttTerms
+          .map((t: unknown) => (typeof t === 'string' ? t.trim() : ''))
+          .filter((t: string) => t.length > 0)
+      : undefined,
     quality: {
       minDurationSec: asNumber(data?.quality?.minDurationSec, 45),
       minTranscriptChars: asNumber(data?.quality?.minTranscriptChars, 400),

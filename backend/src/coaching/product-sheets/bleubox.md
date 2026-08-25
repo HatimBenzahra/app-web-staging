@@ -4,6 +4,16 @@ label: Bleubox (internet 4G/5G)
 appliesTo: productDetected:bleubox
 winleadplus:
   match: { fournisseur: "BLEUBOX" }
+sttTerms:
+  # Termes que la TRANSCRIPTION doit orthographier juste (noms de marque, sigles,
+  # chiffres-clés). Injectés dans l'initial_prompt de Whisper, nulle part ailleurs.
+  # Pas de français courant ici : ça n'aide pas le décodeur et ça sature le prompt.
+  - "Bleubox"
+  - "Wi-Fi 6"
+  - "4G"
+  - "5G"
+  - "Mb/s"
+  - "carte SIM"
 identifiers:
   # Signaux de RECONNAISSANCE de l'offre pour la passe 0 (mapping), pas des
   # arguments de vente. Décrire ce qu'on entend dans l'échange plutôt que le nom
@@ -25,13 +35,16 @@ facts:
   - "la box est mobile : le client peut l'emporter (résidence secondaire, déménagement, logement temporaire)"
   - "couverture : partout où il y a du signal 4G ; un test de couverture est prévu"
 forbidden:
-  - { say: "la 5G est incluse dans l'offre de base", severity: grave }
-  - { say: "c'est de la fibre", severity: grave }
-  - { say: "ça ne coupe jamais", severity: grave }
-  - { say: "ça fonctionne partout sans condition de couverture", severity: grave }
-  - { say: "un débit supérieur à 500 Mb/s", severity: modere }
-  - { say: "plus de 32 appareils connectés", severity: modere }
-  - { say: "installation par un technicien", severity: modere }
+  # IDÉES que le produit ne peut pas porter — pas des phrases à retrouver mot pour
+  # mot. Un commercial ne dira jamais « zéro reste à charge » tel quel ; il dira
+  # « ça vous coûte rien de plus ». C'est l'idée qui compte, avec ses mots à lui.
+  - { say: "laisser croire que la 5G est comprise dans l'offre de base alors qu'elle est en supplément", severity: grave }
+  - { say: "présenter la Bleubox comme de la fibre, ou lui prêter les performances de la fibre", severity: grave }
+  - { say: "garantir une connexion qui ne coupe jamais", severity: grave }
+  - { say: "laisser croire que ça fonctionne partout, sans condition de couverture réseau", severity: grave }
+  - { say: "annoncer un débit supérieur à ce que porte l'offre, ou le présenter comme garanti", severity: modere }
+  - { say: "annoncer davantage d'appareils connectés que ce que supporte la box", severity: modere }
+  - { say: "laisser croire qu'un technicien vient installer, alors que le client branche lui-même", severity: modere }
 ---
 
 # Bleubox — fiche produit

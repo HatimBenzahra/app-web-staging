@@ -10,6 +10,7 @@ import { SalesPlanService } from './sales-plan.service';
 import { LlmService } from './llm.service';
 import { ScoringService } from './scoring.service';
 import { ProductSheetService } from './product-sheet.service';
+import { ProductPriceService } from './product-price.service';
 import { SynthesisService } from './synthesis.service';
 import { SnapshotBuilderService } from './snapshot-builder.service';
 import { SynthesisResolver } from './synthesis.resolver';
@@ -26,6 +27,7 @@ import { SynthesisResolver } from './synthesis.resolver';
     LlmService,
     ScoringService,
     ProductSheetService,
+    ProductPriceService,
     SynthesisService,
     SnapshotBuilderService,
     SynthesisResolver,

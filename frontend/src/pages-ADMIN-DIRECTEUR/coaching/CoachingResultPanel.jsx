@@ -8,6 +8,7 @@ import {
   XCircle,
   MinusCircle,
   CircleDashed,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AudioPlayer from '@/components/AudioPlayer'
@@ -23,8 +24,11 @@ import {
 } from './CoachingComponents'
 
 /**
- * Un écart de conformité produit : ce que le commercial a dit, face à ce que la
- * fiche décrit. Afficher les deux, c'est ce qui rend l'écart discutable avec lui.
+ * Un écart de conformité produit : ce que le commercial a dit, face aux DEUX
+ * référentiels qu'il contredit — la fiche produit et l'argumentaire du plan de
+ * vente. Les afficher tous les deux, c'est ce qui rend l'écart discutable avec
+ * lui : sans la ligne du plan, il peut toujours répondre « c'est ce qu'on
+ * m'apprend à dire », et il a raison.
  */
 function ViolationCard({ violation }) {
   return (
@@ -38,9 +42,17 @@ function ViolationCard({ violation }) {
 
       <p className="mb-2 text-sm italic text-foreground/90">« {violation.quote} »</p>
 
-      <dl className="text-xs">
-        <dt className="font-medium text-muted-foreground">La fiche produit dit</dt>
-        <dd className="text-foreground/80">{violation.sheetSays}</dd>
+      <dl className="space-y-1.5 text-xs">
+        <div>
+          <dt className="font-medium text-muted-foreground">La fiche produit dit</dt>
+          <dd className="text-foreground/80">{violation.sheetSays}</dd>
+        </div>
+        {violation.planSays && (
+          <div>
+            <dt className="font-medium text-muted-foreground">Le plan de vente dit</dt>
+            <dd className="text-foreground/80">{violation.planSays}</dd>
+          </div>
+        )}
       </dl>
 
       {violation.why && <p className="mt-2 text-xs text-muted-foreground">{violation.why}</p>}
@@ -147,6 +159,8 @@ export default function CoachingResultPanel({
   const malus = typeof analysis.malus === 'number' ? analysis.malus : 0
   const hasMalus = malus > 0 && typeof analysis.scoreBeforeMalus === 'number'
   const violations = analysis.violations || []
+  // Une offre présentée = la passe de conformité a bien eu lieu sur cet échange.
+  const productsChecked = (analysis.detectedProducts || []).length > 0
 
   const ScoreFooter = () => (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
@@ -207,6 +221,31 @@ export default function CoachingResultPanel({
             <div>
               <h3 className="mb-1.5 text-sm font-semibold">Résumé</h3>
               <p className="text-sm text-foreground/90">{analysis.summary}</p>
+            </div>
+          )}
+
+          {/* Sans écart, le bloc disparaissait entièrement : à l'écran, « rien
+              trouvé » et « jamais vérifié » se ressemblaient. On distingue les
+              deux — c'est l'état du contrôle, pas un satisfecit. */}
+          {violations.length === 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+              {productsChecked ? (
+                <>
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Conformité produit</span> —
+                    aucun écart relevé sur les offres présentées.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Conformité produit</span> — aucune
+                    offre présentée, contrôle non requis.
+                  </p>
+                </>
+              )}
             </div>
           )}
 

@@ -75,6 +75,7 @@ export class SalesPlanService implements OnModuleInit {
       steps: plan.steps,
       context: plan.context,
       language: plan.language,
+      sttTerms: plan.sttTerms,
     };
 
     const existing = await this.prisma.salesPlanVersion.findUnique({
@@ -148,6 +149,7 @@ export class SalesPlanService implements OnModuleInit {
       steps: c.steps ?? [],
       context: c.context,
       language: c.language,
+      sttTerms: c.sttTerms,
     };
   }
 }
