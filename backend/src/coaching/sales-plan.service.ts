@@ -71,6 +71,7 @@ export class SalesPlanService implements OnModuleInit {
     const payload: SalesPlanCriteriaPayload = {
       scoringScale: plan.scoringScale,
       quality: plan.quality,
+      malus: plan.malus,
       steps: plan.steps,
       context: plan.context,
       language: plan.language,
@@ -142,6 +143,8 @@ export class SalesPlanService implements OnModuleInit {
       title: row.title,
       scoringScale: c.scoringScale ?? 100,
       quality: c.quality ?? {},
+      // Analyses antérieures au malus : barème par défaut, aucune violation à leur appliquer.
+      malus: c.malus ?? { grave: 15, modere: 8, maxTotal: 30 },
       steps: c.steps ?? [],
       context: c.context,
       language: c.language,

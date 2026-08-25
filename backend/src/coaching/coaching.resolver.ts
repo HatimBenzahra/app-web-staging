@@ -7,6 +7,7 @@ import { CoachingService } from './coaching.service';
 import { CoachingConfigService } from './coaching-config.service';
 import { CoachingQueryService } from './coaching-query.service';
 import { SalesPlanService } from './sales-plan.service';
+import { ProductSheetService } from './product-sheet.service';
 import {
   ActiveSalesPlanDto,
   CoachingAnalysesFilter,
@@ -19,6 +20,7 @@ import {
   CoachingScoreboardDto,
   PaginatedCoachingManagement,
   CoachableSubjectDto,
+  ProductSheetDto,
 } from './coaching.dto';
 
 @Resolver()
@@ -29,6 +31,7 @@ export class CoachingResolver {
     private readonly config: CoachingConfigService,
     private readonly query: CoachingQueryService,
     private readonly salesPlans: SalesPlanService,
+    private readonly productSheets: ProductSheetService,
   ) {}
 
   @Query(() => CoachingAnalysisDto)
@@ -81,6 +84,32 @@ export class CoachingResolver {
   @Roles('admin', 'directeur')
   coachableSubjects(): Promise<CoachableSubjectDto[]> {
     return this.query.coachableSubjects();
+  }
+
+  /**
+   * Fiches produit actives — alimente l'onglet Produits en lecture seule.
+   * Même périmètre d'accès que le reste du coaching : admin + directeur.
+   */
+  @Query(() => [ProductSheetDto])
+  @Roles('admin', 'directeur')
+  async coachingProductSheets(): Promise<ProductSheetDto[]> {
+    const rows = await this.productSheets.listActiveSheets();
+    return rows.map((row) => {
+      const sheet = this.productSheets.toParsedSheet(row);
+      return {
+        id: row.id,
+        slug: sheet.slug,
+        label: sheet.label,
+        productKey: sheet.productKey,
+        version: row.version,
+        facts: sheet.facts,
+        forbidden: sheet.forbidden.map((f) => ({
+          say: f.say,
+          severity: f.severity,
+        })),
+        rawMarkdown: row.rawMarkdown,
+      };
+    });
   }
 
   @Query(() => ActiveSalesPlanDto, { nullable: true })

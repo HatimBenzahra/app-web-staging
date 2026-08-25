@@ -28,6 +28,32 @@ export class CoachingCriterionResultDto {
   @Field(() => String, { nullable: true }) comment?: string;
 }
 
+/**
+ * Écart de conformité produit : ce que le commercial a dit du produit, face à ce
+ * que sa fiche décrit. Le front affiche les deux côte à côte.
+ */
+@ObjectType()
+export class CoachingViolationDto {
+  @Field() productSlug: string;
+  @Field(() => String, { nullable: true }) productLabel?: string | null;
+  @Field() severity: string; // 'grave' | 'modere'
+  @Field() quote: string; // ce que le commercial a dit
+  @Field() sheetSays: string; // la ligne de la fiche que ça contredit
+  @Field(() => String, { nullable: true }) why?: string | null;
+}
+
+/**
+ * Ce que la passe 0 (mapping) a retenu d'une offre, y compris quand elle n'a été
+ * évoquée que par le prospect. Sert au diagnostic : sans cette trace, une offre
+ * ratée reste invisible après coup.
+ */
+@ObjectType()
+export class CoachingMappedProductDto {
+  @Field() key: string;
+  @Field() presentedByCommercial: boolean;
+  @Field() evidence: string;
+}
+
 @ObjectType()
 export class CoachingAnalysisDto {
   @Field(() => Int) id: number;
@@ -39,7 +65,12 @@ export class CoachingAnalysisDto {
   @Field(() => String, { nullable: true }) statutPorte?: string | null;
   @Field() status: string;
   @Field(() => String, { nullable: true }) quality?: string | null;
-  @Field(() => Float, { nullable: true }) score?: number | null;
+  @Field(() => Float, { nullable: true }) score?: number | null; // score FINAL (après malus)
+  @Field(() => Float, { nullable: true }) scoreBeforeMalus?: number | null;
+  @Field(() => Float, { nullable: true }) malus?: number | null; // points retirés (positif)
+  @Field(() => [CoachingViolationDto]) violations: CoachingViolationDto[];
+  @Field(() => [String]) detectedProducts: string[]; // offres PRÉSENTÉES par le commercial
+  @Field(() => [CoachingMappedProductDto]) productMapping: CoachingMappedProductDto[];
   @Field(() => Float, { nullable: true }) confidence?: number | null;
   @Field(() => String, { nullable: true }) summary?: string | null;
   @Field(() => [String]) strengths: string[];
@@ -264,4 +295,23 @@ export class CoachingAnalysesFilter {
   @Field(() => Int, { nullable: true }) managerId?: number;
   @Field(() => Int, { nullable: true }) porteId?: number;
   @Field(() => String, { nullable: true }) status?: string;
+}
+
+/** Fiche produit active, pour l'onglet Produits en lecture seule. */
+@ObjectType()
+export class ProductSheetForbiddenDto {
+  @Field() say: string;
+  @Field() severity: string; // 'grave' | 'modere'
+}
+
+@ObjectType()
+export class ProductSheetDto {
+  @Field(() => Int) id: number;
+  @Field() slug: string;
+  @Field() label: string;
+  @Field() productKey: string;
+  @Field(() => Int) version: number;
+  @Field(() => [String]) facts: string[];
+  @Field(() => [ProductSheetForbiddenDto]) forbidden: ProductSheetForbiddenDto[];
+  @Field() rawMarkdown: string;
 }

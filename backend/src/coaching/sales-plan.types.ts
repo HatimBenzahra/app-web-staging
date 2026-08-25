@@ -17,6 +17,11 @@ export interface CriterionDef {
   negativeSignals?: string[];
   /** Optionnel : restreint l'applicabilité du critère (par défaut = celle de l'étape). */
   appliesWhen?: StepApplicability;
+  /**
+   * true → critère jugé en passe 2 (conformité produit), pas en passe 1.
+   * La passe 2 dispose de la fiche produit ; la passe 1 ne l'a pas.
+   */
+  requiresProductSheet?: boolean;
 }
 
 export interface StepDef {
@@ -33,6 +38,19 @@ export interface PlanQuality {
   lowConfidenceBelowSec?: number;
 }
 
+/**
+ * Barème du malus de conformité produit, retiré du score après son calcul.
+ * Les étapes gardent leur barème intact : le malus s'applique au score global.
+ */
+export interface PlanMalus {
+  /** Affirmation juridiquement fausse ou engagement impossible. */
+  grave: number;
+  /** Chiffre ou périmètre inventé, au-delà des deux référentiels. */
+  modere: number;
+  /** Plafond du malus cumulé sur une analyse. */
+  maxTotal: number;
+}
+
 /** Plan de vente parsé (contenu du frontmatter). */
 export interface ParsedSalesPlan {
   slug: string;
@@ -41,6 +59,7 @@ export interface ParsedSalesPlan {
   language?: string;
   context?: string;
   quality: PlanQuality;
+  malus: PlanMalus;
   steps: StepDef[];
 }
 
@@ -48,6 +67,7 @@ export interface ParsedSalesPlan {
 export interface SalesPlanCriteriaPayload {
   scoringScale: number;
   quality: PlanQuality;
+  malus: PlanMalus;
   steps: StepDef[];
   context?: string;
   language?: string;

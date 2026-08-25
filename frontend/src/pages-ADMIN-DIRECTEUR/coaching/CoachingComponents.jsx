@@ -23,7 +23,10 @@ export function ScoreBar({ value, className }) {
 export const STATUS_META = {
   PENDING: { label: 'En attente', dot: 'bg-slate-400', pill: 'bg-slate-500/10 text-slate-600' },
   TRANSCRIBING: { label: 'Transcription…', dot: 'bg-blue-500', pill: 'bg-blue-500/10 text-blue-600' },
-  ANALYZING: { label: 'Analyse IA…', dot: 'bg-indigo-500', pill: 'bg-indigo-500/10 text-indigo-600' },
+  MAPPING: { label: 'Détection des offres…', dot: 'bg-sky-500', pill: 'bg-sky-500/10 text-sky-600' },
+  ANALYZING: { label: 'Analyse…', dot: 'bg-indigo-500', pill: 'bg-indigo-500/10 text-indigo-600' },
+  // Legacy : plus jamais écrit, encore porté par les analyses antérieures.
+  CONFORMITY: { label: 'Conformité produit…', dot: 'bg-violet-500', pill: 'bg-violet-500/10 text-violet-600' },
   READY: { label: 'Analysé', dot: 'bg-green-500', pill: 'bg-green-500/10 text-green-600' },
   FAILED: { label: 'Échec', dot: 'bg-red-500', pill: 'bg-red-500/10 text-red-600' },
 }
@@ -41,6 +44,22 @@ export const CRITERION_META = {
   partiel: { label: 'Partiel', dot: 'bg-amber-500', text: 'text-amber-600' },
   absent: { label: 'Absent', dot: 'bg-red-500', text: 'text-red-600' },
   non_applicable: { label: 'N/A', dot: 'bg-slate-300', text: 'text-muted-foreground' },
+}
+
+// Gravité d'une violation de conformité produit.
+export const SEVERITY_META = {
+  grave: { label: 'Grave', dot: 'bg-red-500', pill: 'bg-red-500/10 text-red-600' },
+  modere: { label: 'Modéré', dot: 'bg-amber-500', pill: 'bg-amber-500/10 text-amber-600' },
+}
+
+export function SeverityPill({ severity }) {
+  const meta = SEVERITY_META[severity] || SEVERITY_META.modere
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', meta.pill)}>
+      <span className={cn('h-1.5 w-1.5 rounded-full', meta.dot)} />
+      {meta.label}
+    </span>
+  )
 }
 
 export function StatusPill({ status }) {
@@ -117,7 +136,13 @@ export function formatDateTime(date) {
   })
 }
 
-export const IN_PROGRESS_STATUSES = ['PENDING', 'TRANSCRIBING', 'ANALYZING']
+export const IN_PROGRESS_STATUSES = [
+  'PENDING',
+  'TRANSCRIBING',
+  'MAPPING',
+  'ANALYZING',
+  'CONFORMITY', // legacy : analyses antérieures à la passe 0
+]
 export const isInProgress = (status) => IN_PROGRESS_STATUSES.includes(status)
 
 export function formatDuration(sec) {

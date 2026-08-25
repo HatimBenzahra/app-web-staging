@@ -13,7 +13,11 @@ import {
   parseRecordingKey,
   formatDateTime,
   formatDuration,
+  isInProgress,
 } from './CoachingComponents'
+
+// Cadence de suivi d'une analyse en cours, alignée sur les autres écrans coaching.
+const POLL_MS = 6000
 
 /**
  * Vue de détail d'une analyse coaching, UNIFIÉE (hors Dialog). Réutilisée par
@@ -31,11 +35,23 @@ export default function CoachingDetail({ analysis, onBack, onClose, backLabel = 
     setFavori(analysis?.favori ?? false)
   }, [analysis])
 
+  // Suit l'analyse en direct : sans ça, l'avancement ne bougeait qu'en fermant
+  // puis réouvrant le modal, puisque la vue ne fait que suivre sa prop.
+  const running = Boolean(a?.id && isInProgress(a.status))
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(async () => {
+      const fresh = await CoachingService.get(a.id)
+      if (fresh) setA(fresh)
+    }, POLL_MS)
+    return () => clearInterval(t)
+  }, [running, a?.id])
+
   if (!a) return null
 
   const meta = parseRecordingKey(a.s3KeyOriginal)
   const title = a.subjectName || meta.address || 'Enregistrement'
-  const inProgress = ['PENDING', 'TRANSCRIBING', 'ANALYZING'].includes(a.status)
+  const inProgress = isInProgress(a.status)
   const hasScore = typeof a.score === 'number'
 
   const toggleFavori = async () => {
@@ -112,7 +128,12 @@ export default function CoachingDetail({ analysis, onBack, onClose, backLabel = 
                 <Star className={cn('h-4 w-4', favori && 'fill-amber-500 text-amber-500')} />
                 Favori
               </Button>
-              <Button variant="outline" size="sm" onClick={relaunch} disabled={relaunching || inProgress}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={relaunch}
+                disabled={relaunching || inProgress}
+              >
                 {relaunching ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -152,8 +173,13 @@ export default function CoachingDetail({ analysis, onBack, onClose, backLabel = 
         {hasScore && <ScoreBar value={a.score} className="mt-3" />}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        <CoachingResultPanel analysis={a} recordingKey={a.s3KeyOriginal} showAudio />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+        <CoachingResultPanel
+          analysis={a}
+          recordingKey={a.s3KeyOriginal}
+          showAudio
+          showScoreFooter
+        />
       </div>
 
       <div className="flex items-center justify-end border-t px-5 py-3">

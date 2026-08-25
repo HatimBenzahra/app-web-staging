@@ -621,6 +621,29 @@ model SalesPlanVersion {
   @@index([slug, isActive])
 }
 
+// Fiche produit versionnée (clé = sha256 du markdown), même contrat que
+// SalesPlanVersion. Porte ce que la FORMATION autorise à affirmer ; ce que dit le
+// plan de vente vient de SalesPlanVersion.criteria (steps[].pitchText).
+model ProductSheetVersion {
+  id          Int      @id @default(autoincrement())
+  slug        String
+  label       String
+  productKey  String // slug produit, ex. "depanssur" — jointure avec detectedProducts
+  version     Int
+  contentHash String   @unique
+  facts       Json // affirmations autorisées
+  identifiers Json     @default("[]") // signaux de reconnaissance de l'offre (passe 0, mapping)
+  forbidden   Json // affirmations sensibles + gravité
+  winleadplus Json? // résolution du prix depuis la table Offre (jamais de prix en dur)
+  rawMarkdown String
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@unique([slug, version])
+  @@index([slug, isActive])
+  @@index([productKey, isActive])
+}
+
 // Analyse coaching d'un enregistrement : 1 audio = 1 porte = 1 analyse.
 // Source = Recording.s3Key (re-transcrit via Whisper), indépendante de
 // RecordingSegment. Le LLM juge les critères, le backend calcule le score.
@@ -643,6 +666,14 @@ model CoachingAnalysis {
   improvements          Json?
   recommendations       Json?
   criterionResults      Json? // détail par critère (status/preuve/reco)
+  // Conformité produit (passe 2). `score` reste le score FINAL (après malus) pour
+  // que tous les agrégats existants restent justes ; scoreBeforeMalus garde le brut.
+  scoreBeforeMalus      Float? // moyenne pondérée des étapes, avant malus
+  malus                 Float? // points retirés (valeur positive), 0 si aucune violation
+  violations            Json? // violations de conformité produit (quote/sheetSays/planSays/gravité)
+  detectedProducts      Json? // clés des offres PRÉSENTÉES par le commercial (passe 0)
+  productMapping        Json? // trace complète de la passe 0, offres non présentées incluses
+  productSheetVersions  Json? // ids des versions de fiche utilisées en passe 2 (traçabilité)
   transcript            String?
   transcriptDurationSec Float?
   error                 String?
@@ -667,7 +698,9 @@ model CoachingAnalysis {
 enum CoachingStatus {
   PENDING
   TRANSCRIBING
-  ANALYZING
+  MAPPING // passe 0 : quelles offres ont été abordées, et par qui
+  ANALYZING // passes 1 et 2 en parallèle : jugement du plan + conformité produit
+  CONFORMITY // legacy : plus jamais écrit, encore porté par des lignes antérieures
   READY
   FAILED
 }

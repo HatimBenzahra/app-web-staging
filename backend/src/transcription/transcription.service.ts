@@ -303,7 +303,14 @@ export class TranscriptionService implements OnModuleDestroy {
         'audio.mp4',
       );
 
-      const url = `${this.whisperUrl}/transcribe/prospection?language=auto`;
+      // Français FORCÉ, jamais `auto` : la prospection est 100 % francophone, et
+      // la détection de langue n'apporte rien qu'un mode d'échec. Sur un audio
+      // court, bruité ou qui démarre par une porte qui claque, elle se trompe —
+      // et une détection à côté ne dégrade pas que le texte : `api_stt.py:613`
+      // choisit le modèle d'alignement d'après la langue DÉTECTÉE, donc on perd
+      // aussi les timestamps mot-à-mot dont le coaching a besoin pour rejouer
+      // l'extrait audio de chaque verbatim.
+      const url = `${this.whisperUrl}/transcribe/prospection?language=fr`;
 
       // axios (et NON le fetch natif) : le fetch d'undici impose un
       // `headersTimeout` par défaut de 5 min, indépendant de notre timeout, qui

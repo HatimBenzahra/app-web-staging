@@ -9,6 +9,7 @@ import { CoachingResolver } from './coaching.resolver';
 import { SalesPlanService } from './sales-plan.service';
 import { LlmService } from './llm.service';
 import { ScoringService } from './scoring.service';
+import { ProductSheetService } from './product-sheet.service';
 import { SynthesisService } from './synthesis.service';
 import { SnapshotBuilderService } from './snapshot-builder.service';
 import { SynthesisResolver } from './synthesis.resolver';
@@ -24,6 +25,7 @@ import { SynthesisResolver } from './synthesis.resolver';
     SalesPlanService,
     LlmService,
     ScoringService,
+    ProductSheetService,
     SynthesisService,
     SnapshotBuilderService,
     SynthesisResolver,

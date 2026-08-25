@@ -58,7 +58,42 @@ function parseCriterion(raw: any, stepKey: string): CriterionDef {
     appliesWhen: raw?.appliesWhen
       ? normalizeApplies(raw.appliesWhen)
       : undefined,
+    requiresProductSheet: raw?.requiresProductSheet === true,
   };
+}
+
+/**
+ * Extrait une section du corps markdown par son titre exact (texte du heading,
+ * niveau indifférent). La section court jusqu'au heading suivant de niveau
+ * équivalent ou supérieur.
+ */
+export function extractMarkdownSection(
+  body: string,
+  heading: string,
+): string | null {
+  const lines = body.split('\n');
+  const target = heading.trim();
+  let startIdx = -1;
+  let level = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(#{1,6})\s+(.*)$/.exec(lines[i]);
+    if (m && m[2].trim() === target) {
+      startIdx = i + 1;
+      level = m[1].length;
+      break;
+    }
+  }
+  if (startIdx === -1) return null;
+
+  const out: string[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const m = /^(#{1,6})\s+/.exec(lines[i]);
+    if (m && m[1].length <= level) break;
+    out.push(lines[i]);
+  }
+  const text = out.join('\n').trim();
+  return text.length > 0 ? text : null;
 }
 
 function parseStep(raw: any): StepDef {
@@ -108,6 +143,13 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
   const steps = data.steps.map(parseStep);
 
   const stepKeys = new Set<string>();
+  // Unicité GLOBALE des clés de critères, pas seulement au sein d'une étape.
+  // ScoringService apparie d'abord sur `stepKey::criterionKey`, puis retombe sur
+  // le seul `criterionKey` quand le LLM omet l'étape. Avec deux critères de même
+  // clé dans des étapes différentes, ce repli importe le verdict d'un AUTRE
+  // produit : vu en production (le commentaire de france_telephone recopié sur
+  // les critères Depanssur, Bleubox et Mondial TV). On l'interdit au parsing.
+  const allCriterionKeys = new Map<string, string>();
   let totalWeight = 0;
   for (const s of steps) {
     if (stepKeys.has(s.key)) {
@@ -115,6 +157,16 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
     }
     stepKeys.add(s.key);
     totalWeight += s.weight;
+
+    for (const c of s.criteria) {
+      const owner = allCriterionKeys.get(c.key);
+      if (owner) {
+        throw new SalesPlanParseError(
+          `Clé de critère "${c.key}" présente dans les étapes "${owner}" et "${s.key}" : elle doit être unique dans tout le plan`,
+        );
+      }
+      allCriterionKeys.set(c.key, s.key);
+    }
   }
   if (totalWeight <= 0) {
     throw new SalesPlanParseError('La somme des poids des étapes doit être > 0');
@@ -130,6 +182,11 @@ export function parseSalesPlanMarkdown(source: string): ParsedSalesPlanFile {
       minDurationSec: asNumber(data?.quality?.minDurationSec, 45),
       minTranscriptChars: asNumber(data?.quality?.minTranscriptChars, 400),
       lowConfidenceBelowSec: asNumber(data?.quality?.lowConfidenceBelowSec, 90),
+    },
+    malus: {
+      grave: Math.abs(asNumber(data?.malus?.grave, 15)),
+      modere: Math.abs(asNumber(data?.malus?.modere, 8)),
+      maxTotal: Math.abs(asNumber(data?.malus?.maxTotal, 30)),
     },
     steps,
   };

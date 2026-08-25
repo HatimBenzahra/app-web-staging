@@ -3,6 +3,7 @@ import {
   CriterionScore,
   LlmCoachingOutput,
   LlmCriterionResult,
+  ProductViolation,
   ScoringResult,
   StepScore,
 } from './coaching.types';
@@ -11,6 +12,8 @@ import { ParsedSalesPlan, StepApplicability } from './sales-plan.types';
 export interface ScoringContext {
   contractSigned: boolean;
   detectedProducts: string[];
+  /** Violations remontées par la passe 2. Absentes si aucun produit détecté. */
+  violations?: ProductViolation[];
 }
 
 const STATUS_FRACTION: Record<string, number> = {
@@ -122,11 +125,104 @@ export class ScoringService {
       }
     }
 
-    const score =
+    const scoreBeforeMalus =
       globalWeight > 0
         ? Math.round((globalObtained / globalWeight) * 1000) / 10
         : 0;
 
-    return { score, subScores, criterionResults };
+    const { malus, violations } = this.computeMalus(plan, ctx.violations ?? []);
+    const score = Math.max(0, Math.round((scoreBeforeMalus - malus) * 10) / 10);
+
+    return {
+      score,
+      scoreBeforeMalus,
+      malus,
+      violations,
+      subScores,
+      criterionResults,
+    };
   }
+
+  /**
+   * Malus de conformité produit, retiré du score global après son calcul.
+   *
+   * Un écart n'est retenu que s'il porte ses DEUX citations : ce que le commercial
+   * a dit, et la ligne de la fiche que ça contredit. Même logique
+   * qu'`evidenceRequired` : pas de preuve, pas de sanction.
+   */
+  private computeMalus(
+    plan: ParsedSalesPlan,
+    raw: ProductViolation[],
+  ): { malus: number; violations: ProductViolation[] } {
+    const violations = raw.filter(
+      (v) => isCitation(v.quote) && isCitation(v.sheetSays),
+    );
+
+    const total = violations.reduce(
+      (sum, v) =>
+        sum + (v.severity === 'grave' ? plan.malus.grave : plan.malus.modere),
+      0,
+    );
+
+    return {
+      malus: Math.min(total, plan.malus.maxTotal),
+      violations,
+    };
+  }
+}
+
+/**
+ * Marqueurs d'absence que le LLM met quand il n'a rien à citer. Ils doivent être
+ * traités comme une citation MANQUANTE, pas comme une citation.
+ *
+ * Vu en production : le plan de vente ne fixe aucun tarif mobile (il écrit
+ * « XXXX €/mois »), le modèle ne peut donc pas citer le plan — et remplit
+ * `planSays: "n/a"` au lieu de ne pas émettre la violation. Sans ce filtre, un
+ * tarif annoncé était sanctionné alors que le plan ne le contredisait pas.
+ */
+const NON_CITATIONS = new Set([
+  'n/a',
+  'na',
+  'nc',
+  'none',
+  'null',
+  'undefined',
+  'aucun',
+  'aucune',
+  'neant',
+  'rien',
+  'vide',
+  'inconnu',
+  'absent',
+  'non applicable',
+  'non precise',
+  'non specifie',
+  'non renseigne',
+  'non mentionne',
+  'pas mentionne',
+  'pas de mention',
+  'non trouve',
+  'silence',
+]);
+
+/** Normalise pour comparer : minuscules, sans accents, sans ponctuation de bord. */
+function normalizeCitation(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^[\s"«»'`.\-–—:;]+|[\s"«»'`.\-–—:;]+$/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Une citation réelle, pas un marqueur d'absence. Trois lettres minimum : un
+ * référentiel cité fait toujours plusieurs mots, jamais « - » ni « ? ».
+ */
+export function isCitation(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = normalizeCitation(value);
+  if (normalized.length < 3) return false;
+  return !NON_CITATIONS.has(normalized);
 }

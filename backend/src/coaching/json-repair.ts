@@ -1,8 +1,12 @@
 import {
   CriterionStatus,
   LlmCoachingOutput,
+  LlmConformityOutput,
   LlmCriterionResult,
+  ProductViolation,
 } from './coaching.types';
+import { ViolationSeverity } from './product-sheet.types';
+import { MappedProduct } from './product-mapping-prompt';
 
 /**
  * Réparation/normalisation de la sortie LLM.
@@ -31,6 +35,20 @@ const STATUS_ALIASES: Record<string, CriterionStatus> = {
   not_applicable: 'non_applicable',
   na: 'non_applicable',
   'n/a': 'non_applicable',
+};
+
+const SEVERITY_ALIASES: Record<string, ViolationSeverity> = {
+  grave: 'grave',
+  severe: 'grave',
+  critique: 'grave',
+  critical: 'grave',
+  high: 'grave',
+  modere: 'modere',
+  moderate: 'modere',
+  moyen: 'modere',
+  medium: 'modere',
+  leger: 'modere',
+  low: 'modere',
 };
 
 const CONFIDENCE_WORDS: Record<string, number> = {
@@ -121,26 +139,81 @@ function normalizeCriterion(raw: any): LlmCriterionResult | null {
   };
 }
 
+/**
+ * Slug produit normalisé : minuscules, sans accent, séparateurs unifiés
+ * (`Mondial TV` et `mondial-tv` donnent tous deux `mondial_tv`).
+ *
+ * Ce n'est PLUS ce qui décide de la détection — la passe 0 choisit dans une liste
+ * fermée. Ça ne sert qu'à rattraper la clé produit portée par une violation de la
+ * passe 2, qui reste du texte produit par le modèle.
+ */
+function normalizeProductSlug(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s\-]+/g, '_');
+}
+
+/**
+ * Gravité par défaut : "modere". Une valeur inconnue ne doit jamais faire monter
+ * la sanction — on retient le niveau le plus faible.
+ */
+function normalizeSeverity(value: unknown): ViolationSeverity {
+  if (typeof value !== 'string') return 'modere';
+  const key = value.trim().toLowerCase().replace(/\s+/g, '_');
+  return SEVERITY_ALIASES[key] ?? 'modere';
+}
+
+/**
+ * Normalise la FORME d'une violation. La RÈGLE (les deux citations exigées) est
+ * appliquée par ScoringService — ici on ne fait que typer.
+ */
+function normalizeViolation(raw: any): ProductViolation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const productSlug = normalizeProductSlug(
+    raw.productSlug ?? raw.product ?? raw.produit ?? raw.slug,
+  );
+  if (!productSlug) return null;
+
+  const asText = (value: unknown): string =>
+    typeof value === 'string' ? value.trim() : '';
+
+  return {
+    productSlug,
+    severity: normalizeSeverity(raw.severity ?? raw.gravite ?? raw.gravity),
+    quote: asText(raw.quote ?? raw.citation ?? raw.said ?? raw.evidence),
+    sheetSays: asText(raw.sheetSays ?? raw.sheet ?? raw.ficheDit ?? raw.fiche),
+    why: asText(raw.why ?? raw.raison ?? raw.comment) || undefined,
+  };
+}
+
 export class LlmOutputParseError extends Error {}
 
-export function repairLlmOutput(raw: string): LlmCoachingOutput {
-  let jsonStr = stripFences(raw);
-  let obj: any;
+/** Objet JSON de la réponse LLM, fences et bavardage retirés. */
+function parseJsonLoose(raw: string): any {
+  const jsonStr = stripFences(raw);
   try {
-    obj = JSON.parse(jsonStr);
+    return JSON.parse(jsonStr);
   } catch {
     const extracted = extractJsonObject(jsonStr);
     if (!extracted) {
       throw new LlmOutputParseError('Réponse LLM sans objet JSON exploitable');
     }
     try {
-      obj = JSON.parse(extracted);
+      return JSON.parse(extracted);
     } catch (e) {
       throw new LlmOutputParseError(
         `JSON LLM irréparable: ${(e as Error).message}`,
       );
     }
   }
+}
+
+export function repairLlmOutput(raw: string): LlmCoachingOutput {
+  const obj = parseJsonLoose(raw);
 
   if (!obj || typeof obj !== 'object') {
     throw new LlmOutputParseError('Réponse LLM non structurée');
@@ -150,19 +223,7 @@ export function repairLlmOutput(raw: string): LlmCoachingOutput {
     .map(normalizeCriterion)
     .filter((c): c is LlmCriterionResult => c !== null);
 
-  const detectedProducts = toStringArray(
-    obj.detectedProducts ?? obj.products ?? obj.produits,
-  ).map((p) =>
-    p
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '') // enlève les accents (Plénitude → plenitude)
-      .replace(/\s+/g, '_'),
-  );
-
   return {
-    detectedProducts,
     criteria,
     summary: typeof obj.summary === 'string' ? obj.summary.trim() : '',
     strengths: toStringArray(obj.strengths ?? obj.forces),
@@ -175,4 +236,99 @@ export function repairLlmOutput(raw: string): LlmCoachingOutput {
       obj.diagnosticScore ?? obj.score ?? obj.globalScore,
     ),
   };
+}
+
+/** Normalise la sortie de la passe 2 (conformité produit). */
+export function repairConformityOutput(raw: string): LlmConformityOutput {
+  const obj = parseJsonLoose(raw);
+
+  if (!obj || typeof obj !== 'object') {
+    throw new LlmOutputParseError('Réponse LLM non structurée');
+  }
+
+  return {
+    criteria: toArray(obj.criteria ?? obj.criteres)
+      .map(normalizeCriterion)
+      .filter((c): c is LlmCriterionResult => c !== null),
+    violations: toArray(obj.violations ?? obj.infractions ?? obj.ecarts)
+      .map(normalizeViolation)
+      .filter((v): v is ProductViolation => v !== null),
+  };
+}
+
+/**
+ * Normalise la sortie de la passe 0 (mapping des offres).
+ *
+ * `knownKeys` est la liste fermée envoyée au modèle : toute clé absente est
+ * REJETÉE, jamais rattrapée par approximation. C'est ce qui remplace l'ancienne
+ * détection en texte libre. Les entrées rejetées sont renvoyées à part pour être
+ * tracées (log + colonne `productMapping`) : un rejet silencieux nous ramènerait
+ * au symptôme d'origine, une analyse qui « rate » sans rien dire.
+ */
+export function repairMappingOutput(
+  raw: string,
+  knownKeys: Iterable<string>,
+): { products: MappedProduct[]; rejected: string[] } {
+  const obj = parseJsonLoose(raw);
+
+  if (!obj || typeof obj !== 'object') {
+    throw new LlmOutputParseError('Réponse LLM non structurée');
+  }
+
+  const known = new Map<string, string>();
+  for (const key of knownKeys) known.set(normalizeProductSlug(key), key);
+
+  const products: MappedProduct[] = [];
+  const rejected: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of toArray<any>(
+    obj.products ?? obj.produits ?? obj.offers ?? obj.offres,
+  )) {
+    if (!entry || typeof entry !== 'object') continue;
+
+    const rawKey = String(
+      entry.key ?? entry.productKey ?? entry.slug ?? entry.produit ?? '',
+    ).trim();
+    if (!rawKey) continue;
+
+    const resolved = known.get(normalizeProductSlug(rawKey));
+    if (!resolved) {
+      rejected.push(rawKey);
+      continue;
+    }
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+
+    const evidence =
+      typeof (entry.evidence ?? entry.quote ?? entry.citation) === 'string'
+        ? String(entry.evidence ?? entry.quote ?? entry.citation).trim()
+        : '';
+
+    products.push({
+      key: resolved,
+      presentedByCommercial: toBoolean(
+        entry.presentedByCommercial ??
+          entry.presented ??
+          entry.parLeCommercial ??
+          entry.presenteParLeCommercial,
+      ),
+      evidence,
+    });
+  }
+
+  return { products, rejected };
+}
+
+/**
+ * Booléen tolérant : le modèle renvoie tantôt `true`, tantôt `"true"`, `"oui"`,
+ * `"yes"` ou `1`. Toute autre valeur vaut false — un doute ne doit pas rendre une
+ * étape applicable, ce qui coûterait des points au commercial.
+ */
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value !== 'string') return false;
+  const v = value.trim().toLowerCase();
+  return v === 'true' || v === 'oui' || v === 'yes' || v === '1';
 }

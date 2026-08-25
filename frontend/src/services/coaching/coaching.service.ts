@@ -12,6 +12,11 @@ const COACHING_FIELDS = `
   status
   quality
   score
+  scoreBeforeMalus
+  malus
+  violations { productSlug productLabel severity quote sheetSays why }
+  detectedProducts
+  productMapping { key presentedByCommercial evidence }
   confidence
   summary
   strengths
@@ -19,7 +24,6 @@ const COACHING_FIELDS = `
   recommendations
   subScores { key label weight applicable score }
   criterionResults { stepKey criterionKey title status maxPoints score weightStep evidence comment }
-  transcript
   transcriptDurationSec
   error
   planSlug
@@ -72,6 +76,21 @@ const ACTIVE_PLAN = `
     }
   }
 `
+const PRODUCT_SHEETS = `
+  query CoachingProductSheets {
+    coachingProductSheets {
+      id
+      slug
+      label
+      productKey
+      version
+      facts
+      forbidden { say severity }
+      rawMarkdown
+    }
+  }
+`
+
 const CONFIG_FIELDS = `
   coachableStatuts allStatuts minAutoDurationSec
   synthesisCronSchedule synthesisCronFrequency synthesisCronHour
@@ -381,6 +400,19 @@ export class CoachingService {
       return data.activeSalesPlan || null
     } catch {
       return null
+    }
+  }
+
+  /** Fiches produit actives — onglet Produits en lecture seule. */
+  static async productSheets(): Promise<any[]> {
+    try {
+      const data = await graphqlClient.request(PRODUCT_SHEETS)
+      // Le client GraphQL maison peut renvoyer data:null : le défaut ne couvre
+      // que undefined, d'où le || [].
+      return (data?.coachingProductSheets || [])
+    } catch (error) {
+      console.error('Erreur coachingProductSheets:', error)
+      return []
     }
   }
 

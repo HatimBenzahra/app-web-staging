@@ -17,6 +17,7 @@ import {
   CoachingScoreboardDto,
   CoachingScoreboardRowDto,
   CoachingStepAverageDto,
+  CoachingViolationDto,
 } from './coaching.dto';
 import { CriterionScore, StepScore } from './coaching.types';
 
@@ -59,7 +60,11 @@ export class CoachingQueryService {
     for (const g of grouped) c[g.status] = g._count._all;
     const pending = c[CoachingStatus.PENDING] ?? 0;
     const processing =
-      (c[CoachingStatus.TRANSCRIBING] ?? 0) + (c[CoachingStatus.ANALYZING] ?? 0);
+      (c[CoachingStatus.TRANSCRIBING] ?? 0) +
+      (c[CoachingStatus.MAPPING] ?? 0) +
+      (c[CoachingStatus.ANALYZING] ?? 0) +
+      // CONFORMITY n'est plus écrit, mais reste porté par les analyses antérieures.
+      (c[CoachingStatus.CONFORMITY] ?? 0);
     const ready = c[CoachingStatus.READY] ?? 0;
     const failed = c[CoachingStatus.FAILED] ?? 0;
     const total = pending + processing + ready + failed;
@@ -154,7 +159,8 @@ export class CoachingQueryService {
 
   /**
    * File interrogeable : audios en attente / en cours (PENDING, TRANSCRIBING,
-   * ANALYZING), avec le sujet (commercial/manager) et la durée. Prochain d'abord.
+   * MAPPING, ANALYZING, et CONFORMITY pour les analyses antérieures), avec le
+   * sujet et la durée. Prochain d'abord.
    */
   async coachingQueue(): Promise<CoachingQueueItemDto[]> {
     const rows = await this.prisma.coachingAnalysis.findMany({
@@ -163,7 +169,9 @@ export class CoachingQueryService {
           in: [
             CoachingStatus.PENDING,
             CoachingStatus.TRANSCRIBING,
+            CoachingStatus.MAPPING,
             CoachingStatus.ANALYZING,
+            CoachingStatus.CONFORMITY,
           ],
         },
       },
@@ -813,6 +821,11 @@ export class CoachingQueryService {
       status: row.status,
       quality: row.quality ?? null,
       score: row.score ?? null,
+      scoreBeforeMalus: row.scoreBeforeMalus ?? null,
+      malus: row.malus ?? null,
+      violations: (row.violations as CoachingViolationDto[]) ?? [],
+      detectedProducts: (row.detectedProducts as string[]) ?? [],
+      productMapping: (row.productMapping as CoachingAnalysisDto['productMapping']) ?? [],
       confidence: row.confidence ?? null,
       summary: row.summary ?? null,
       strengths: (row.strengths as string[]) ?? [],

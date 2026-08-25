@@ -27,6 +27,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useCoachingIALogic } from './useCoachingIALogic'
 import SalesPlanViewer from './SalesPlanViewer'
+import ProductSheetsViewer from './ProductSheetsViewer'
 import CoachingManagementList from './CoachingManagementList'
 import AnalyzedRecordingsModal from './AnalyzedRecordingsModal'
 import {
@@ -257,6 +258,7 @@ export default function CoachingIA() {
         <TabsList>
           <TabsTrigger value="apercu">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="plan">Plan de vente</TabsTrigger>
+          <TabsTrigger value="produits">Produits</TabsTrigger>
           <TabsTrigger value="reglages">Réglages</TabsTrigger>
         </TabsList>
 
@@ -378,6 +380,15 @@ export default function CoachingIA() {
           <Card>
             <CardContent>
               <SalesPlanViewer />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Onglet Produits */}
+        <TabsContent value="produits">
+          <Card>
+            <CardContent>
+              <ProductSheetsViewer />
             </CardContent>
           </Card>
         </TabsContent>

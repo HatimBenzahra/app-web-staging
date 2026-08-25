@@ -34,7 +34,7 @@ export default function AnalyzedRecordingsModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+      <DialogContent className="flex h-[94vh] w-[97vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-none lg:ml-[9.5rem] lg:w-[calc(100vw-19rem)]">
         {selected ? (
           <CoachingDetail
             analysis={selected}
