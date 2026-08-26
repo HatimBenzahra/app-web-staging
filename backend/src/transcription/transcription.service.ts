@@ -34,22 +34,6 @@ interface WhisperResponse {
   processing_time: number;
 }
 
-/**
- * Réglages de transcription fournis par l'appelant.
- *
- * Le module coaching s'en sert pour porter LUI-MÊME son profil STT : il est un
- * connecteur (un plan de vente + des fiches produit en entrée, un jugement en
- * sortie) et pilote la chaîne en aval, transcription comprise. Whisper reste
- * générique et n'embarque aucune connaissance métier.
- */
-export interface TranscriptionOptions {
-  /**
-   * Vocabulaire soufflé au décodeur (noms de marques, termes attendus). Biaise
-   * l'orthographe des mots ambigus, n'ajoute jamais de contenu. Vide → non envoyé.
-   */
-  initialPrompt?: string;
-}
-
 export interface ExtractionProgress {
   step: string;
   current: number;
@@ -308,54 +292,6 @@ export class TranscriptionService implements OnModuleDestroy {
   }
 
   /**
-   * Profil de décodage du module coaching, envoyé à l'endpoint générique.
-   *
-   * Ces valeurs ne sont PAS des défauts : elles reproduisent à l'identique celles
-   * de `/transcribe/prospection` (`api_stt.py:754`), trouvées empiriquement sur
-   * de l'audio terrain. Les modifier dégrade la transcription.
-   *
-   *  - `vad_filter=false` : silero (seuil 0.40) coupait de gros morceaux d'audio
-   *    bruité (voix lointaine, vent). On laisse Whisper voir tout l'audio et
-   *    filtrer avec ses propres seuils, volontairement assouplis.
-   *  - `language=fr` forcé : population 100 % francophone. `auto` n'apporterait
-   *    qu'un mode d'échec — et une langue mal détectée fait aussi choisir le
-   *    mauvais modèle d'alignement (`api_stt.py:613`), donc plus de timestamps
-   *    mot-à-mot, dont le coaching a besoin pour rejouer chaque verbatim.
-   *  - `condition_on_previous_text=false` + `hallucination_silence_threshold` :
-   *    garde-fous contre la répétition et l'hallucination sur les silences.
-   */
-  private static readonly COACHING_STT_PROFILE: Record<string, string> = {
-    language: 'fr',
-    word_timestamps: 'true',
-    vad_filter: 'false',
-    preprocess: 'true',
-    beam_size: '5',
-    best_of: '3',
-    patience: '1.0',
-    temperature: '0.0',
-    condition_on_previous_text: 'false',
-    no_speech_threshold: '0.2',
-    compression_ratio_threshold: '2.8',
-    log_prob_threshold: '-1.2',
-    repetition_penalty: '1.2',
-    no_repeat_ngram_size: '4',
-    hallucination_silence_threshold: '2.0',
-    auto_retry_on_low_yield: 'true',
-  };
-
-  /** Query string de l'appel générique : le profil, plus le vocabulaire fourni. */
-  private buildWhisperQuery(opts: TranscriptionOptions): string {
-    const params = new URLSearchParams(
-      TranscriptionService.COACHING_STT_PROFILE,
-    );
-    const prompt = opts.initialPrompt?.trim();
-    // Un prompt vide vaut mieux qu'un prompt vide envoyé : on laisse alors
-    // Whisper décoder sans biais plutôt que de lui souffler une chaîne nulle.
-    if (prompt) params.set('initial_prompt', prompt);
-    return params.toString();
-  }
-
-  /**
    * Appelle Whisper. Sans `opts`, on passe par `/transcribe/prospection`, le
    * raccourci historique qui pré-remplit les réglages ET le vocabulaire côté
    * service STT — c'est ce que font encore le pipeline `_conv` et
@@ -368,7 +304,6 @@ export class TranscriptionService implements OnModuleDestroy {
    */
   async transcribeFile(
     filePath: string,
-    opts?: TranscriptionOptions,
   ): Promise<{ segments: WhisperSegment[]; duration: number; text: string } | null> {
     try {
       const fileBuffer = fs.readFileSync(filePath);
@@ -381,9 +316,7 @@ export class TranscriptionService implements OnModuleDestroy {
         'audio.mp4',
       );
 
-      const url = opts
-        ? `${this.whisperUrl}/transcribe?${this.buildWhisperQuery(opts)}`
-        : `${this.whisperUrl}/transcribe/prospection?language=fr`;
+      const url = `${this.whisperUrl}/transcribe/prospection?language=fr`;
 
       // axios (et NON le fetch natif) : le fetch d'undici impose un
       // `headersTimeout` par défaut de 5 min, indépendant de notre timeout, qui
@@ -435,41 +368,7 @@ export class TranscriptionService implements OnModuleDestroy {
    * Télécharge l'audio depuis S3, appelle Whisper et renvoie le texte + la durée.
    * Indépendant du pipeline conversation (_conv) : ni découpe ni ré-upload.
    */
-  async transcribeS3Object(
-    s3Key: string,
-    opts?: TranscriptionOptions,
-  ): Promise<{ text: string; durationSec: number; segments: WhisperSegment[] } | null> {
-    if (!this.whisperUrl) {
-      this.logger.warn(
-        `WHISPER_API_URL absent, transcription coaching ignorée pour ${s3Key}`,
-      );
-      return null;
-    }
-    const tmpDir = path.join(
-      os.tmpdir(),
-      `coaching-stt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    );
-    const originalFile = path.join(tmpDir, 'original.mp4');
-    try {
-      fs.mkdirSync(tmpDir, { recursive: true });
-      const downloaded = await this.downloadFromS3(s3Key, originalFile);
-      if (!downloaded) return null;
-      const result = await this.transcribeFile(originalFile, opts);
-      if (!result) return null;
-      return {
-        text: result.text ?? '',
-        durationSec: result.duration ?? 0,
-        segments: result.segments,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Échec transcription coaching ${s3Key}: ${error?.message || error}`,
-      );
-      return null;
-    } finally {
-      this.cleanupDir(tmpDir);
-    }
-  }
+
 
   /**
    * Fusionne les segments proches pour éviter les micro-coupures.

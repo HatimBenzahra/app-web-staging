@@ -25,6 +25,10 @@ export class SnapshotBuilderService {
         activityWhere: { commercialId: subjectId } as {
           commercialId: number | { in: number[] };
         },
+        // CoachingAnalysis porte `userId` depuis l'ouverture à plusieurs apps.
+        analysisWhere: { userId: subjectId } as {
+          userId: number | { in: number[] };
+        },
         ownerWhere: { commercialId: subjectId } as
           | { commercialId: number }
           | { managerId: number },
@@ -45,6 +49,9 @@ export class SnapshotBuilderService {
       activityWhere: { commercialId: { in: teamIds } } as {
         commercialId: number | { in: number[] };
       },
+      analysisWhere: { userId: { in: teamIds } } as {
+        userId: number | { in: number[] };
+      },
       ownerWhere: { managerId: subjectId } as
         | { commercialId: number }
         | { managerId: number },
@@ -55,7 +62,7 @@ export class SnapshotBuilderService {
   }
 
   async buildSnapshot(subjectType: SubjectType, subjectId: number) {
-    const { activityWhere, ownerWhere, zoneUserType, teamIds, teamNames } =
+    const { activityWhere, analysisWhere, ownerWhere, zoneUserType, teamIds, teamNames } =
       await this.resolveScope(subjectType, subjectId);
     const round = (n: number) => Math.round(n * 10) / 10;
 
@@ -72,7 +79,8 @@ export class SnapshotBuilderService {
 
     // Analyses coaching READY (verdicts LLM par critère + score backend).
     const analyses = await this.prisma.coachingAnalysis.findMany({
-      where: { ...activityWhere, status: CoachingStatus.READY },
+      // Le bilan d'un commercial ProWin ne compte que les analyses de ProWin.
+      where: { ...analysisWhere, source: 'prowin', status: CoachingStatus.READY },
       select: {
         id: true,
         score: true,
@@ -86,7 +94,7 @@ export class SnapshotBuilderService {
         malus: true,
         transcriptDurationSec: true,
         porteId: true,
-        commercialId: true,
+        userId: true,
         s3KeyOriginal: true,
         createdAt: true,
         recording: { select: { createdAt: true } },
@@ -319,7 +327,9 @@ export class SnapshotBuilderService {
     };
 
     // --- Période couverte (analyses coaching) + fenêtre par-jour -------------
-    const analyseTimes = analyses.map((a) => a.recording.createdAt.getTime());
+    const analyseTimes = analyses
+      .map((a) => a.recording?.createdAt.getTime())
+      .filter((t): t is number => t != null);
     const periodStart = analyseTimes.length ? new Date(Math.min(...analyseTimes)) : null;
     const periodEnd = analyseTimes.length ? new Date(Math.max(...analyseTimes)) : null;
     const dayStart = periodStart ? localDayKey(periodStart) : null;
@@ -387,7 +397,7 @@ export class SnapshotBuilderService {
       // Pour un manager, rattache la session à son commercial (le LLM peut citer
       // l'individu). Champ omis pour un commercial (teamNames vide).
       ...(subjectType === 'manager'
-        ? { commercial: teamNames.get(a.commercialId as number) ?? null }
+        ? { commercial: teamNames.get(a.userId as number) ?? null }
         : {}),
       statutPorte: a.statutPorte ?? null,
       score: typeof a.score === 'number' ? Math.round(a.score) : null,
@@ -485,8 +495,8 @@ export class SnapshotBuilderService {
     if (subjectType === 'manager' && teamIds) {
       const [byAnalyse, byContrat, perso] = await Promise.all([
         this.prisma.coachingAnalysis.groupBy({
-          by: ['commercialId'],
-          where: { commercialId: { in: teamIds }, status: CoachingStatus.READY },
+          by: ['userId'],
+          where: { userId: { in: teamIds }, status: CoachingStatus.READY },
           _count: { _all: true },
           _avg: { score: true },
         }),
@@ -507,12 +517,12 @@ export class SnapshotBuilderService {
           .map((r) => [r.commercialId as number, r._count._all]),
       );
       const equipeParCommercial = byAnalyse
-        .filter((r) => r.commercialId != null)
+        .filter((r) => r.userId != null)
         .map((r) => ({
-          nom: teamNames.get(r.commercialId as number) ?? `#${r.commercialId}`,
+          nom: teamNames.get(r.userId as number) ?? `#${r.userId}`,
           nbAnalyses: r._count._all,
           scoreMoyen: r._avg.score != null ? round(r._avg.score) : null,
-          nbContrats: contratByComm.get(r.commercialId as number) ?? 0,
+          nbContrats: contratByComm.get(r.userId as number) ?? 0,
         }))
         .sort((a, b) => b.nbAnalyses - a.nbAnalyses)
         .slice(0, RECAP_MAX_COMMERCIAUX);

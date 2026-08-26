@@ -53,7 +53,8 @@ export class CoachingConfigService {
     const statuts = Array.isArray(cfg.coachableStatuts)
       ? (cfg.coachableStatuts as string[])
       : COACHABLE_STATUTS_DEFAULT;
-    const minAutoDurationSec = cfg.minAutoDurationSec ?? MIN_AUTO_DURATION_SEC_DEFAULT;
+    const minAutoDurationSec =
+      cfg.minAutoDurationSec ?? MIN_AUTO_DURATION_SEC_DEFAULT;
     this.configCache = { statuts, minAutoDurationSec, at: Date.now() };
     return this.configCache;
   }
@@ -70,7 +71,9 @@ export class CoachingConfigService {
 
   /** Met à jour la liste des statuts coachables (admin, page de gestion). */
   async setCoachableStatuts(statuts: string[]): Promise<string[]> {
-    const clean = [...new Set((statuts ?? []).filter((s) => ALL_STATUTS.includes(s)))];
+    const clean = [
+      ...new Set((statuts ?? []).filter((s) => ALL_STATUTS.includes(s))),
+    ];
     await this.prisma.coachingConfig.upsert({
       where: { id: 1 },
       create: { id: 1, coachableStatuts: clean },
@@ -127,7 +130,12 @@ export class CoachingConfigService {
       coachableStatuts: c.statuts,
       allStatuts: ALL_STATUTS,
       minAutoDurationSec: c.minAutoDurationSec,
-      synthesisCronSchedule: synthesisScheduleLabel(frequency, hour, minute, weekday),
+      synthesisCronSchedule: synthesisScheduleLabel(
+        frequency,
+        hour,
+        minute,
+        weekday,
+      ),
       synthesisCronFrequency: frequency,
       synthesisCronHour: hour,
       synthesisCronMinute: minute,

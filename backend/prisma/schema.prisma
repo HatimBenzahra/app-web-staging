@@ -650,9 +650,12 @@ model ProductSheetVersion {
 // RecordingSegment. Le LLM juge les critères, le backend calcule le score.
 model CoachingAnalysis {
   id                    Int              @id @default(autoincrement())
-  recordingId           Int
+  // Appelant : renseigne depuis la CLÉ D'API, jamais depuis la requête.
+  source                String   @default("prowin")
+  // Optionnels : une app tierce n'a ni enregistrement ni porte au sens du CRM.
+  recordingId           Int?
   porteId               Int?
-  commercialId          Int?
+  userId                Int?
   managerId             Int?
   s3KeyOriginal         String
   statutPorte           StatutPorte? // snapshot du statut porte au moment de l'échange
@@ -684,13 +687,14 @@ model CoachingAnalysis {
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
-  recording        Recording        @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  recording        Recording?       @relation(fields: [recordingId], references: [id], onDelete: Cascade)
   porte            Porte?           @relation(fields: [porteId], references: [id], onDelete: SetNull)
   salesPlanVersion SalesPlanVersion @relation(fields: [salesPlanVersionId], references: [id])
 
   @@unique([s3KeyOriginal, salesPlanVersionId]) // idempotence : 1 analyse par audio × version de plan
   @@index([status])
-  @@index([commercialId])
+  @@index([source]) // toutes les lectures du CRM filtrent dessus
+  @@index([userId])
   @@index([managerId])
   @@index([porteId])
   @@index([recordingId])
@@ -711,6 +715,10 @@ model CoachingConfig {
   id                     Int       @id @default(1)
   coachableStatuts       Json // liste des StatutPorte qui déclenchent l'analyse auto
   minAutoDurationSec     Int       @default(120) // durée min (s) d'un audio pour l'analyse auto
+  // Seuils d'ÉTIQUETAGE, appliqués après coup sur les faits rendus par le module.
+  minDurationSec         Int       @default(45) // en dessous : INEXPLOITABLE
+  minTranscriptChars     Int       @default(400) // en dessous : INEXPLOITABLE
+  lowConfidenceBelowSec  Int       @default(90) // en dessous : LOW_CONFIDENCE
   // Planif configurable de la régénération auto des synthèses.
   synthesisCronFrequency String    @default("daily") // 'daily' | 'weekly' | 'off'
   synthesisCronHour      Int       @default(3) // 0-23

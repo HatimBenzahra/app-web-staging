@@ -1,8 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Injectable, Logger,  } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
-import { parseProductSheetMarkdown } from './product-sheet.parser';
 import {
   ForbiddenClaim,
   ParsedProductSheet,
@@ -42,100 +39,10 @@ export interface ProductSheetDescriptor {
 
 /** Charge les fiches au boot et les versionne par sha256, comme SalesPlanService. */
 @Injectable()
-export class ProductSheetService implements OnModuleInit {
+export class ProductSheetService {
   private readonly logger = new Logger(ProductSheetService.name);
 
   constructor(private readonly prisma: PrismaService) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.syncSheetsFromDisk();
-  }
-
-  /** Résout le dossier des .md (dist en prod, src en fallback). */
-  /** Sans ce dossier le module démarre sans aucune fiche, avec un simple warn. */
-  private resolveSheetsDir(): string | null {
-    const rel = path.join('coaching', 'referentiels', 'product-sheets');
-    const candidates = [
-      path.join(__dirname, 'product-sheets'),
-      // build nest : code compilé sous dist/src/coaching, assets sous dist/coaching
-      path.join(__dirname, '..', '..', '..', rel),
-      path.join(process.cwd(), 'dist', rel),
-      path.join(process.cwd(), 'src', rel),
-    ];
-    return candidates.find((dir) => fs.existsSync(dir)) ?? null;
-  }
-
-  async syncSheetsFromDisk(): Promise<void> {
-    const dir = this.resolveSheetsDir();
-    if (!dir) {
-      this.logger.warn(
-        'Dossier product-sheets introuvable, aucune fiche produit chargée',
-      );
-      return;
-    }
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
-    for (const file of files) {
-      try {
-        const source = fs.readFileSync(path.join(dir, file), 'utf8');
-        await this.upsertVersion(parseProductSheetMarkdown(source));
-      } catch (error) {
-        this.logger.error(`Fiche "${file}" ignorée: ${(error as Error).message}`);
-      }
-    }
-  }
-
-  private async upsertVersion(file: ParsedProductSheetFile): Promise<void> {
-    const { sheet, rawMarkdown, contentHash } = file;
-
-    const existing = await this.prisma.productSheetVersion.findUnique({
-      where: { contentHash },
-    });
-    if (existing) {
-      await this.activateVersion(existing.id, sheet.slug);
-      return;
-    }
-
-    const last = await this.prisma.productSheetVersion.findFirst({
-      where: { slug: sheet.slug },
-      orderBy: { version: 'desc' },
-    });
-    const nextVersion = (last?.version ?? 0) + 1;
-
-    const created = await this.prisma.productSheetVersion.create({
-      data: {
-        slug: sheet.slug,
-        label: sheet.label,
-        productKey: sheet.productKey,
-        version: nextVersion,
-        contentHash,
-        facts: sheet.facts,
-        identifiers: sheet.identifiers,
-        sttTerms: sheet.sttTerms,
-        forbidden: sheet.forbidden as unknown as object,
-        winleadplus: (sheet.winleadplus ?? null) as unknown as object,
-        rawMarkdown,
-        isActive: false,
-      },
-    });
-    await this.activateVersion(created.id, sheet.slug);
-    this.logger.log(
-      `Fiche produit "${sheet.slug}" v${nextVersion} enregistrée et activée`,
-    );
-  }
-
-  /** Rend une version active et désactive les autres versions du même slug. */
-  private async activateVersion(id: number, slug: string): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.productSheetVersion.updateMany({
-        where: { slug, isActive: true, NOT: { id } },
-        data: { isActive: false },
-      }),
-      this.prisma.productSheetVersion.update({
-        where: { id },
-        data: { isActive: true },
-      }),
-    ]);
-  }
 
   /** Un produit sans fiche est absent du résultat : la passe 2 ne l'invente pas. */
   async getActiveSheetsFor(

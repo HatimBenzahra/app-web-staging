@@ -1,37 +1,38 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaService } from '../prisma.service';
-import { TranscriptionModule } from '../transcription/transcription.module';
 import { CoachingService } from './coaching.service';
+import { CoachingApiClient } from './coaching-api.client';
+import { CoachingResolver } from './coaching.resolver';
 import { CoachingConfigService } from './coaching-config.service';
 import { CoachingQueryService } from './lecture/coaching-query.service';
-import { AnalysisRunnerService } from './analyse-porte/analysis-runner.service';
-import { CoachingResolver } from './coaching.resolver';
 import { SalesPlanService } from './referentiels/sales-plan.service';
-import { LlmService } from './shared/llm.service';
-import { ScoringService } from './analyse-porte/etape-5-scoring/scoring.service';
 import { ProductSheetService } from './referentiels/product-sheet.service';
-import { ProductPriceService } from './referentiels/product-price.service';
 import { SynthesisService } from './synthese-globale/synthesis.service';
-import { SnapshotBuilderService } from './synthese-globale/snapshot-builder.service';
 import { SynthesisResolver } from './synthese-globale/synthesis.resolver';
+import { SnapshotBuilderService } from './synthese-globale/snapshot-builder.service';
+import { LlmService } from './shared/llm.service';
 
+/**
+ * Surface coaching du CRM : commandes, lectures et synthèse.
+ * Le PIPELINE vit dans le service `prowin/coaching` — ici on décide qu'un
+ * échange mérite une analyse, et on lit les résultats.
+ */
 @Module({
-  imports: [TranscriptionModule],
+  imports: [ScheduleModule],
   providers: [
+    PrismaService,
     CoachingService,
+    CoachingApiClient,
+    CoachingResolver,
     CoachingConfigService,
     CoachingQueryService,
-    AnalysisRunnerService,
-    CoachingResolver,
     SalesPlanService,
-    LlmService,
-    ScoringService,
     ProductSheetService,
-    ProductPriceService,
     SynthesisService,
-    SnapshotBuilderService,
     SynthesisResolver,
-    PrismaService,
+    SnapshotBuilderService,
+    LlmService,
   ],
   exports: [CoachingService],
 })

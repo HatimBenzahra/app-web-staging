@@ -10,6 +10,10 @@ import { SalesPlanService } from './referentiels/sales-plan.service';
 import { LlmService } from './shared/llm.service';
 import { CoachingConfigService } from './coaching-config.service';
 import { CoachingQueryService } from './lecture/coaching-query.service';
+import { CoachingApiClient } from './coaching-api.client';
+
+/** Toutes les analyses créées par ce CRM portent cette source. */
+const PROWIN = 'prowin';
 import { CoachingAnalysisDto } from './coaching.dto';
 
 export interface EnqueueCoachingInput {
@@ -30,6 +34,7 @@ export class CoachingService {
     private readonly llm: LlmService,
     private readonly config: CoachingConfigService,
     private readonly query: CoachingQueryService,
+    private readonly api: CoachingApiClient,
   ) {}
 
   /**
@@ -96,21 +101,13 @@ export class CoachingService {
         return;
       }
 
-      const created = await this.prisma.coachingAnalysis.create({
-        data: {
-          recordingId: recording.id,
-          porteId: input.porteId ?? null,
-          commercialId: recording.commercialId,
-          managerId: recording.managerId,
-          s3KeyOriginal: input.s3Key,
-          statutPorte: this.asStatut(input.statut),
-          salesPlanVersionId: version.id,
-          status: CoachingStatus.PENDING,
-        },
-        select: { id: true },
+      const created = await this.api.createAnalysis({
+        s3Key: input.s3Key,
+        porteId: input.porteId ?? null,
+        userId: recording.commercialId,
+        managerId: recording.managerId,
+        statutPorte: this.asStatut(input.statut),
       });
-
-      // Le job reste en PENDING : le worker de file (AnalysisRunnerService) le traitera.
       this.logger.debug(`Coaching enfilé (#${created.id}) pour ${input.s3Key}`);
     } catch (error) {
       this.logger.error(
@@ -124,11 +121,6 @@ export class CoachingService {
    * Porte/statut résolus best-effort depuis un éventuel segment legacy.
    */
   async launch(s3Key: string): Promise<CoachingAnalysisDto> {
-    if (!this.llm.isConfigured()) {
-      throw new BadRequestException('vLLM non configuré (VLLM_BASE_URL / VLLM_MODEL)');
-    }
-    const version = await this.salesPlans.getActiveVersion();
-    if (!version) throw new NotFoundException('Aucun plan de vente actif');
     const recording = await this.prisma.recording.findUnique({
       where: { s3Key },
       select: { id: true, commercialId: true, managerId: true },
@@ -136,42 +128,21 @@ export class CoachingService {
     if (!recording) {
       throw new NotFoundException(`Enregistrement introuvable: ${s3Key}`);
     }
-
     const seg = await this.prisma.recordingSegment.findFirst({
       where: { s3KeyOriginal: s3Key },
       orderBy: { id: 'desc' },
       select: { porteId: true, statut: true },
     });
 
-    const analysis = await this.prisma.coachingAnalysis.upsert({
-      where: {
-        s3KeyOriginal_salesPlanVersionId: {
-          s3KeyOriginal: s3Key,
-          salesPlanVersionId: version.id,
-        },
-      },
-      create: {
-        recordingId: recording.id,
-        porteId: seg?.porteId ?? null,
-        commercialId: recording.commercialId,
-        managerId: recording.managerId,
-        s3KeyOriginal: s3Key,
-        statutPorte: seg?.statut ?? null,
-        salesPlanVersionId: version.id,
-        status: CoachingStatus.PENDING,
-        manual: true,
-      },
-      update: {
-        status: CoachingStatus.PENDING,
-        error: null,
-        attempts: 0,
-        nextRetryAt: null,
-        manual: true,
-      },
-      select: { id: true },
+    const analysis = await this.api.createAnalysis({
+      s3Key,
+      porteId: seg?.porteId ?? null,
+      userId: recording.commercialId,
+      managerId: recording.managerId,
+      statutPorte: seg?.statut ?? null,
     });
 
-    // Job en PENDING → traité par le worker de file (AnalysisRunnerService).
+    // Le job est en PENDING chez le service, qui le traitera.
     return this.query.getAnalysis(analysis.id);
   }
 
@@ -268,7 +239,7 @@ export class CoachingService {
       data: {
         recordingId: analysis.recordingId,
         porteId: analysis.porteId,
-        commercialId: analysis.commercialId,
+        userId: analysis.userId,
         managerId: analysis.managerId,
         s3KeyOriginal: analysis.s3KeyOriginal,
         statutPorte: analysis.statutPorte,

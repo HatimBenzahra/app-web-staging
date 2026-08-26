@@ -37,7 +37,7 @@ export default function CoachingSessionsModal({
     if (subjectId == null) return
     let active = true
     setLoading(true)
-    const where = subjectType === 'manager' ? { managerId: subjectId } : { commercialId: subjectId }
+    const where = subjectType === 'manager' ? { managerId: subjectId } : { userId: subjectId }
     CoachingService.analyses({ ...where, status: 'READY', take: 200 }).then(res => {
       if (!active) return
       setSessions(res.items || [])

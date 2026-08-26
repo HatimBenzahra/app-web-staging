@@ -5,7 +5,7 @@ const COACHING_FIELDS = `
   id
   recordingId
   porteId
-  commercialId
+  userId
   managerId
   s3KeyOriginal
   statutPorte

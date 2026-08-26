@@ -127,7 +127,7 @@ export default function CoachingSynthesisSection({ commercialId, managerId, subj
   const refreshReadyCount = useCallback(async () => {
     if (subjectId == null) return
     const where =
-      subjectType === 'commercial' ? { commercialId: subjectId } : { managerId: subjectId }
+      subjectType === 'commercial' ? { userId: subjectId } : { managerId: subjectId }
     const res = await CoachingService.analyses({ ...where, status: 'READY', take: 1 })
     setReadyCount(res?.total ?? 0)
   }, [subjectType, subjectId])

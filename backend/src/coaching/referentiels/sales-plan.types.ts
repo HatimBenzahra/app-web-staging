@@ -36,12 +36,6 @@ export interface StepDef {
   pitchText?: string;
 }
 
-export interface PlanQuality {
-  minDurationSec?: number;
-  minTranscriptChars?: number;
-  lowConfidenceBelowSec?: number;
-}
-
 /** Le malus s'applique au score global : les étapes gardent leur barème intact. */
 export interface PlanMalus {
   /** Affirmation juridiquement fausse ou engagement impossible. */
@@ -59,7 +53,6 @@ export interface ParsedSalesPlan {
   scoringScale: number;
   language?: string;
   context?: string;
-  quality: PlanQuality;
   malus: PlanMalus;
   steps: StepDef[];
   /** Le pendant des `sttTerms` d'une fiche, pour ce qui n'appartient à aucun produit. */
@@ -69,7 +62,6 @@ export interface ParsedSalesPlan {
 /** Payload stocké dans SalesPlanVersion.criteria (JSON). */
 export interface SalesPlanCriteriaPayload {
   scoringScale: number;
-  quality: PlanQuality;
   malus: PlanMalus;
   steps: StepDef[];
   context?: string;

@@ -27,13 +27,13 @@ export class SynthesisService {
   private async analysisScopeWhere(
     subjectType: SubjectType,
     subjectId: number,
-  ): Promise<{ commercialId: number | { in: number[] } }> {
-    if (subjectType === 'commercial') return { commercialId: subjectId };
+  ): Promise<{ userId: number | { in: number[] } }> {
+    if (subjectType === 'commercial') return { userId: subjectId };
     const team = await this.prisma.commercial.findMany({
       where: { managerId: subjectId },
       select: { id: true },
     });
-    return { commercialId: { in: team.map((c) => c.id) } };
+    return { userId: { in: team.map((c) => c.id) } };
   }
 
   // --- Lecture ---
@@ -216,17 +216,17 @@ export class SynthesisService {
     // Commerciaux ayant des analyses READY + managers ayant des analyses perso.
     const [comm, mgrPerso] = await Promise.all([
       this.prisma.coachingAnalysis.findMany({
-        where: { status: CoachingStatus.READY, commercialId: { not: null } },
-        distinct: ['commercialId'],
-        select: { commercialId: true },
+        where: { source: 'prowin', status: CoachingStatus.READY, userId: { not: null } },
+        distinct: ['userId'],
+        select: { userId: true },
       }),
       this.prisma.coachingAnalysis.findMany({
-        where: { status: CoachingStatus.READY, managerId: { not: null } },
+        where: { source: 'prowin', status: CoachingStatus.READY, managerId: { not: null } },
         distinct: ['managerId'],
         select: { managerId: true },
       }),
     ]);
-    const commIds = comm.map((c) => c.commercialId!).filter((x) => x != null);
+    const commIds = comm.map((c) => c.userId!).filter((x) => x != null);
     const mgrPersoIds = mgrPerso.map((m) => m.managerId!).filter((x) => x != null);
 
     // Un manager n'a quasi jamais d'analyse à son nom : on le trouve par son équipe.

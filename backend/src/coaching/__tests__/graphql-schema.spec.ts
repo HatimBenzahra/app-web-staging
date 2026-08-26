@@ -62,6 +62,16 @@ describe('schéma GraphQL coaching', () => {
     },
   );
 
+  // Une violation d'avant la règle des trois citations n'a pas `planSays` ; le
+  // champ étant non-nullable, une seule ligne fautive annulait toute la réponse.
+  it('les citations d’une violation sont non-nullables', () => {
+    const block = /type CoachingViolationDto \{([^}]*)\}/.exec(sdl);
+    expect(block).not.toBeNull();
+    for (const f of ['quote: String!', 'sheetSays: String!', 'planSays: String!']) {
+      expect(block![1]).toContain(f);
+    }
+  });
+
   it('expose la requête des fiches produit', () => {
     expect(sdl).toContain('coachingProductSheets');
   });

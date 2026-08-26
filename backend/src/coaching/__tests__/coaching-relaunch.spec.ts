@@ -31,6 +31,7 @@ describe('relaunch — version de plan', () => {
       { isConfigured: () => true } as any, // llm
       {} as any, // config
       query,
+      {} as any, // intake
     );
     return { service, prisma, updated, created };
   };
@@ -41,7 +42,7 @@ describe('relaunch — version de plan', () => {
     salesPlanVersionId: 1,
     recordingId: 5,
     porteId: 7,
-    commercialId: 3,
+    userId: 3,
     managerId: null,
     statutPorte: 'ARGUMENTE',
     transcript: 'bonjour, on est France Téléphone',

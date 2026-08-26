@@ -1,11 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Injectable, Logger,  } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
-import {
-  ParsedSalesPlanFile,
-  parseSalesPlanMarkdown,
-} from './sales-plan.parser';
 import {
   ParsedSalesPlan,
   SalesPlanCriteriaPayload,
@@ -25,104 +19,10 @@ type SalesPlanVersionRow = {
  * les versionne en DB (clé = sha256 du contenu) et expose la version active.
  */
 @Injectable()
-export class SalesPlanService implements OnModuleInit {
+export class SalesPlanService {
   private readonly logger = new Logger(SalesPlanService.name);
 
   constructor(private readonly prisma: PrismaService) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.syncPlansFromDisk();
-  }
-
-  /** Sans ce dossier le module démarre sans aucun plan, avec un simple warn. */
-  private resolvePlansDir(): string | null {
-    const rel = path.join('coaching', 'referentiels', 'sales-plans');
-    const candidates = [
-      path.join(__dirname, 'sales-plans'),
-      // build nest : code compilé sous dist/src/coaching, assets sous dist/coaching
-      path.join(__dirname, '..', '..', '..', rel),
-      path.join(process.cwd(), 'dist', rel),
-      path.join(process.cwd(), 'src', rel),
-    ];
-    return candidates.find((dir) => fs.existsSync(dir)) ?? null;
-  }
-
-  async syncPlansFromDisk(): Promise<void> {
-    const dir = this.resolvePlansDir();
-    if (!dir) {
-      this.logger.warn('Dossier sales-plans introuvable, aucun plan chargé');
-      return;
-    }
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
-    for (const file of files) {
-      try {
-        const source = fs.readFileSync(path.join(dir, file), 'utf8');
-        const parsed = parseSalesPlanMarkdown(source);
-        await this.upsertVersion(parsed);
-      } catch (error) {
-        this.logger.error(
-          `Plan "${file}" ignoré: ${(error as Error).message}`,
-        );
-      }
-    }
-  }
-
-  private async upsertVersion(file: ParsedSalesPlanFile): Promise<void> {
-    const { plan, rawMarkdown, contentHash } = file;
-    const payload: SalesPlanCriteriaPayload = {
-      scoringScale: plan.scoringScale,
-      quality: plan.quality,
-      malus: plan.malus,
-      steps: plan.steps,
-      context: plan.context,
-      language: plan.language,
-      sttTerms: plan.sttTerms,
-    };
-
-    const existing = await this.prisma.salesPlanVersion.findUnique({
-      where: { contentHash },
-    });
-    if (existing) {
-      await this.activateVersion(existing.id, plan.slug);
-      return;
-    }
-
-    const last = await this.prisma.salesPlanVersion.findFirst({
-      where: { slug: plan.slug },
-      orderBy: { version: 'desc' },
-    });
-    const nextVersion = (last?.version ?? 0) + 1;
-
-    const created = await this.prisma.salesPlanVersion.create({
-      data: {
-        slug: plan.slug,
-        title: plan.title,
-        version: nextVersion,
-        contentHash,
-        criteria: payload as unknown as object,
-        rawMarkdown,
-        isActive: false,
-      },
-    });
-    await this.activateVersion(created.id, plan.slug);
-    this.logger.log(
-      `Plan de vente "${plan.slug}" v${nextVersion} enregistré et activé`,
-    );
-  }
-
-  /** Rend une version active et désactive les autres versions du même slug. */
-  private async activateVersion(id: number, slug: string): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.salesPlanVersion.updateMany({
-        where: { slug, isActive: true, NOT: { id } },
-        data: { isActive: false },
-      }),
-      this.prisma.salesPlanVersion.update({
-        where: { id },
-        data: { isActive: true },
-      }),
-    ]);
-  }
 
   /** Version active pour un slug donné, ou la plus récente si slug omis. */
   async getActiveVersion(slug?: string) {
@@ -144,7 +44,6 @@ export class SalesPlanService implements OnModuleInit {
       slug: row.slug,
       title: row.title,
       scoringScale: c.scoringScale ?? 100,
-      quality: c.quality ?? {},
       // Analyses antérieures au malus : barème par défaut, aucune violation à leur appliquer.
       malus: c.malus ?? { grave: 15, modere: 8, maxTotal: 30 },
       steps: c.steps ?? [],

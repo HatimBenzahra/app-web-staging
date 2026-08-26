@@ -56,7 +56,7 @@ export class CoachingAnalysisDto {
   @Field(() => Int) id: number;
   @Field(() => Int) recordingId: number;
   @Field(() => Int, { nullable: true }) porteId?: number | null;
-  @Field(() => Int, { nullable: true }) commercialId?: number | null;
+  @Field(() => Int, { nullable: true }) userId?: number | null;
   @Field(() => Int, { nullable: true }) managerId?: number | null;
   @Field() s3KeyOriginal: string;
   @Field(() => String, { nullable: true }) statutPorte?: string | null;
@@ -288,7 +288,7 @@ export class ActiveSalesPlanDto {
 export class CoachingAnalysesFilter {
   @Field(() => Int, { nullable: true, defaultValue: 0 }) skip?: number;
   @Field(() => Int, { nullable: true, defaultValue: 20 }) take?: number;
-  @Field(() => Int, { nullable: true }) commercialId?: number;
+  @Field(() => Int, { nullable: true }) userId?: number;
   @Field(() => Int, { nullable: true }) managerId?: number;
   @Field(() => Int, { nullable: true }) porteId?: number;
   @Field(() => String, { nullable: true }) status?: string;
